@@ -122,7 +122,6 @@ class SeasonalityAnalyzer(Analyzer):
 
         plt.tight_layout()
         plt.show()
-        return fig
 
     def generate_report(self, results, analysis_results=None, alpha=0.05):
         """

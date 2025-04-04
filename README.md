@@ -1,5 +1,5 @@
 # portwine - a clean, elegant portfolio backtester
-![The Triumph of Bacchus](https://github.com/StuartFarmer/portwine/raw/refs/heads/main/header.jpg)
+![The Triumph of Bacchus](imgs/header.jpg)
 Portfolio construction, optimization, and backtesting can be a complicated web of data wrangling, signal generation, lookahead bias reduction, and parameter tuning.
 
 But with `portwine`, strategies are clear and written in an 'online' fashion that removes most of the complexity that comes with backtesting, analyzing, and deploying your trading strategies.
@@ -129,21 +129,21 @@ Check out what comes out of the box:
 ```python
 EquityDrawdownAnalyzer().plot(results)
 ```
-![Equity Drawdown](https://github.com/StuartFarmer/portwine/raw/refs/heads/main/equitydrawdown.jpg)
+![Equity Drawdown](imgs/equitydrawdown.jpg)
 
 ---
 ##### Monte Carlo Analysis
 ```python
 MonteCarloAnalyzer().plot(results)
 ```
-![Equity Drawdown](https://github.com/StuartFarmer/portwine/raw/refs/heads/main/montecarlo.jpg)
+![Equity Drawdown](imgs/montecarlo.jpg)
 
 ---
 ##### Seasonality Analysis
 ```python
 EquityDrawdownAnalyzer().plot(results)
 ```
-![Equity Drawdown](https://github.com/StuartFarmer/portwine/raw/refs/heads/main/seasonality.jpg)
+![Equity Drawdown](imgs/seasonality.jpg)
 
 With more on the way!
 

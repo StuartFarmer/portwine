@@ -127,30 +127,28 @@ class MonteCarloAnalyzer(Analyzer):
 
     def plot(self, results, title="Monte Carlo Simulations (Log Scale)"):
         """
-        1) Plots all simulated equity paths in black with very low alpha,
-           along with a 5%-95% confidence band in shaded area, plus a mean path,
-           on a log scale, optionally with a benchmark.
-        2) Also creates a second figure that contains a 2x2 grid of histograms
-           showing the distribution of performance metrics:
-             - Cumulative Return
-             - Annual Vol
-             - Sharpe
-             - Max Drawdown
-           and, if 'benchmark_returns' is provided, a vertical line to compare
-           the benchmark's metric in each histogram.
+        Plots all visualizations on a single figure with 5 subplots:
+        - Main plot: Simulated equity paths in black with very low alpha,
+          along with a 5%-95% confidence band in shaded area, plus a mean path,
+          on a log scale, optionally with a benchmark.
+        - Four smaller plots: Histograms showing the distribution of performance metrics:
+          - Cumulative Return
+          - Annual Vol
+          - Sharpe
+          - Max Drawdown
+          and, if 'benchmark_returns' is provided, a vertical line to compare
+          the benchmark's metric in each histogram.
 
         Parameters
         ----------
-        mc_results : dict
+        results : dict
             {
-                'simulated_equity_curves': DataFrame of shape (dates, n_sims),
-                'simulated_stats': list of dicts for each sim,
-                'original_stats': dict
+                'benchmark_returns': DataFrame or Series with benchmark returns
             }
         title : str
             Chart title.
         """
-        # ===== Part 1: Plot Equity Curves + Confidence Bands + Benchmark =====
+        # Generate the simulation data
         periodic_returns = self.get_periodic_returns(results)
         mc_results = self.mc_with_replacement(periodic_returns, n_sims=200)
 
@@ -159,41 +157,49 @@ class MonteCarloAnalyzer(Analyzer):
             print("No simulation equity curves to plot.")
             return
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        # Create a single figure with GridSpec for layout control
+        fig = plt.figure(figsize=(15, 10))
+        gs = fig.add_gridspec(3, 4)  # 3 rows, 4 columns grid
+
+        # Main equity curve plot takes up the top 2 rows
+        ax_main = fig.add_subplot(gs[0:2, :])
 
         # Plot all paths in black, alpha=0.01
-        ax.plot(sim_equity.index, sim_equity.values,
-                color='black', alpha=0.01, linewidth=0.8)
+        ax_main.plot(sim_equity.index, sim_equity.values,
+                     color='black', alpha=0.01, linewidth=0.8)
 
         # Confidence bands
         lo5 = sim_equity.quantile(0.05, axis=1)
         hi95 = sim_equity.quantile(0.95, axis=1)
         mean_path = sim_equity.mean(axis=1)
 
-        ax.fill_between(sim_equity.index, lo5, hi95,
-                        color='blue', alpha=0.2,
-                        label='5%-95% Confidence Band')
-        ax.plot(mean_path.index, mean_path.values,
-                color='red', linewidth=2, label='Mean Path')
+        ax_main.fill_between(sim_equity.index, lo5, hi95,
+                             color='blue', alpha=0.2,
+                             label='5%-95% Confidence Band')
+        ax_main.plot(mean_path.index, mean_path.values,
+                     color='red', linewidth=2, label='Mean Path')
 
-        benchmark_equity = (1 + results['benchmark_returns']).cumprod()
+        benchmark_equity = None
+        if 'benchmark_returns' in results and results['benchmark_returns'] is not None:
+            benchmark_equity = (1 + results['benchmark_returns']).cumprod()
 
         # Plot benchmark if provided
         if benchmark_equity is not None and not benchmark_equity.empty:
-            ax.plot(benchmark_equity.index, benchmark_equity.values,
-                    color='green', linewidth=2, label='Benchmark')
+            ax_main.plot(benchmark_equity.index, benchmark_equity.values,
+                         color='green', linewidth=2, label='Benchmark')
 
         # Log scale
-        ax.set_yscale('log')
-        ax.set_title(title)
-        ax.set_ylabel("Equity (log scale)")
-        ax.legend(loc='best')
-        ax.grid(True)
+        ax_main.set_yscale('log')
+        ax_main.set_title(title, fontsize=14)
+        ax_main.set_ylabel("Equity (log scale)")
+        ax_main.legend(loc='best')
+        ax_main.grid(True)
 
-        # ===== Part 2: 2x2 Grid of Histograms of Perf. Metrics + Benchmark line =====
+        # Get performance stats for histograms
         simulated_stats = mc_results.get('simulated_stats', [])
         if not simulated_stats:
-            # If we have no performance stats, there's nothing to plot
+            # If we have no performance stats, there's nothing more to plot
+            plt.tight_layout()
             plt.show()
             return
 
@@ -205,46 +211,55 @@ class MonteCarloAnalyzer(Analyzer):
 
         # If benchmark_returns is provided, compute same stats
         benchmark_stats = {}
-        if results['benchmark_returns'] is not None and not results['benchmark_returns'].empty:
+        if 'benchmark_returns' in results and results['benchmark_returns'] is not None and not results[
+            'benchmark_returns'].empty:
             benchmark_stats = self.analyze(results['benchmark_returns'])
 
-        fig2, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 8))
+        # Create the 4 histogram subplots in the bottom row
+        axes = [
+            fig.add_subplot(gs[2, 0]),  # Cumulative Return
+            fig.add_subplot(gs[2, 1]),  # Annual Vol
+            fig.add_subplot(gs[2, 2]),  # Sharpe
+            fig.add_subplot(gs[2, 3])  # Max Drawdown
+        ]
 
         # 1) Cumulative Return
-        axes[0, 0].hist(cumulative_returns, bins=30, color='blue', alpha=0.7)
-        axes[0, 0].set_title("Cumulative Return")
+        axes[0].hist(cumulative_returns, bins=30, color='blue', alpha=0.7)
+        axes[0].set_title("Cumulative Return", fontsize=10)
         if 'CumulativeReturn' in benchmark_stats and not np.isnan(benchmark_stats['CumulativeReturn']):
             cr_bench = benchmark_stats['CumulativeReturn']
-            axes[0, 0].axvline(cr_bench, color='green', linestyle='--',
-                               label=f"Benchmark={cr_bench:.2f}")
-            axes[0, 0].legend()
+            axes[0].axvline(cr_bench, color='green', linestyle='--',
+                            label=f"Benchmark={cr_bench:.2f}")
+            axes[0].legend(fontsize=8)
 
         # 2) Annual Vol
-        axes[0, 1].hist(ann_vols, bins=30, color='blue', alpha=0.7)
-        axes[0, 1].set_title("Annual Volatility")
+        axes[1].hist(ann_vols, bins=30, color='blue', alpha=0.7)
+        axes[1].set_title("Annual Volatility", fontsize=10)
         if 'AnnVol' in benchmark_stats and not np.isnan(benchmark_stats['AnnVol']):
             av_bench = benchmark_stats['AnnVol']
-            axes[0, 1].axvline(av_bench, color='green', linestyle='--',
-                               label=f"Benchmark={av_bench:.2f}")
-            axes[0, 1].legend()
+            axes[1].axvline(av_bench, color='green', linestyle='--',
+                            label=f"Benchmark={av_bench:.2f}")
+            axes[1].legend(fontsize=8)
 
         # 3) Sharpe
-        axes[1, 0].hist(sharpes, bins=30, color='blue', alpha=0.7)
-        axes[1, 0].set_title("Sharpe Ratio")
+        axes[2].hist(sharpes, bins=30, color='blue', alpha=0.7)
+        axes[2].set_title("Sharpe Ratio", fontsize=10)
         if 'Sharpe' in benchmark_stats and not np.isnan(benchmark_stats['Sharpe']):
             sh_bench = benchmark_stats['Sharpe']
-            axes[1, 0].axvline(sh_bench, color='green', linestyle='--',
-                               label=f"Benchmark={sh_bench:.2f}")
-            axes[1, 0].legend()
+            axes[2].axvline(sh_bench, color='green', linestyle='--',
+                            label=f"Benchmark={sh_bench:.2f}")
+            axes[2].legend(fontsize=8)
 
         # 4) Max Drawdown
-        axes[1, 1].hist(max_dds, bins=30, color='blue', alpha=0.7)
-        axes[1, 1].set_title("Max Drawdown")
+        axes[3].hist(max_dds, bins=30, color='blue', alpha=0.7)
+        axes[3].set_title("Max Drawdown", fontsize=10)
         if 'MaxDrawdown' in benchmark_stats and not np.isnan(benchmark_stats['MaxDrawdown']):
             dd_bench = benchmark_stats['MaxDrawdown']
-            axes[1, 1].axvline(dd_bench, color='green', linestyle='--',
-                               label=f"Benchmark={dd_bench:.2f}")
-            axes[1, 1].legend()
+            axes[3].axvline(dd_bench, color='green', linestyle='--',
+                            label=f"Benchmark={dd_bench:.2f}")
+            axes[3].legend(fontsize=8)
 
+        # Adjust layout to ensure all elements fit well
         plt.tight_layout()
+        plt.subplots_adjust(hspace=0.4, wspace=0.3)
         plt.show()
