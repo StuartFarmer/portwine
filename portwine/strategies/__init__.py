@@ -1,1 +1,1 @@
-from base import StrategyBase
+from portwine.strategies.base import StrategyBase

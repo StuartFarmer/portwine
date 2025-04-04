@@ -105,7 +105,7 @@ class Backtester:
 
         # Optionally shift signals by 1 day
         if shift_signals:
-            signals_df = signals_df.shift(1).fillna(method='ffill').fillna(0.0)
+            signals_df = signals_df.shift(1).ffill().fillna(0.0)
         else:
             signals_df = signals_df.fillna(0.0)
 
@@ -114,7 +114,7 @@ class Backtester:
         for tkr in strategy.tickers:
             if tkr in strategy_data:
                 px = strategy_data[tkr]['close'].reindex(signals_df.index)
-                px = px.fillna(method='ffill')
+                px = px.ffill()
                 price_df[tkr] = px
             else:
                 price_df[tkr] = np.nan
@@ -129,7 +129,7 @@ class Backtester:
         benchmark_daily_returns = None
         if benchmark_ticker and benchmark_data.get(benchmark_ticker) is not None:
             bm_px = benchmark_data[benchmark_ticker]['close']
-            bm_px = bm_px.reindex(strategy_daily_returns.index).fillna(method='ffill')
+            bm_px = bm_px.reindex(strategy_daily_returns.index).ffill()
             benchmark_daily_returns = bm_px.pct_change().fillna(0.0)
 
         # Return all relevant results

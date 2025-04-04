@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import calendar
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
-from base import Analyzer
+from portwine.analyzers.base import Analyzer
 
 class SeasonalityAnalyzer(Analyzer):
     """
@@ -178,7 +178,7 @@ class SeasonalityAnalyzer(Analyzer):
     def _add_time_features(self, returns_series):
         """
         Adds standard time-based features to a returns Series (day, month, quarter, etc.)
-        Also adds flags for turn-of-month and turn-of-quarter from d-3 to d+3.
+        Also adds flags for turn-of-month and turn-of-quarter from T-3 to T+3.
         """
         if returns_series is None or returns_series.empty:
             return None
@@ -234,13 +234,13 @@ class SeasonalityAnalyzer(Analyzer):
             return None
 
         offset_labels = {
-            f'{prefix}_-3': 'D-3',
-            f'{prefix}_-2': 'D-2',
-            f'{prefix}_-1': 'D-1',
-            f'{prefix}_0': 'D',
-            f'{prefix}_1': 'D+1',
-            f'{prefix}_2': 'D+2',
-            f'{prefix}_3': 'D+3'
+            f'{prefix}_-3': 'T-3',
+            f'{prefix}_-2': 'T-2',
+            f'{prefix}_-1': 'T-1',
+            f'{prefix}_0': 'T+0',
+            f'{prefix}_1': 'T+1',
+            f'{prefix}_2': 'T+2',
+            f'{prefix}_3': 'T+3'
         }
 
         strat_frames = []
@@ -468,7 +468,7 @@ class SeasonalityAnalyzer(Analyzer):
           - Month of Year: use abbreviated month names (Jan->Dec)
           - Quarter: map numeric to Q1..Q4 or reorder Q1..Q4
           - Year: use the last two digits (e.g., 2021 -> 21)
-          - Turn of Month or Quarter: D-3..D+3
+          - Turn of Month or Quarter: T-3..T+3
         Only drop rows if their 'mean' is truly NaN, preserving partial data.
         """
         if df_stats is None or df_stats.empty:
@@ -583,7 +583,7 @@ class SeasonalityAnalyzer(Analyzer):
 
         # 5) Turn of Month / Quarter
         if "Turn of Month" in title or "Turn of Quarter" in title:
-            turn_order = ["D-3", "D-2", "D-1", "D", "D+1", "D+2", "D+3"]
+            turn_order = ["T-3", "T-2", "T-1", "T+0", "T+1", "T+2", "T+3"]
             sorted_order = [d for d in turn_order if d in idx_list]
             df_stats = df_stats.reindex(sorted_order)
             df_stats = df_stats.dropna(subset=["mean"])

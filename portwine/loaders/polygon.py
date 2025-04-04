@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from base import MarketDataLoader
+from portwine.loaders.base import MarketDataLoader
 
 
 class PolygonMarketDataLoader(MarketDataLoader):

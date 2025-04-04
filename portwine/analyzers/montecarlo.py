@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from base import Analyzer
+from portwine.analyzers.base import Analyzer
 
 class MonteCarloAnalyzer(Analyzer):
     """
@@ -10,10 +10,10 @@ class MonteCarloAnalyzer(Analyzer):
     on a log scale. Can also plot a benchmark curve for comparison.
     """
 
-    def __init__(self, frequency='M'):
-        assert frequency in ['M', 'D'], 'Only supports M (monthly) or D (daily) frequencies'
+    def __init__(self, frequency='ME'):
+        assert frequency in ['ME', 'D'], 'Only supports ME (monthly) or D (daily) frequencies'
         self.frequency = frequency
-        self.ann_factor = 12 if frequency == 'M' else 252
+        self.ann_factor = 12 if frequency == 'ME' else 252
 
     def _compute_drawdown(self, equity):
         rolling_max = equity.cummax()
@@ -23,7 +23,7 @@ class MonteCarloAnalyzer(Analyzer):
     def _convert_to_monthly(self, daily_returns):
         if not isinstance(daily_returns.index, pd.DatetimeIndex):
             daily_returns.index = pd.to_datetime(daily_returns.index)
-        monthly = daily_returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+        monthly = daily_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
         return monthly
 
     def analyze(self, returns):
@@ -93,7 +93,7 @@ class MonteCarloAnalyzer(Analyzer):
         """
         Extract or compute the returns to feed into the Monte Carlo simulations.
 
-        By default, tries monthly if freq='M'. If you already have monthly
+        By default, tries monthly if freq='ME'. If you already have monthly
         or daily in 'strategy_daily_returns', you can keep or transform them.
 
         Parameters
@@ -106,7 +106,7 @@ class MonteCarloAnalyzer(Analyzer):
                 ...
             }
         freq : str
-            Frequency to convert daily returns (e.g. 'M' for monthly).
+            Frequency to convert daily returns (e.g. 'ME' for monthly).
             If None, uses daily returns as is.
 
         Returns
@@ -119,7 +119,7 @@ class MonteCarloAnalyzer(Analyzer):
             print("No strategy_daily_returns found in results.")
             return pd.Series(dtype=float)
 
-        if self.frequency == 'M':
+        if self.frequency == 'ME':
             return self._convert_to_monthly(daily)
         else:
             # Return daily as is

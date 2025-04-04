@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from base import Analyzer
+from portwine.analyzers.base import Analyzer
 
 class EquityDrawdownAnalyzer(Analyzer):
     """
