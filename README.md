@@ -1,5 +1,8 @@
 # portwine - a clean, elegant portfolio backtester
 ![The Triumph of Bacchus](imgs/header.jpg)
+```commandline
+pip install portwine
+```
 Portfolio construction, optimization, and backtesting can be a complicated web of data wrangling, signal generation, lookahead bias reduction, and parameter tuning.
 
 But with `portwine`, strategies are clear and written in an 'online' fashion that removes most of the complexity that comes with backtesting, analyzing, and deploying your trading strategies.
