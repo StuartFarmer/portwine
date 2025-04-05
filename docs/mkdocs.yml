@@ -1,0 +1,13 @@
+site_name: My Project Docs
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - My Module: api_reference.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
