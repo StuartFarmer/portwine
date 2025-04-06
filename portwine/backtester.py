@@ -1,42 +1,99 @@
 import pandas as pd
 import numpy as np
+import cvxpy as cp
 from tqdm import tqdm
 
+def benchmark_equal_weight(daily_ret_df, *args, **kwargs):
+    """
+    Return daily returns of an equally weighted (rebalanced daily) portfolio
+    of all columns in daily_ret_df.
+    """
+    eq_wt_ret = daily_ret_df.mean(axis=1)  # average across columns (tickers)
+    return eq_wt_ret
 
+
+def benchmark_markowitz(daily_ret_df, lookback=60, shift_signals=True, verbose=False):
+    """
+    Returns daily returns of a global minimum-variance portfolio (no short selling).
+    Solves: min w^T Sigma w,  s.t. sum(w)=1, w >=0, each day using last 'lookback' days.
+    If shift_signals=True, shift the weights by 1 day to avoid lookahead.
+    """
+    tickers = daily_ret_df.columns
+    n = len(tickers)
+
+    if verbose:
+        ret_iter = tqdm(daily_ret_df.index, desc="Markowitz Benchmark")
+    else:
+        ret_iter = daily_ret_df.index
+
+    weight_list = []
+    for current_date in ret_iter:
+        # Slice up to 'current_date' with length up to 'lookback'
+        window_data = daily_ret_df.loc[:current_date].tail(lookback)
+
+        if len(window_data) < 2:
+            # Not enough data => fallback
+            w = np.ones(n) / n
+        else:
+            # Covariance
+            cov = window_data.cov().values
+
+            # Define w_var as a cvxpy variable
+            w_var = cp.Variable(n, nonneg=True)  # w >= 0
+            objective = cp.quad_form(w_var, cov)  # w^T Sigma w
+            constraints = [cp.sum(w_var) == 1.0]
+            prob = cp.Problem(cp.Minimize(objective), constraints)
+
+            try:
+                prob.solve()  # Solve the QP
+                if (w_var.value is None) or (prob.status not in ["optimal", "optimal_inaccurate"]):
+                    w = np.ones(n) / n
+                else:
+                    w = w_var.value
+            except:
+                w = np.ones(n) / n
+
+        weight_list.append(w)
+
+    # Build a DataFrame of daily weights
+    weights_df = pd.DataFrame(weight_list, index=daily_ret_df.index, columns=tickers)
+
+    # Optionally shift weights to avoid lookahead
+    if shift_signals:
+        weights_df = weights_df.shift(1).ffill().fillna(1.0 / n)
+
+    # Portfolio daily returns = sum of ticker returns * weights
+    bm_ret = (weights_df * daily_ret_df).sum(axis=1)
+    return bm_ret
+
+
+# ---------------------------
+# 2) Dictionary of Standard Benchmarks
+# ---------------------------
+STANDARD_BENCHMARKS = {
+    "equal_weight": benchmark_equal_weight,
+    "markowitz": benchmark_markowitz,
+}
+
+
+# ---------------------------
+# 3) Backtester Class
+# ---------------------------
 class Backtester:
     """
-    A step-based backtester that:
-      1) Uses a MarketDataLoader to fetch and store market data.
-      2) Allows multiple strategies to be tested via the run_backtest function.
-      3) Steps through each date in chronological order.
-      4) Feeds each day's data into the strategy to generate signals/weights.
-      5) Optionally shifts signals by 1 day to avoid lookahead bias.
-      6) Computes daily returns and returns results in percentage terms
-         (equity curve starts at 1.0).
+    A step-based backtester that can handle a function-based or ticker-based benchmark.
     """
 
     def __init__(self, market_data_loader):
-        """
-        Parameters
-        ----------
-        market_data_loader : MarketDataLoader
-            An object that can fetch ticker data from CSVs (or another source).
-        """
         self.market_data_loader = market_data_loader
 
     def _get_union_of_dates(self, data_dict):
-        """
-        Build a sorted list of all unique dates from the data_dict.
-        """
         all_dates = set()
         for df in data_dict.values():
             all_dates.update(df.index)
         return sorted(list(all_dates))
 
     def _get_daily_data_dict(self, date, data_dict):
-        """
-        For each ticker in data_dict, return a dict of that day's row if it exists; else None.
-        """
         daily_data = {}
         for tkr, df in data_dict.items():
             if date in df.index:
@@ -48,62 +105,68 @@ class Backtester:
     def run_backtest(self,
                      strategy,
                      shift_signals=True,
-                     benchmark_ticker=None,
+                     benchmark=None,
                      verbose=False):
         """
-        Runs a daily step-based backtest for the given strategy.
-        The equity curve starts at 1.0 (percentage terms).
+        Runs a step-based backtest.
 
-        Parameters
-        ----------
-        strategy : StrategyBase
-            A strategy object that has tickers, plus a step() method.
-        shift_signals : bool
-            If True, shift signals by 1 day to avoid lookahead bias.
-        benchmark_ticker : str or None
-            If provided, returns daily & equity curve for that benchmark.
-
-        Returns
-        -------
-        results : dict
-            {
-                'signals_df'            : DataFrame of daily signals/weights,
-                'strategy_daily_returns' : Series of daily strategy returns,
-                'equity_curve'          : Series of cumulative returns starting at 1.0,
-                'benchmark_daily_returns': Series of daily returns for benchmark (if any),
-                'benchmark_equity_curve' : Series of benchmark cumulative returns (if any)
-            }
+        benchmark can be:
+          - None -> no benchmark
+          - a string -> if in STANDARD_BENCHMARKS, calls that function
+                        else interpret as a single ticker
+          - a callable -> a user-supplied function that (daily_ret_df)->pd.Series
         """
 
-        # Fetch all needed data for the strategy
+        # 1) fetch data for strategy tickers
         strategy_data = self.market_data_loader.fetch_data(strategy.tickers)
-
-        # Optionally fetch benchmark data
-        benchmark_data = {}
-        if benchmark_ticker:
-            benchmark_data = self.market_data_loader.fetch_data([benchmark_ticker])
-
-        # If no data fetched, bail
-        if not strategy_data and not benchmark_data:
-            print("No market data fetched. Check your tickers and file paths.")
+        if not strategy_data:
+            print("No data found for strategy tickers!")
             return None
 
-        # Build the sorted union of all available dates (both strategy + benchmark)
-        all_data = {**strategy_data, **benchmark_data}
+        # 2) parse benchmark argument
+        single_bm_ticker = None
+        benchmark_func = None
+
+        if benchmark is None:
+            pass
+        elif isinstance(benchmark, str):
+            if benchmark in STANDARD_BENCHMARKS:
+                benchmark_func = STANDARD_BENCHMARKS[benchmark]
+            else:
+                single_bm_ticker = benchmark
+        elif callable(benchmark):
+            benchmark_func = benchmark
+        else:
+            print(f"Unrecognized benchmark: {benchmark}")
+            return None
+
+        # 3) fetch data for single benchmark ticker (if any)
+        benchmark_data = {}
+        if single_bm_ticker:
+            benchmark_data = self.market_data_loader.fetch_data([single_bm_ticker])
+
+        # 4) union of all dates
+        all_data = dict(strategy_data)
+        if benchmark_data:
+            all_data.update(benchmark_data)
+
+        if not all_data:
+            print("No data fetched. Check your tickers and file paths.")
+            return None
+
         all_dates = self._get_union_of_dates(all_data)
 
+        # 5) gather daily signals
+        signals_records = []
         if verbose:
-            date_iter = tqdm(all_dates, desc="Running backtest")
+            from tqdm import tqdm
+            date_iter = tqdm(all_dates, desc="Backtest")
         else:
             date_iter = all_dates
 
-        # Gather signals day by day
-        signals_records = []
         for date in date_iter:
             daily_data = self._get_daily_data_dict(date, all_data)
-            # Strategy step
             daily_signals = strategy.step(date, daily_data)
-            # Build row for signals DataFrame
             row_dict = {'date': date}
             for tkr in strategy.tickers:
                 row_dict[tkr] = daily_signals.get(tkr, 0.0)
@@ -111,41 +174,42 @@ class Backtester:
 
         signals_df = pd.DataFrame(signals_records).set_index('date').sort_index()
 
-        # Optionally shift signals by 1 day
+        # 6) shift signals if requested
         if shift_signals:
             signals_df = signals_df.shift(1).ffill().fillna(0.0)
         else:
             signals_df = signals_df.fillna(0.0)
 
-        # Build a price DataFrame for the *primary* strategy tickers
+        # 7) build a price DataFrame for the strategy tickers
         price_df = pd.DataFrame(index=signals_df.index)
         for tkr in strategy.tickers:
-            if tkr in strategy_data:
-                px = strategy_data[tkr]['close'].reindex(signals_df.index)
-                px = px.ffill()
-                price_df[tkr] = px
-            else:
-                price_df[tkr] = np.nan
+            df = strategy_data[tkr]
+            px = df['close'].reindex(signals_df.index).ffill()
+            price_df[tkr] = px
 
-        # Calculate daily returns (percentage changes)
+        # 8) daily returns of each ticker
         daily_ret_df = price_df.pct_change().fillna(0.0)
 
-        # Strategy daily returns = sum of (weight * daily return of each ticker)
+        # 9) strategy daily returns
         strategy_daily_returns = (daily_ret_df * signals_df).sum(axis=1)
 
-        # Handle benchmark if provided
+        # 10) compute benchmark returns
         benchmark_daily_returns = None
-        if benchmark_ticker and benchmark_data.get(benchmark_ticker) is not None:
-            bm_px = benchmark_data[benchmark_ticker]['close']
-            bm_px = bm_px.reindex(strategy_daily_returns.index).ffill()
-            benchmark_daily_returns = bm_px.pct_change().fillna(0.0)
 
-        # Return all relevant results
+        if single_bm_ticker and benchmark_data.get(single_bm_ticker) is not None:
+            bm_price = benchmark_data[single_bm_ticker]['close'].reindex(signals_df.index).ffill()
+            benchmark_daily_returns = bm_price.pct_change().fillna(0.0)
+        elif benchmark_func:
+            # pass daily_ret_df to the benchmark function
+            # for Markowitz, we might pass lookback= etc. but let's keep it simple
+            # The function signature is daily_ret_df -> pd.Series
+            # We can do:
+            benchmark_daily_returns = benchmark_func(daily_ret_df, verbose=verbose)
+
         return {
             'signals_df': signals_df,
             'tickers_returns': daily_ret_df,
             'strategy_returns': strategy_daily_returns,
             'benchmark_returns': benchmark_daily_returns,
         }
-
 

@@ -435,17 +435,6 @@ class SeasonalityAnalyzer(Analyzer):
                 color='orange',
                 alpha=0.7
             )
-            # Mark differences
-            if 'strat_vs_bm_significant_corrected' in df_stats.columns:
-                for i, row in enumerate(df_stats.itertuples()):
-                    if (not np.isnan(row.strat_vs_bm_corrected_p)
-                            and row.strat_vs_bm_significant_corrected
-                            and (row.mean > row.benchmark_mean)):
-                        ax.annotate('*',
-                                    xy=(x_pos[i] - width / 2, row.mean),
-                                    xytext=(x_pos[i] - width / 2, row.mean + 0.001),
-                                    fontsize=14,
-                                    ha='center')
 
         # Plot an overall mean line
         overall_mean = seasonality_result['overall_mean']
