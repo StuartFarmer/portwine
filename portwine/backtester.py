@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
+
 
 class Backtester:
     """
@@ -46,7 +48,8 @@ class Backtester:
     def run_backtest(self,
                      strategy,
                      shift_signals=True,
-                     benchmark_ticker=None):
+                     benchmark_ticker=None,
+                     verbose=False):
         """
         Runs a daily step-based backtest for the given strategy.
         The equity curve starts at 1.0 (percentage terms).
@@ -89,9 +92,14 @@ class Backtester:
         all_data = {**strategy_data, **benchmark_data}
         all_dates = self._get_union_of_dates(all_data)
 
+        if verbose:
+            date_iter = tqdm(all_dates, desc="Running backtest")
+        else:
+            date_iter = all_dates
+
         # Gather signals day by day
         signals_records = []
-        for date in all_dates:
+        for date in date_iter:
             daily_data = self._get_daily_data_dict(date, all_data)
             # Strategy step
             daily_signals = strategy.step(date, daily_data)
