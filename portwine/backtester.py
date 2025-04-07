@@ -11,7 +11,6 @@ def benchmark_equal_weight(daily_ret_df, *args, **kwargs):
     eq_wt_ret = daily_ret_df.mean(axis=1)  # average across columns (tickers)
     return eq_wt_ret
 
-
 def benchmark_markowitz(daily_ret_df, lookback=60, shift_signals=True, verbose=False):
     """
     Returns daily returns of a global minimum-variance portfolio (no short selling).
@@ -35,53 +34,46 @@ def benchmark_markowitz(daily_ret_df, lookback=60, shift_signals=True, verbose=F
             # Not enough data => fallback
             w = np.ones(n) / n
         else:
-            # Covariance
             cov = window_data.cov().values
-
-            # Define w_var as a cvxpy variable
             w_var = cp.Variable(n, nonneg=True)  # w >= 0
-            objective = cp.quad_form(w_var, cov)  # w^T Sigma w
+            objective = cp.quad_form(w_var, cov)
             constraints = [cp.sum(w_var) == 1.0]
             prob = cp.Problem(cp.Minimize(objective), constraints)
 
             try:
-                prob.solve()  # Solve the QP
+                prob.solve()
                 if (w_var.value is None) or (prob.status not in ["optimal", "optimal_inaccurate"]):
                     w = np.ones(n) / n
                 else:
                     w = w_var.value
             except:
-                w = np.ones(n) / n
+                w = np.ones(n)/n
 
         weight_list.append(w)
 
     # Build a DataFrame of daily weights
     weights_df = pd.DataFrame(weight_list, index=daily_ret_df.index, columns=tickers)
 
-    # Optionally shift weights to avoid lookahead
+    # Optionally shift weights
     if shift_signals:
         weights_df = weights_df.shift(1).ffill().fillna(1.0 / n)
 
-    # Portfolio daily returns = sum of ticker returns * weights
     bm_ret = (weights_df * daily_ret_df).sum(axis=1)
     return bm_ret
 
-
-# ---------------------------
-# 2) Dictionary of Standard Benchmarks
-# ---------------------------
 STANDARD_BENCHMARKS = {
     "equal_weight": benchmark_equal_weight,
     "markowitz": benchmark_markowitz,
 }
 
 
-# ---------------------------
-# 3) Backtester Class
-# ---------------------------
 class Backtester:
     """
-    A step-based backtester that can handle a function-based or ticker-based benchmark.
+    A step-based backtester that can handle:
+      - function-based or ticker-based benchmark
+      - optional start_date
+      - optional 'require_all_history' to ensure we only start once
+        all tickers have data.
     """
 
     def __init__(self, market_data_loader):
@@ -106,15 +98,42 @@ class Backtester:
                      strategy,
                      shift_signals=True,
                      benchmark=None,
+                     start_date=None,
+                     require_all_history=False,
                      verbose=False):
         """
         Runs a step-based backtest.
 
-        benchmark can be:
-          - None -> no benchmark
-          - a string -> if in STANDARD_BENCHMARKS, calls that function
-                        else interpret as a single ticker
-          - a callable -> a user-supplied function that (daily_ret_df)->pd.Series
+        Parameters
+        ----------
+        strategy : StrategyBase
+            The strategy to backtest (has .tickers and step() method).
+        shift_signals : bool
+            If True, shift signals by 1 day for no lookahead.
+        benchmark : None, str, or callable
+            - None -> no benchmark
+            - str: if in STANDARD_BENCHMARKS -> calls that function
+                   else interpret as a single ticker
+            - callable -> user-supplied function that (daily_ret_df) -> pd.Series
+        start_date : None, str, or datetime
+            The earliest date to start the backtest. If None, uses all data.
+            If str (e.g., "2005-01-01"), will parse to datetime.
+        require_all_history : bool
+            If True, the backtest will not start until *all* tickers in
+            strategy.tickers have data. This is done by finding each ticker's
+            earliest date, taking the maximum, and skipping any earlier dates.
+            We also consider 'start_date' if provided, taking the maximum of
+            that and the all-tickers earliest date.
+        verbose : bool
+            If True, shows tqdm progress bars.
+
+        Returns
+        -------
+        dict with keys:
+            'signals_df'
+            'tickers_returns'
+            'strategy_returns'
+            'benchmark_returns'
         """
 
         # 1) fetch data for strategy tickers
@@ -145,7 +164,7 @@ class Backtester:
         if single_bm_ticker:
             benchmark_data = self.market_data_loader.fetch_data([single_bm_ticker])
 
-        # 4) union of all dates
+        # 4) union of data
         all_data = dict(strategy_data)
         if benchmark_data:
             all_data.update(benchmark_data)
@@ -156,7 +175,35 @@ class Backtester:
 
         all_dates = self._get_union_of_dates(all_data)
 
-        # 5) gather daily signals
+        # 5) possibly parse user-supplied start_date
+        user_start_date = None
+        if start_date is not None:
+            user_start_date = pd.to_datetime(start_date)
+
+        # 6) If require_all_history == True, find the earliest date for each ticker
+        #    then pick the maximum of those, plus user_start_date if any
+        if require_all_history:
+            earliest_per_ticker = []
+            for tkr, df in strategy_data.items():
+                if df.empty:
+                    print(f"Warning: Ticker {tkr} has no data, can't start at all.")
+                    return None
+                earliest_date = df.index.min()
+                earliest_per_ticker.append(earliest_date)
+            # The date we can start once *all* tickers have data
+            common_earliest = max(earliest_per_ticker)
+            if user_start_date is not None:
+                final_start = max(common_earliest, user_start_date)
+            else:
+                final_start = common_earliest
+            # filter out earlier dates
+            all_dates = [d for d in all_dates if d >= final_start]
+        else:
+            # if not requiring all, just do the user start_date filter if any
+            if user_start_date is not None:
+                all_dates = [d for d in all_dates if d >= user_start_date]
+
+        # 7) gather daily signals
         signals_records = []
         if verbose:
             from tqdm import tqdm
@@ -174,36 +221,32 @@ class Backtester:
 
         signals_df = pd.DataFrame(signals_records).set_index('date').sort_index()
 
-        # 6) shift signals if requested
+        # 8) shift signals if requested
         if shift_signals:
             signals_df = signals_df.shift(1).ffill().fillna(0.0)
         else:
             signals_df = signals_df.fillna(0.0)
 
-        # 7) build a price DataFrame for the strategy tickers
+        # 9) build a price DataFrame for the strategy tickers
         price_df = pd.DataFrame(index=signals_df.index)
         for tkr in strategy.tickers:
             df = strategy_data[tkr]
             px = df['close'].reindex(signals_df.index).ffill()
             price_df[tkr] = px
 
-        # 8) daily returns of each ticker
+        # 10) daily returns of each ticker
         daily_ret_df = price_df.pct_change().fillna(0.0)
 
-        # 9) strategy daily returns
+        # 11) strategy daily returns
         strategy_daily_returns = (daily_ret_df * signals_df).sum(axis=1)
 
-        # 10) compute benchmark returns
+        # 12) compute benchmark returns
         benchmark_daily_returns = None
-
         if single_bm_ticker and benchmark_data.get(single_bm_ticker) is not None:
             bm_price = benchmark_data[single_bm_ticker]['close'].reindex(signals_df.index).ffill()
             benchmark_daily_returns = bm_price.pct_change().fillna(0.0)
         elif benchmark_func:
             # pass daily_ret_df to the benchmark function
-            # for Markowitz, we might pass lookback= etc. but let's keep it simple
-            # The function signature is daily_ret_df -> pd.Series
-            # We can do:
             benchmark_daily_returns = benchmark_func(daily_ret_df, verbose=verbose)
 
         return {
@@ -212,4 +255,3 @@ class Backtester:
             'strategy_returns': strategy_daily_returns,
             'benchmark_returns': benchmark_daily_returns,
         }
-
