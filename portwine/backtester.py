@@ -99,6 +99,7 @@ class Backtester:
                      shift_signals=True,
                      benchmark=None,
                      start_date=None,
+                     end_date=None,
                      require_all_history=False,
                      verbose=False):
         """
@@ -118,6 +119,9 @@ class Backtester:
         start_date : None, str, or datetime
             The earliest date to start the backtest. If None, uses all data.
             If str (e.g., "2005-01-01"), will parse to datetime.
+        end_date : None, str, or datetime
+            The latest date to end the backtest. If None, uses all data up to the end.
+            If str (e.g., "2010-12-31"), will parse to datetime.
         require_all_history : bool
             If True, the backtest will not start until *all* tickers in
             strategy.tickers have data. This is done by finding each ticker's
@@ -135,7 +139,6 @@ class Backtester:
             'strategy_returns'
             'benchmark_returns'
         """
-
         # 1) fetch data for strategy tickers
         strategy_data = self.market_data_loader.fetch_data(strategy.tickers)
         if not strategy_data:
@@ -175,10 +178,19 @@ class Backtester:
 
         all_dates = self._get_union_of_dates(all_data)
 
-        # 5) possibly parse user-supplied start_date
+        # 5) parse user-supplied start_date and end_date
         user_start_date = None
         if start_date is not None:
             user_start_date = pd.to_datetime(start_date)
+
+        user_end_date = None
+        if end_date is not None:
+            user_end_date = pd.to_datetime(end_date)
+
+        # Optional: check if both are set => assert start <= end
+        if user_start_date is not None and user_end_date is not None:
+            if user_start_date > user_end_date:
+                raise ValueError(f"start_date {user_start_date} cannot be after end_date {user_end_date}.")
 
         # 6) If require_all_history == True, find the earliest date for each ticker
         #    then pick the maximum of those, plus user_start_date if any
@@ -202,6 +214,14 @@ class Backtester:
             # if not requiring all, just do the user start_date filter if any
             if user_start_date is not None:
                 all_dates = [d for d in all_dates if d >= user_start_date]
+
+        # also filter out beyond end_date if set
+        if user_end_date is not None:
+            all_dates = [d for d in all_dates if d <= user_end_date]
+
+        if not all_dates:
+            print("No dates remain after filtering by start/end.")
+            return None
 
         # 7) gather daily signals
         signals_records = []
