@@ -255,7 +255,7 @@ class Backtester:
             price_df[tkr] = px
 
         # 10) daily returns of each ticker
-        daily_ret_df = price_df.pct_change().fillna(0.0)
+        daily_ret_df = price_df.pct_change(fill_method=None).fillna(0.0)
 
         # 11) strategy daily returns
         strategy_daily_returns = (daily_ret_df * signals_df).sum(axis=1)
@@ -264,7 +264,7 @@ class Backtester:
         benchmark_daily_returns = None
         if single_bm_ticker and benchmark_data.get(single_bm_ticker) is not None:
             bm_price = benchmark_data[single_bm_ticker]['close'].reindex(signals_df.index).ffill()
-            benchmark_daily_returns = bm_price.pct_change().fillna(0.0)
+            benchmark_daily_returns = bm_price.pct_change(fill_method=None).fillna(0.0)
         elif benchmark_func:
             # pass daily_ret_df to the benchmark function
             benchmark_daily_returns = benchmark_func(daily_ret_df, verbose=verbose)
