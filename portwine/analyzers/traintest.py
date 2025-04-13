@@ -18,25 +18,15 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
 
     Specifics:
       1) Diff column:
-         - For Sortino => (test/train - 1) in percent
-         - For MaxDD => abs(test)/abs(train) - 1 => if + => test drawdown is bigger => red
-         - For others => test - train (normal difference).
-           (if a rate, we show it as a percent, if Sharpe => 2 decimals, etc.)
-         - We do NOT color diff for Vol.
-
-         For MaxDD color logic is reversed:
-            * + => red, - => green
-         For non-MaxDD (except Vol):
-            * + => green, - => red
-
+         - For CAGR, Vol, MaxDD, Calmar: show the simple difference (test minus train) as a percentage.
+           * Exception: For MaxDD, the difference is computed as the difference in absolute values.
+         - For Sharpe and Sortino: show the simple difference as a raw value.
       2) Overfit Ratio:
-         - For MaxDD => ratio = (testVal / trainVal).
-         - For everything else => ratio = (trainVal / testVal).
-         - We do NOT color it for Vol.
-         - If ratio <= 1.1 => green; <= 1.25 => yellow; else red.
-
-      3) We add extra metrics: Calmar, Sortino.
-
+         - For MaxDD => ratio = abs(testVal) / abs(trainVal).
+         - For everything else => ratio = abs(trainVal) / abs(testVal).
+         - The ratio is always positive.
+         - Color coding: if ratio <= 1.1 => green; if <= 1.25 => yellow; else red.
+      3) Extra metrics: Calmar, Sortino.
     """
 
     def _compute_drawdown(self, equity_series):
@@ -77,27 +67,27 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
         else:
             cagr_ = np.nan
 
-        # Vol
+        # Volatility
         std_ = dr.std()
         vol_ = std_ * np.sqrt(ann_factor) if std_ > 1e-9 else np.nan
 
-        # Sharpe
+        # Sharpe Ratio
         if vol_ and vol_ > 1e-9:
             sharpe_ = cagr_ / vol_
         else:
             sharpe_ = np.nan
 
-        # MaxDD (negative)
+        # Maximum Drawdown (negative)
         dd = self._compute_drawdown(eq)
         max_dd_ = dd.min()  # negative
 
-        # Calmar = CAGR / abs(MaxDD)
+        # Calmar Ratio = CAGR / |MaxDD|
         if max_dd_ is not None and max_dd_ != 0 and not np.isnan(max_dd_):
             calmar_ = cagr_ / abs(max_dd_)
         else:
             calmar_ = np.nan
 
-        # Sortino
+        # Sortino Ratio: annualized return / annualized downside volatility
         downside = dr[dr < 0]
         if len(downside) < 2:
             sortino_ = np.nan
@@ -121,8 +111,6 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
     def plot(self, results, split=0.7, benchmark_label="Benchmark"):
         """
         Creates the figure with 3 rows x 2 columns.
-
-        See docstring above for details on columns and color-coding.
         """
         strategy_returns = results.get("strategy_returns", pd.Series(dtype=float))
         if strategy_returns.empty:
@@ -131,13 +119,13 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
 
         benchmark_returns = results.get("benchmark_returns", pd.Series(dtype=float))
 
-        # 1) Build equity curves
+        # Equity curves
         strat_equity = (1.0 + strategy_returns).cumprod()
         bench_equity = None
         if not benchmark_returns.empty:
             bench_equity = (1.0 + benchmark_returns).cumprod()
 
-        # 2) Determine train/test sets by date
+        # Split train/test by date
         all_dates = strategy_returns.index.unique().sort_values()
         n = len(all_dates)
         if n < 2:
@@ -156,19 +144,19 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
         test_dates = all_dates[split_idx:]
         split_date = train_dates[-1]
 
-        # 3) Split returns
+        # Split returns
         strat_train = strategy_returns.loc[train_dates]
         strat_test = strategy_returns.loc[test_dates]
 
-        # 4) Summaries
+        # Compute summary stats for train and test returns
         train_stats = self._compute_summary_stats(strat_train)
         test_stats = self._compute_summary_stats(strat_test)
 
-        # Layout
+        # Layout the figure
         fig = plt.figure(figsize=(12, 10))
         gs = GridSpec(nrows=3, ncols=2, figure=fig, height_ratios=[2, 2, 2])
 
-        # Row0 => equity
+        # Row 0: Equity curves
         ax_eq = fig.add_subplot(gs[0, :])
         ax_eq.plot(strat_equity.index, strat_equity.values, label="Strategy")
         if bench_equity is not None:
@@ -177,7 +165,7 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
         ax_eq.legend(loc="best")
         ax_eq.axvline(x=split_date, color="gray", linestyle="--", alpha=0.8)
 
-        # Row1 => drawdown
+        # Row 1: Drawdowns
         ax_dd = fig.add_subplot(gs[1, :])
         strat_dd = self._compute_drawdown(strat_equity) * 100.0
         ax_dd.plot(strat_dd.index, strat_dd.values, label="Strategy DD (%)")
@@ -188,14 +176,14 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
         ax_dd.legend(loc="best")
         ax_dd.axvline(x=split_date, color="gray", linestyle="--", alpha=0.8)
 
-        # Row2 col0 => histogram
+        # Row 2, Left: Histogram of daily returns (train vs. test)
         ax_hist = fig.add_subplot(gs[2, 0])
         ax_hist.hist(strat_train, bins=30, alpha=0.5, label="Train")
         ax_hist.hist(strat_test, bins=30, alpha=0.5, label="Test")
         ax_hist.set_title("Train vs. Test Daily Returns")
         ax_hist.legend(loc="best")
 
-        # Row2 col1 => table
+        # Row 2, Right: Summary stats table
         ax_table = fig.add_subplot(gs[2, 1])
         ax_table.axis("off")
         ax_table.set_title("Train vs. Test Stats", pad=10)
@@ -203,7 +191,6 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
         row_labels = ["CAGR", "Vol", "Sharpe", "MaxDD", "Calmar", "Sortino"]
         col_labels = ["Metric", "Train", "Test", "Diff", "Overfit Ratio"]
         cell_text = []
-
         diff_list = []
         ratio_list = []
 
@@ -219,61 +206,43 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
 
         for metric in row_labels:
             train_val = train_stats.get(metric, np.nan)
-            test_val  = test_stats.get(metric, np.nan)
+            test_val = test_stats.get(metric, np.nan)
 
-            # 1) Diff
+            # Compute diff: use test - train for all metrics except MaxDD.
             if pd.isna(train_val) or pd.isna(test_val):
                 diff_val = np.nan
             else:
-                if metric == "Sortino":
-                    # percentage difference
-                    if abs(train_val) < 1e-12:
-                        diff_val = np.nan
-                    else:
-                        diff_val = (test_val / train_val) - 1.0
-                elif metric == "MaxDD":
-                    # percentage difference between abs values => (|test|/|train| - 1)
-                    train_abs = abs(train_val)
-                    test_abs  = abs(test_val)
-                    if train_abs > 1e-12:
-                        diff_val = (test_abs / train_abs) - 1.0
-                    else:
-                        diff_val = np.nan
+                if metric == "MaxDD":
+                    # Use difference in absolute values so that a worse drawdown is positive.
+                    diff_val = abs(test_val) - abs(train_val)
                 else:
-                    # normal difference
                     diff_val = test_val - train_val
 
-            # 2) Overfit Ratio
-            if metric == "MaxDD":
-                if not pd.isna(train_val) and abs(train_val) > 1e-12:
-                    ratio_val = test_val / train_val
-                else:
-                    ratio_val = np.nan
+            # Compute Overfit Ratio (always positive).
+            if (
+                pd.isna(train_val)
+                or pd.isna(test_val)
+                or abs(train_val) < 1e-12
+                or abs(test_val) < 1e-12
+            ):
+                ratio_val = np.nan
             else:
-                if not pd.isna(test_val) and abs(test_val) > 1e-12:
-                    ratio_val = train_val / test_val
+                if metric == "MaxDD":
+                    ratio_val = abs(test_val) / abs(train_val)
                 else:
-                    ratio_val = np.nan
+                    ratio_val = abs(train_val) / abs(test_val)
 
-            # Format
             train_str = fmt_val(metric, train_val)
-            test_str  = fmt_val(metric, test_val)
-
-            # For Diff column
+            test_str = fmt_val(metric, test_val)
             if pd.isna(diff_val):
                 diff_str = "NaN"
             else:
-                if metric in ["Sortino", "MaxDD"]:
-                    # both are now "percentage difference"
+                if metric in ["CAGR", "Vol", "MaxDD", "Calmar"]:
                     diff_str = f"{diff_val:,.2%}"
+                elif metric in ["Sharpe", "Sortino"]:
+                    diff_str = f"{diff_val:,.2f}"
                 else:
-                    # if it's a rate => show as % as well
-                    if metric in ["CAGR", "Vol", "Calmar"]:
-                        diff_str = f"{diff_val:,.2%}"
-                    elif metric in ["Sharpe"]:
-                        diff_str = f"{diff_val:,.2f}"
-                    else:
-                        diff_str = f"{diff_val:.4f}"
+                    diff_str = f"{diff_val:.4f}"
 
             ratio_str = "NaN" if pd.isna(ratio_val) else f"{ratio_val:,.2f}"
 
@@ -290,39 +259,35 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
         tbl.auto_set_font_size(False)
         tbl.set_fontsize(10)
 
-        # bold header
+        # Bold header row.
         for col_idx in range(len(col_labels)):
             hdr_cell = tbl[(0, col_idx)]
             hdr_cell.get_text().set_weight("bold")
 
-        # bold first column
+        # Bold first column.
         for row_idx in range(1, len(row_labels) + 1):
             metric_cell = tbl[(row_idx, 0)]
             metric_cell.get_text().set_weight("bold")
 
-        # color the Diff column => col=3
-        # * skip Vol
-        # * for MaxDD => if diff>0 => testAbs>trainAbs => worse => red, else green
-        # * for other metrics => if diff>0 => green, else red
+        # Color the Diff column (column 3).
         diff_col_idx = 3
         for i, (metric, diff_val) in enumerate(diff_list, start=1):
             if metric == "Vol" or pd.isna(diff_val):
                 continue
             diff_cell = tbl.get_celld()[(i, diff_col_idx)]
             if metric == "MaxDD":
+                # For MaxDD diff: positive diff (i.e. a larger absolute drawdown in test) should be red.
                 if diff_val > 0:
                     diff_cell.set_facecolor("lightcoral")
                 else:
                     diff_cell.set_facecolor("lightgreen")
             else:
-                # normal logic => + => green, - => red
                 if diff_val > 0:
                     diff_cell.set_facecolor("lightgreen")
                 else:
                     diff_cell.set_facecolor("lightcoral")
 
-        # color Overfit Ratio => col=4, skip Vol
-        # threshold: <=1.1 => green, <=1.25 => yellow, else red
+        # Color the Overfit Ratio column (column 4), skipping Vol.
         ratio_col_idx = 4
         for i, (metric, ratio_val) in enumerate(ratio_list, start=1):
             if metric == "Vol" or pd.isna(ratio_val):
