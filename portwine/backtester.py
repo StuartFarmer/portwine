@@ -226,7 +226,7 @@ class Backtester:
             else:
                 benchmark_data = self.market_data_loader.fetch_data([single_bm_ticker])
 
-        # 5) union of data
+        # 5) Combine data for access but get trading dates from only regular market data
         all_data = dict(strategy_data)
         if benchmark_data:
             all_data.update(benchmark_data)
@@ -235,7 +235,23 @@ class Backtester:
             print("No data fetched. Check your tickers and file paths.")
             return None
 
-        all_dates = self._get_union_of_dates(all_data)
+        # Get only market data for determining trading dates
+        market_only_data = {}
+        # Include regular strategy tickers
+        for ticker in regular_tickers:
+            if ticker in strategy_data:
+                market_only_data[ticker] = strategy_data[ticker]
+
+        # Include regular benchmark ticker if it exists
+        if single_bm_ticker and ":" not in single_bm_ticker and single_bm_ticker in benchmark_data:
+            market_only_data[single_bm_ticker] = benchmark_data[single_bm_ticker]
+
+        if not market_only_data:
+            print("No regular market data found. Cannot determine trading dates.")
+            return None
+
+        # Get trading dates from regular market data only
+        all_dates = self._get_union_of_dates(market_only_data)
 
         # 6) parse user-supplied start_date and end_date
         user_start_date = None
