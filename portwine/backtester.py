@@ -3,6 +3,7 @@ import numpy as np
 import cvxpy as cp
 from tqdm import tqdm
 
+
 def benchmark_equal_weight(daily_ret_df, *args, **kwargs):
     """
     Return daily returns of an equally weighted (rebalanced daily) portfolio
@@ -10,6 +11,7 @@ def benchmark_equal_weight(daily_ret_df, *args, **kwargs):
     """
     eq_wt_ret = daily_ret_df.mean(axis=1)  # average across columns (tickers)
     return eq_wt_ret
+
 
 def benchmark_markowitz(daily_ret_df, lookback=60, shift_signals=True, verbose=False):
     """
@@ -47,7 +49,7 @@ def benchmark_markowitz(daily_ret_df, lookback=60, shift_signals=True, verbose=F
                 else:
                     w = w_var.value
             except:
-                w = np.ones(n)/n
+                w = np.ones(n) / n
 
         weight_list.append(w)
 
@@ -60,6 +62,7 @@ def benchmark_markowitz(daily_ret_df, lookback=60, shift_signals=True, verbose=F
 
     bm_ret = (weights_df * daily_ret_df).sum(axis=1)
     return bm_ret
+
 
 STANDARD_BENCHMARKS = {
     "equal_weight": benchmark_equal_weight,
@@ -74,10 +77,48 @@ class Backtester:
       - optional start_date
       - optional 'require_all_history' to ensure we only start once
         all tickers have data.
+      - alternative data sources with SOURCE:TICKER format
     """
 
-    def __init__(self, market_data_loader):
+    def __init__(self, market_data_loader, alternative_data_loader=None):
+        """
+        Initialize the backtester with market data loader and optional alternative data loader.
+
+        Parameters
+        ----------
+        market_data_loader : MarketDataLoader
+            Primary loader for market data (prices, etc.)
+        alternative_data_loader : AlternativeMarketDataLoader, optional
+            Loader for alternative data sources that use SOURCE:TICKER format
+        """
         self.market_data_loader = market_data_loader
+        self.alternative_data_loader = alternative_data_loader
+
+    def _parse_tickers(self, tickers):
+        """
+        Parse tickers into regular and alternative tickers.
+
+        Parameters
+        ----------
+        tickers : list
+            List of ticker symbols. Regular tickers have no prefix.
+            Alternative tickers use SOURCE:TICKER format.
+
+        Returns
+        -------
+        tuple
+            (regular_tickers, alternative_tickers)
+        """
+        regular_tickers = []
+        alternative_tickers = []
+
+        for ticker in tickers:
+            if ":" in ticker:
+                alternative_tickers.append(ticker)
+            else:
+                regular_tickers.append(ticker)
+
+        return regular_tickers, alternative_tickers
 
     def _get_union_of_dates(self, data_dict):
         all_dates = set()
@@ -114,7 +155,7 @@ class Backtester:
         benchmark : None, str, or callable
             - None -> no benchmark
             - str: if in STANDARD_BENCHMARKS -> calls that function
-                   else interpret as a single ticker
+                   else interpret as a single ticker (may have SOURCE:TICKER format)
             - callable -> user-supplied function that (daily_ret_df) -> pd.Series
         start_date : None, str, or datetime
             The earliest date to start the backtest. If None, uses all data.
@@ -139,13 +180,27 @@ class Backtester:
             'strategy_returns'
             'benchmark_returns'
         """
-        # 1) fetch data for strategy tickers
-        strategy_data = self.market_data_loader.fetch_data(strategy.tickers)
+        # 1) Separate regular and alternative tickers from strategy
+        regular_tickers, alternative_tickers = self._parse_tickers(strategy.tickers)
+
+        # 2) fetch data for strategy tickers
+        strategy_data = {}
+
+        # Load regular market data
+        if regular_tickers:
+            regular_data = self.market_data_loader.fetch_data(regular_tickers)
+            strategy_data.update(regular_data)
+
+        # Load alternative data if available
+        if alternative_tickers and self.alternative_data_loader:
+            alt_data = self.alternative_data_loader.fetch_data(alternative_tickers)
+            strategy_data.update(alt_data)
+
         if not strategy_data:
             print("No data found for strategy tickers!")
             return None
 
-        # 2) parse benchmark argument
+        # 3) parse benchmark argument
         single_bm_ticker = None
         benchmark_func = None
 
@@ -162,12 +217,16 @@ class Backtester:
             print(f"Unrecognized benchmark: {benchmark}")
             return None
 
-        # 3) fetch data for single benchmark ticker (if any)
+        # 4) fetch data for single benchmark ticker (if any)
         benchmark_data = {}
         if single_bm_ticker:
-            benchmark_data = self.market_data_loader.fetch_data([single_bm_ticker])
+            # Check if benchmark is alternative data
+            if ":" in single_bm_ticker and self.alternative_data_loader:
+                benchmark_data = self.alternative_data_loader.fetch_data([single_bm_ticker])
+            else:
+                benchmark_data = self.market_data_loader.fetch_data([single_bm_ticker])
 
-        # 4) union of data
+        # 5) union of data
         all_data = dict(strategy_data)
         if benchmark_data:
             all_data.update(benchmark_data)
@@ -178,7 +237,7 @@ class Backtester:
 
         all_dates = self._get_union_of_dates(all_data)
 
-        # 5) parse user-supplied start_date and end_date
+        # 6) parse user-supplied start_date and end_date
         user_start_date = None
         if start_date is not None:
             user_start_date = pd.to_datetime(start_date)
@@ -192,7 +251,7 @@ class Backtester:
             if user_start_date > user_end_date:
                 raise ValueError(f"start_date {user_start_date} cannot be after end_date {user_end_date}.")
 
-        # 6) If require_all_history == True, find the earliest date for each ticker
+        # 7) If require_all_history == True, find the earliest date for each ticker
         #    then pick the maximum of those, plus user_start_date if any
         if require_all_history:
             earliest_per_ticker = []
@@ -223,7 +282,7 @@ class Backtester:
             print("No dates remain after filtering by start/end.")
             return None
 
-        # 7) gather daily signals
+        # 8) gather daily signals
         signals_records = []
         if verbose:
             from tqdm import tqdm
@@ -241,26 +300,27 @@ class Backtester:
 
         signals_df = pd.DataFrame(signals_records).set_index('date').sort_index()
 
-        # 8) shift signals if requested
+        # 9) shift signals if requested
         if shift_signals:
             signals_df = signals_df.shift(1).ffill().fillna(0.0)
         else:
             signals_df = signals_df.fillna(0.0)
 
-        # 9) build a price DataFrame for the strategy tickers
+        # 10) build a price DataFrame for the strategy tickers
         price_df = pd.DataFrame(index=signals_df.index)
         for tkr in strategy.tickers:
-            df = strategy_data[tkr]
-            px = df['close'].reindex(signals_df.index).ffill()
-            price_df[tkr] = px
+            if tkr in strategy_data:  # Only include tickers that have data
+                df = strategy_data[tkr]
+                px = df['close'].reindex(signals_df.index).ffill()
+                price_df[tkr] = px
 
-        # 10) daily returns of each ticker
+        # 11) daily returns of each ticker
         daily_ret_df = price_df.pct_change(fill_method=None).fillna(0.0)
 
-        # 11) strategy daily returns
-        strategy_daily_returns = (daily_ret_df * signals_df).sum(axis=1)
+        # 12) strategy daily returns
+        strategy_daily_returns = (daily_ret_df * signals_df[daily_ret_df.columns]).sum(axis=1)
 
-        # 12) compute benchmark returns
+        # 13) compute benchmark returns
         benchmark_daily_returns = None
         if single_bm_ticker and benchmark_data.get(single_bm_ticker) is not None:
             bm_price = benchmark_data[single_bm_ticker]['close'].reindex(signals_df.index).ffill()
