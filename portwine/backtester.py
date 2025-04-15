@@ -294,8 +294,11 @@ class Backtester:
             daily_data = self._get_daily_data_dict(date, all_data)
             daily_signals = strategy.step(date, daily_data)
             row_dict = {'date': date}
+
+            # Add all signals returned by the strategy (both regular and alternative)
             for tkr in strategy.tickers:
                 row_dict[tkr] = daily_signals.get(tkr, 0.0)
+
             signals_records.append(row_dict)
 
         signals_df = pd.DataFrame(signals_records).set_index('date').sort_index()
@@ -306,21 +309,25 @@ class Backtester:
         else:
             signals_df = signals_df.fillna(0.0)
 
-        # 10) build a price DataFrame for the strategy tickers
+        # 10) Filter signals_df to only include regular tickers (not alternative data)
+        signals_df_regular = signals_df[regular_tickers].copy() if regular_tickers else pd.DataFrame(
+            index=signals_df.index)
+
+        # 11) build a price DataFrame for the regular tickers only
         price_df = pd.DataFrame(index=signals_df.index)
-        for tkr in strategy.tickers:
+        for tkr in regular_tickers:
             if tkr in strategy_data:  # Only include tickers that have data
                 df = strategy_data[tkr]
                 px = df['close'].reindex(signals_df.index).ffill()
                 price_df[tkr] = px
 
-        # 11) daily returns of each ticker
+        # 12) daily returns of each regular ticker
         daily_ret_df = price_df.pct_change(fill_method=None).fillna(0.0)
 
-        # 12) strategy daily returns
-        strategy_daily_returns = (daily_ret_df * signals_df[daily_ret_df.columns]).sum(axis=1)
+        # 13) strategy daily returns - only use regular tickers for financial returns
+        strategy_daily_returns = (daily_ret_df * signals_df_regular[daily_ret_df.columns]).sum(axis=1)
 
-        # 13) compute benchmark returns
+        # 14) compute benchmark returns
         benchmark_daily_returns = None
         if single_bm_ticker and benchmark_data.get(single_bm_ticker) is not None:
             bm_price = benchmark_data[single_bm_ticker]['close'].reindex(signals_df.index).ffill()
@@ -330,8 +337,8 @@ class Backtester:
             benchmark_daily_returns = benchmark_func(daily_ret_df, verbose=verbose)
 
         return {
-            'signals_df': signals_df,
-            'tickers_returns': daily_ret_df,
+            'signals_df': signals_df_regular,  # Only regular tickers in final output
+            'tickers_returns': daily_ret_df,  # Only regular tickers in final output
             'strategy_returns': strategy_daily_returns,
             'benchmark_returns': benchmark_daily_returns,
         }

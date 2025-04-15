@@ -186,9 +186,12 @@ class TestBacktesterWithAltData(unittest.TestCase):
         self.assertIsNotNone(results)
 
         # Check that signals dataframe contains all tickers
-        all_tickers = self.regular_tickers + self.alt_tickers
-        for ticker in all_tickers:
+        # all_tickers = self.regular_tickers + self.alt_tickers
+        for ticker in self.regular_tickers:
             self.assertIn(ticker, results['signals_df'].columns)
+
+        for ticker in self.alt_tickers:
+            self.assertNotIn(ticker, results['signals_df'].columns)
 
         # Check that we have data for all dates
         self.assertEqual(len(results['signals_df']), len(self.dates))

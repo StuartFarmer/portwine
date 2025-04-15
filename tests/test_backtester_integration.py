@@ -364,9 +364,9 @@ class TestBacktesterIntegration(unittest.TestCase):
         # Verify we get results
         self.assertIsNotNone(results)
 
-        # Check signals dataframe contains the correct tickers
+        # Check signals dataframe contains the correct tickers (everything but the alternative data)
         for ticker in prefixed_tickers:
-            self.assertIn(ticker, results['signals_df'].columns)
+            self.assertNotIn(ticker, results['signals_df'].columns)
 
         # Verify benchmark returns
         self.assertIn('benchmark_returns', results)
