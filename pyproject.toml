@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "portwine"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
 authors = ["Stuart Farmer <stuart@lamden.io>"]
 readme = "README.md"
