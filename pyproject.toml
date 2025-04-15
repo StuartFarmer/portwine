@@ -13,6 +13,7 @@ scipy = "^1.15.2"
 statsmodels = "^0.14.4"
 tqdm = "^4.67.1"
 cvxpy = "^1.6.4"
+fredapi = "^0.5.2"
 
 
 [build-system]

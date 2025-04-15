@@ -257,6 +257,20 @@ unicode = ["unicodedata2 (>=15.1.0)"]
 woff = ["brotli (>=1.0.1)", "brotlicffi (>=0.8.0)", "zopfli (>=0.1.4)"]
 
 [[package]]
+name = "fredapi"
+version = "0.5.2"
+description = "Python API for Federal Reserve Economic Data (FRED) from St. Louis Fed"
+optional = false
+python-versions = "*"
+files = [
+    {file = "fredapi-0.5.2-py3-none-any.whl", hash = "sha256:961817ec8d70e58886ff7302d3dda908614ad99f77831a59833c4fc3f6150155"},
+    {file = "fredapi-0.5.2.tar.gz", hash = "sha256:405ca048abed4207d93dbc9b7ee8c46d6b473483650323e2f1c094af83d4b247"},
+]
+
+[package.dependencies]
+pandas = "*"
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 description = "A very fast and expressive template engine."
@@ -1084,4 +1098,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "4f91e6576346340529b66a74f00237936b06b3540893dbb33e717cd41f40f694"
+content-hash = "0f574639eadf30a03e6593431aae7586d92b1adb38d7aa5a5400b949055c6267"
