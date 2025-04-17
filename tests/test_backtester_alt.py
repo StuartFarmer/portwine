@@ -162,7 +162,7 @@ class TestBacktesterWithAltData(unittest.TestCase):
 
     def test_ticker_parsing(self):
         """Test separation of regular and alternative tickers"""
-        regular, alternative = self.backtester._parse_tickers(
+        regular, alternative = self.backtester._split_tickers(
             self.regular_tickers + self.alt_tickers
         )
 
