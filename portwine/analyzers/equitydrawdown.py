@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from portwine.analyzers.base import Analyzer
 
+
 class EquityDrawdownAnalyzer(Analyzer):
     """
     Provides common analysis functionality, including drawdown calculation,
@@ -105,16 +106,16 @@ class EquityDrawdownAnalyzer(Analyzer):
             strategy_equity_curve.index,
             strategy_equity_curve.values,
             label="Strategy",
-            color='mediumblue',   # deeper blue
-            linewidth=1,         # a bit thicker
+            color='mediumblue',  # deeper blue
+            linewidth=1,  # a bit thicker
             alpha=0.6
         )
         ax1.plot(
             benchmark_equity_curve.index,
             benchmark_equity_curve.values,
             label=benchmark_label,
-            color='black',      # black
-            linewidth=0.5,         # a bit thinner
+            color='black',  # black
+            linewidth=0.5,  # a bit thinner
             alpha=0.5
         )
         ax1.set_title("Equity Curve (relative, starts at 1.0)")
@@ -149,16 +150,16 @@ class EquityDrawdownAnalyzer(Analyzer):
             strat_dd.index,
             strat_dd.values,
             label="Strategy DD (%)",
-            color='mediumblue',   # deeper blue
-            linewidth=1,         # a bit thicker
+            color='mediumblue',  # deeper blue
+            linewidth=1,  # a bit thicker
             alpha=0.6
         )
         ax2.plot(
             bm_dd.index,
             bm_dd.values,
             label=f"{benchmark_label} DD (%)",
-            color='black',      # black
-            linewidth=0.5,         # a bit thinner
+            color='black',  # black
+            linewidth=0.5,  # a bit thinner
             alpha=0.5
         )
         ax2.set_title("Drawdown (%)")
@@ -189,45 +190,112 @@ class EquityDrawdownAnalyzer(Analyzer):
         plt.show()
 
     def generate_report(self, results, ann_factor=252, benchmark_label="Benchmark"):
+        """
+        Generates and returns a styled DataFrame with strategy stats, benchmark stats,
+        and the percentage difference between them. Highlights rows based on performance
+        using pastel colors.
+
+        Parameters
+        ----------
+        results : dict
+            Results from the backtest containing strategy and benchmark returns.
+        ann_factor : int
+            Annualization factor, typically 252 for daily data.
+        benchmark_label : str
+            Label to use for the benchmark in the report.
+
+        Returns
+        -------
+        pandas.io.formats.style.Styler
+            Styled DataFrame with metrics as rows and three columns:
+            - Strategy values
+            - Benchmark values
+            - Percentage difference (highlighted based on performance)
+        """
+        import pandas as pd
+        import numpy as np
+
         stats = self.analyze(results, ann_factor)
 
         strategy_stats = stats['strategy_stats']
         benchmark_stats = stats['benchmark_stats']
 
-        print("\n=== Strategy Summary ===")
-        for k, v in strategy_stats.items():
-            if k in ["CAGR", "AnnualVol", "MaxDrawdown"]:
-                print(f"{k}: {v:.2%}")
-            elif k == "Sharpe":
-                print(f"{k}: {v:.2f}")
-            else:
-                print(f"{k}: {v:.2%}")
+        # Create DataFrame with metrics as rows using raw numeric values
+        df = pd.DataFrame({
+            'Strategy': pd.Series(strategy_stats),
+            benchmark_label: pd.Series(benchmark_stats)
+        })
 
-        print(f"\n=== {benchmark_label} Summary ===")
-        for k, v in benchmark_stats.items():
-            if k in ["CAGR", "AnnualVol", "MaxDrawdown"]:
-                print(f"{k}: {v:.2%}")
-            elif k == "Sharpe":
-                print(f"{k}: {v:.2f}")
-            else:
-                print(f"{k}: {v:.2%}")
-
-        # Now show a comparison: percentage difference (Strategy vs. Benchmark).
-        print("\n=== Strategy vs. Benchmark (Percentage Difference) ===")
-        for k in strategy_stats.keys():
-            strat_val = strategy_stats.get(k, None)
-            bench_val = benchmark_stats.get(k, None)
-            if strat_val is None or bench_val is None:
-                print(f"{k}: N/A (missing data)")
-                continue
+        # Calculate percentage difference (Strategy vs. Benchmark)
+        diff = []
+        for metric in df.index:
+            strat_val = df.loc[metric, 'Strategy']
+            bench_val = df.loc[metric, benchmark_label]
 
             if isinstance(strat_val, (int, float)) and isinstance(bench_val, (int, float)):
                 if abs(bench_val) > 1e-15:
-                    diff = (strat_val - bench_val) / abs(bench_val)
-                    print_val = f"{diff * 100:.2f}%"
+                    diff_val = (strat_val - bench_val) / abs(bench_val)
                 else:
-                    print_val = "N/A (benchmark ~= 0)"
+                    diff_val = float('nan')  # Use NaN for division by zero
             else:
-                print_val = "N/A (non-numeric)"
+                diff_val = float('nan')  # Use NaN for non-numeric values
 
-            print(f"{k}: {print_val}")
+            diff.append(diff_val)
+
+        df['Difference (%)'] = [d * 100 for d in diff]  # Convert to percentage
+
+        # Create a copy of the DataFrame with formatted values for display
+        display_df = df.copy()
+
+        # Format values
+        for col in ['Strategy', benchmark_label]:
+            for idx in display_df.index:
+                val = display_df.loc[idx, col]
+                if isinstance(val, (int, float)):
+                    if idx in ["CAGR", "AnnualVol", "MaxDrawdown", "TotalReturn"]:
+                        display_df.loc[idx, col] = f"{val:.2%}"
+                    elif idx == "Sharpe":
+                        display_df.loc[idx, col] = f"{val:.2f}"
+
+        # Format difference column
+        display_df['Difference (%)'] = display_df['Difference (%)'].apply(
+            lambda x: f"{x:.2f}%" if not pd.isna(x) else "N/A"
+        )
+
+        # Create a styled version of the DataFrame
+        styled_df = display_df.style
+
+        # Define styling function for conditional formatting with pastel colors
+        def highlight_difference(row):
+            styles = [''] * 3  # No highlighting by default
+
+            # Get the difference value from the original DataFrame to avoid string parsing
+            metric = row.name
+            if metric in df.index:
+                diff_val = df.loc[metric, 'Difference (%)']
+
+                if pd.isna(diff_val):
+                    return styles
+
+                # For volatility, negative difference is good
+                if metric == 'AnnualVol':
+                    if diff_val < 0:
+                        styles[2] = 'background-color: #d6f5d6'  # Pastel green
+                    elif diff_val > 0:
+                        styles[2] = 'background-color: #f8d7da'  # Pastel red
+                # For all other metrics, positive difference is good
+                else:
+                    if diff_val > 0:
+                        styles[2] = 'background-color: #d6f5d6'  # Pastel green
+                    elif diff_val < 0:
+                        styles[2] = 'background-color: #f8d7da'  # Pastel red
+
+            return styles
+
+        # Apply the styling
+        styled_df = styled_df.apply(highlight_difference, axis=1)
+
+        # Add a title to the styled DataFrame
+        styled_df = styled_df.set_caption("Performance Comparison: Strategy vs. Benchmark")
+
+        return styled_df

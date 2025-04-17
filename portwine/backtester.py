@@ -78,6 +78,7 @@ class Backtester:
       - optional 'require_all_history' to ensure we only start once
         all tickers have data.
       - alternative data sources with SOURCE:TICKER format
+      - different execution timing methods (close-to-close, open-to-close, close-to-open)
     """
 
     def __init__(self, market_data_loader, alternative_data_loader=None):
@@ -142,7 +143,8 @@ class Backtester:
                      start_date=None,
                      end_date=None,
                      require_all_history=False,
-                     verbose=False):
+                     verbose=False,
+                     execution_timing='close-to-close'):
         """
         Runs a step-based backtest.
 
@@ -171,6 +173,11 @@ class Backtester:
             that and the all-tickers earliest date.
         verbose : bool
             If True, shows tqdm progress bars.
+        execution_timing : str
+            Specifies how to calculate returns and execute trades:
+            - 'close-to-close': Traditional daily returns based on previous close to current close
+            - 'open-to-close': Intraday returns from open to close on the same day
+            - 'close-to-open': Overnight returns from previous close to current open
 
         Returns
         -------
@@ -180,6 +187,13 @@ class Backtester:
             'strategy_returns'
             'benchmark_returns'
         """
+        # Validate execution_timing parameter
+        valid_timings = ['close-to-close', 'open-to-close', 'close-to-open']
+        if execution_timing not in valid_timings:
+            print(f"Invalid execution_timing: {execution_timing}. Must be one of {valid_timings}.")
+            print(f"Using default: 'close-to-close'")
+            execution_timing = 'close-to-close'
+
         # 1) Separate regular and alternative tickers from strategy
         regular_tickers, alternative_tickers = self._parse_tickers(strategy.tickers)
 
@@ -334,11 +348,34 @@ class Backtester:
         for tkr in regular_tickers:
             if tkr in strategy_data:  # Only include tickers that have data
                 df = strategy_data[tkr]
-                px = df['close'].reindex(signals_df.index).ffill()
-                price_df[tkr] = px
+                # For each price type, reindex to signals_df and forward fill
+                for col in ['open', 'high', 'low', 'close']:
+                    if col in df.columns:
+                        price_df[f'{tkr}_{col}'] = df[col].reindex(signals_df.index).ffill()
 
-        # 12) daily returns of each regular ticker
-        daily_ret_df = price_df.pct_change(fill_method=None).fillna(0.0)
+        # 12) Calculate daily returns based on execution_timing
+        daily_ret_df = pd.DataFrame(index=signals_df.index, columns=regular_tickers)
+
+        for tkr in regular_tickers:
+            if f'{tkr}_close' in price_df.columns:
+                if execution_timing == 'close-to-close':
+                    # Traditional close-to-close returns
+                    daily_ret_df[tkr] = price_df[f'{tkr}_close'].pct_change(fill_method=None)
+                elif execution_timing == 'open-to-close':
+                    # Intraday returns: from today's open to today's close
+                    open_prices = price_df[f'{tkr}_open']
+                    close_prices = price_df[f'{tkr}_close']
+                    # Calculate (close - open) / open for each day
+                    daily_ret_df[tkr] = (close_prices - open_prices) / open_prices.replace(0, np.nan)
+                elif execution_timing == 'close-to-open':
+                    # Overnight returns: from yesterday's close to today's open
+                    close_prices = price_df[f'{tkr}_close']
+                    open_prices = price_df[f'{tkr}_open']
+                    # Calculate (today's open - yesterday's close) / yesterday's close
+                    daily_ret_df[tkr] = (open_prices - close_prices.shift(1)) / close_prices.shift(1).replace(0, np.nan)
+
+        # Fill NaN values with 0.0
+        daily_ret_df = daily_ret_df.fillna(0.0)
 
         # 13) strategy daily returns - only use regular tickers for financial returns
         strategy_daily_returns = (daily_ret_df * signals_df_regular[daily_ret_df.columns]).sum(axis=1)
@@ -346,8 +383,25 @@ class Backtester:
         # 14) compute benchmark returns
         benchmark_daily_returns = None
         if single_bm_ticker and benchmark_data.get(single_bm_ticker) is not None:
-            bm_price = benchmark_data[single_bm_ticker]['close'].reindex(signals_df.index).ffill()
-            benchmark_daily_returns = bm_price.pct_change(fill_method=None).fillna(0.0)
+            bm_df = benchmark_data[single_bm_ticker]
+
+            # Calculate benchmark returns based on execution_timing
+            if execution_timing == 'close-to-close':
+                # Traditional close-to-close returns
+                bm_close = bm_df['close'].reindex(signals_df.index).ffill()
+                benchmark_daily_returns = bm_close.pct_change(fill_method=None).fillna(0.0)
+            elif execution_timing == 'open-to-close':
+                # Intraday returns: from today's open to today's close
+                bm_open = bm_df['open'].reindex(signals_df.index).ffill()
+                bm_close = bm_df['close'].reindex(signals_df.index).ffill()
+                benchmark_daily_returns = ((bm_close - bm_open) / bm_open.replace(0, np.nan)).fillna(0.0)
+            elif execution_timing == 'close-to-open':
+                # Overnight returns: from yesterday's close to today's open
+                bm_close = bm_df['close'].reindex(signals_df.index).ffill()
+                bm_open = bm_df['open'].reindex(signals_df.index).ffill()
+                benchmark_daily_returns = ((bm_open - bm_close.shift(1)) / bm_close.shift(1).replace(0, np.nan)).fillna(
+                    0.0)
+
         elif benchmark_func:
             # pass daily_ret_df to the benchmark function
             benchmark_daily_returns = benchmark_func(daily_ret_df, verbose=verbose)
@@ -357,4 +411,5 @@ class Backtester:
             'tickers_returns': daily_ret_df,  # Only regular tickers in final output
             'strategy_returns': strategy_daily_returns,
             'benchmark_returns': benchmark_daily_returns,
+            'execution_timing': execution_timing  # Added to results for reference
         }
