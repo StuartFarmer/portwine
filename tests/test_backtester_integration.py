@@ -120,6 +120,17 @@ class VolatilityStrategy(StrategyBase):
         # Equal weight until we have enough history
         return {ticker: 1.0 / len(self.tickers) for ticker in self.tickers}
 
+class AltBasedStrategy(StrategyBase):
+    """Uses one alt‐data series to set weights on regular tickers."""
+    def __init__(self, regular: list[str], alt: str):
+        super().__init__(regular + [alt])
+        self.regular = regular
+        self.alt = alt
+
+    def step(self, ts, bar_data):
+        val = bar_data[self.alt]['close']
+        weight = 1.0 if val > 0 else 0.0
+        return {t: weight for t in self.regular}
 
 class TestBacktesterIntegration(unittest.TestCase):
     """Integration tests for Backtester with real components"""
@@ -312,65 +323,52 @@ class TestBacktesterIntegration(unittest.TestCase):
         expected_total = len(results_first_half['signals_df']) + len(results_second_half['signals_df']) - 1
         self.assertEqual(len(results_full['signals_df']), expected_total)
 
-    def test_with_alternative_data_loader(self):
-        """Test backtester with AlternativeMarketDataLoader, if available"""
-
-        # Only run this test if AlternativeMarketDataLoader is available
-
-        # Create mock loaders for alternative data
+    def test_alternative_data_influences_regular_signals(self):
+        # 1) Mock loader that returns self.price_data for underlying tickers
         class MockSourceLoader(MarketDataLoader):
             SOURCE_IDENTIFIER = 'MOCK'
-
             def __init__(self, data):
                 super().__init__()
                 self.data = data
-
             def load_ticker(self, ticker):
                 return self.data.get(ticker)
-
             def fetch_data(self, tickers):
-                """Explicitly implement fetch_data to ensure it works correctly"""
                 result = {}
-                for ticker in tickers:
-                    data = self.load_ticker(ticker)
-                    if data is not None:
-                        result[ticker] = data
+                for t in tickers:
+                    df = self.data.get(t)
+                    if df is not None:
+                        result[t] = df.copy()
                 return result
 
-        # Create mock data with our test data
+        # 2) Instantiate loaders and backtester
         mock_loader = MockSourceLoader(self.price_data)
-
-        # Create alternative data loader
-        alt_loader = AlternativeMarketDataLoader([mock_loader])
-
-        # Create backtester with alternative loader
-        alt_backtester = Backtester(
-            market_data_loader=mock_loader,  # Use the same loader for both market and alt data for testing
+        alt_loader  = AlternativeMarketDataLoader([mock_loader])
+        bt = Backtester(
+            market_data_loader=mock_loader,
             alternative_data_loader=alt_loader
         )
 
-        # Create strategy with full prefixed ticker names
-        prefixed_tickers = [f"MOCK:{ticker}" for ticker in self.tickers[:2]]  # Just use a couple of tickers
-        regular_tickers = self.tickers[2:]  # Use the rest as regular tickers
+        # 3) Pick one ticker as alt, the rest as regular
+        alt_ticker = f"MOCK:{self.tickers[0]}"
+        regular   = self.tickers[1:]
+        strat = AltBasedStrategy(regular, alt_ticker)
 
-        strategy = VolatilityStrategy(prefixed_tickers + regular_tickers, lookback=5)
-
-        # Run backtest
-        results = alt_backtester.run_backtest(
-            strategy=strategy,
-            benchmark='MOCK:SPY'
-        )
-
-        # Verify we get results
+        # 4) Run backtest (uses default equal_weight benchmark)
+        results = bt.run_backtest(strat, shift_signals=False)
         self.assertIsNotNone(results)
 
-        # Check signals dataframe contains the correct tickers (everything but the alternative data)
-        for ticker in prefixed_tickers:
-            self.assertNotIn(ticker, results['signals_df'].columns)
+        sig_df = results['signals_df']
 
-        # Verify benchmark returns
-        self.assertIn('benchmark_returns', results)
-        self.assertEqual(len(results['benchmark_returns']), len(self.dates))
+        # 5) Build expected: at each date in self.dates, weight=1 if alt_data close>0 else 0
+        alt_df = self.price_data[self.tickers[0]]
+        # reindex to the official backtest dates (self.dates)
+        expected_bool = (alt_df['close'] > 0).reindex(self.dates).fillna(False)
+
+        for dt in self.dates:
+            expected_w = 1.0 if expected_bool.loc[dt] else 0.0
+            for r in regular:
+                self.assertEqual(sig_df.loc[dt, r], expected_w)
+
 
     def test_empty_date_range(self):
         """Test backtester with filtering that results in empty date range"""
@@ -392,13 +390,14 @@ class TestBacktesterIntegration(unittest.TestCase):
         future_start = self.dates[-1] + timedelta(days=10)
         future_end = future_start + timedelta(days=10)
 
-        # This should return None (no dates in range)
-        results = self.backtester.run_backtest(
-            strategy=strategy,
-            start_date=future_start,
-            end_date=future_end
-        )
-        self.assertIsNone(results)
+        # Also raises ValueError
+        with self.assertRaises(ValueError):
+            # This should return None (no dates in range)
+            results = self.backtester.run_backtest(
+                strategy=strategy,
+                start_date=future_start,
+                end_date=future_end
+            )
 
 
 if __name__ == '__main__':

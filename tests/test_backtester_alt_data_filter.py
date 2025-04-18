@@ -197,35 +197,36 @@ class TestAltDataDateFiltering(unittest.TestCase):
         for ticker in alt_tickers:
             self.assertNotIn(ticker, results['tickers_returns'].columns)
 
-    def test_alternative_benchmark_with_market_dates(self):
-        """Test that using an alternative data ticker as benchmark preserves market data dates"""
-        # Create strategy with regular tickers only
-        regular_tickers = ['AAPL', 'MSFT']
-        strategy = TestStrategy(regular_tickers, [])
 
-        # Run backtest with alternative data benchmark
-        alt_benchmark = 'ECON:GDP'
+    def test_alternative_data_does_not_affect_trading_calendar(self):
+        """
+        Alternative‐data tickers in the strategy universe must not
+        expand or shrink the backtest’s trading calendar.
+        """
+        # Strategy includes two regular tickers plus one alt‐data ticker
+        regular_tickers = ['AAPL', 'MSFT']
+        alt_ticker      = 'ECON:GDP'
+        strategy = TestStrategy(regular_tickers, [alt_ticker])
+
+        # Run backtest with no special benchmark
         results = self.backtester.run_backtest(
             strategy=strategy,
-            benchmark=alt_benchmark,
             shift_signals=False,
             verbose=False
         )
 
-        # Verify we got results
+        # We must have a result
         self.assertIsNotNone(results)
 
-        # Check if dates in results match market dates
+        # signals_df dates must exactly match the market_dates fixture
         result_dates = results['signals_df'].index
         self.assertEqual(len(result_dates), len(self.market_dates))
+        pd.testing.assert_index_equal(
+            result_dates,
+            self.market_dates,
+            check_names=False
+        )
 
-        # Dates should match market dates, not include any alt-only dates
-        # Use check_names=False to ignore index name differences
-        pd.testing.assert_index_equal(result_dates, self.market_dates, check_names=False)
-
-        # Verify benchmark returns are provided for all market dates
-        self.assertIn('benchmark_returns', results)
-        self.assertEqual(len(results['benchmark_returns']), len(self.market_dates))
 
     def test_no_market_data(self):
         """Test handling when there's only alternative data but no market data"""

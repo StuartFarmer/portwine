@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # Import components to be tested
-from portwine.backtester import Backtester
+from portwine.backtester import Backtester, InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 
@@ -209,7 +209,7 @@ class TestBacktesterWithAltData(unittest.TestCase):
             for ticker in self.alt_tickers:
                 self.assertIsNotNone(daily_data.get(ticker))
 
-    def test_alt_data_benchmark(self):
+    def test_alt_data_benchmark_fails(self):
         """Test using alternative data as benchmark"""
         strategy = MixedDataStrategy(
             regular_tickers=self.regular_tickers,
@@ -218,16 +218,12 @@ class TestBacktesterWithAltData(unittest.TestCase):
 
         # Run backtest with alternative data benchmark
         benchmark_ticker = self.alt_tickers[0]  # Use FRED:GDP as benchmark
-        results = self.backtester.run_backtest(
-            strategy=strategy,
-            benchmark=benchmark_ticker,
-            shift_signals=False
-        )
-
-        # Verify benchmark results
-        self.assertIsNotNone(results)
-        self.assertIn('benchmark_returns', results)
-        self.assertEqual(len(results['benchmark_returns']), len(self.dates))
+        with self.assertRaises(InvalidBenchmarkError):
+            results = self.backtester.run_backtest(
+                strategy=strategy,
+                benchmark=benchmark_ticker,
+                shift_signals=False
+            )
 
     def test_without_alt_loader(self):
         """Test behavior when alternative tickers are used without alt loader"""

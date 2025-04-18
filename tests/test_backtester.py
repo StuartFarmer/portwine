@@ -7,7 +7,7 @@ import os
 import shutil
 
 # Import components to be tested
-from portwine.backtester import Backtester, STANDARD_BENCHMARKS
+from portwine.backtester import Backtester, STANDARD_BENCHMARKS, InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 
@@ -161,7 +161,6 @@ class TestBacktester(unittest.TestCase):
         results = self.backtester.run_backtest(
             strategy=strategy,
             shift_signals=False,
-            benchmark=None
         )
 
         # Assert results are non-empty
@@ -447,22 +446,19 @@ class TestBacktester(unittest.TestCase):
         """Test backtest with invalid benchmark"""
         strategy = SimpleTestStrategy(tickers=self.tickers)
 
+        with self.assertRaises(InvalidBenchmarkError):
         # Invalid benchmark type
-        results = self.backtester.run_backtest(
-            strategy=strategy,
-            benchmark=123  # Not a string or callable
-        )
-        self.assertIsNone(results)
+            results = self.backtester.run_backtest(
+                strategy=strategy,
+                benchmark=123  # Not a string or callable
+            )
 
         # Non-existent benchmark ticker
-        results = self.backtester.run_backtest(
-            strategy=strategy,
-            benchmark='NONEXISTENT'
-        )
-
-        # Should still run but benchmark_returns will be None
-        self.assertIsNotNone(results)
-        self.assertIs(results['benchmark_returns'], None)
+        with self.assertRaises(InvalidBenchmarkError):
+            results = self.backtester.run_backtest(
+                strategy=strategy,
+                benchmark='NONEXISTENT'
+            )
 
 
 if __name__ == '__main__':
