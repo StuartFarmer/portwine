@@ -7,6 +7,10 @@ from portwine.loaders import AlternativeMarketDataLoader
 from portwine.loaders import FREDMarketDataLoader
 from portwine.loaders import BarchartIndicesMarketDataLoader
 
+import unittest
+import pandas as pd
+import numpy as np
+from datetime import datetime
 
 class MockFREDLoader(FREDMarketDataLoader):
     """Mock FRED loader that returns predefined data without requiring API access"""
@@ -46,12 +50,6 @@ class MockBarchartLoader(BarchartIndicesMarketDataLoader):
 
         # Fall back to parent implementation if mock data not found
         return super().load_ticker(ticker)
-
-
-import unittest
-import pandas as pd
-import numpy as np
-from datetime import datetime
 
 
 # This is a simplified test case just for the caching functionality

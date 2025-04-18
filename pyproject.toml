@@ -14,6 +14,7 @@ statsmodels = "^0.14.4"
 tqdm = "^4.67.1"
 cvxpy = "^1.6.4"
 fredapi = "^0.5.2"
+pandas-market-calendars = "^5.0.0"
 
 
 [build-system]

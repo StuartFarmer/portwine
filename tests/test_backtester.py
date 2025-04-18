@@ -460,6 +460,5 @@ class TestBacktester(unittest.TestCase):
                 benchmark='NONEXISTENT'
             )
 
-
 if __name__ == '__main__':
     unittest.main()
