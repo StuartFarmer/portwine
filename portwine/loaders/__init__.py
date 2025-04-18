@@ -5,3 +5,4 @@ from portwine.loaders.noisy import NoisyMarketDataLoader
 from portwine.loaders.fred import FREDMarketDataLoader
 from portwine.loaders.barchartindices import BarchartIndicesMarketDataLoader
 from portwine.loaders.alternative import AlternativeMarketDataLoader
+from portwine.loaders.dailytoopenclose import DailyToOpenCloseLoader
