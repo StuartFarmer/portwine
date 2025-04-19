@@ -1,7 +1,7 @@
 """
-Alpaca execution implementation for the portwine framework.
+Alpaca execution_complex implementation for the portwine framework.
 
-This module provides an execution implementation for Alpaca Markets,
+This module provides an execution_complex implementation for Alpaca Markets,
 allowing live trading using the Alpaca API via direct REST calls.
 """
 
@@ -14,7 +14,7 @@ import requests
 
 import pandas as pd
 
-from portwine.execution import AccountInfo, ExecutionBase, Order, OrderExecutionError, Position
+from portwine.execution_complex import AccountInfo, ExecutionBase, Order, OrderExecutionError, Position
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 
@@ -28,7 +28,7 @@ ALPACA_LIVE_URL = "https://api.alpaca.markets"
 
 class AlpacaExecution(ExecutionBase):
     """
-    Alpaca execution implementation for live trading via direct REST calls.
+    Alpaca execution_complex implementation for live trading via direct REST calls.
     
     This implementation connects to the Alpaca API to execute trades and
     fetch account information using direct HTTP requests rather than an SDK.
@@ -58,7 +58,7 @@ class AlpacaExecution(ExecutionBase):
         api_secret: Optional[str] = None,
         paper_trading: bool = True,
     ):
-        """Initialize Alpaca execution."""
+        """Initialize Alpaca execution_complex."""
         super().__init__(strategy, market_data_loader, alternative_data_loader)
         
         # Use environment variables if not provided
@@ -228,7 +228,7 @@ class AlpacaExecution(ExecutionBase):
         Raises
         ------
         OrderExecutionError
-            If order execution fails
+            If order execution_complex fails
         """
         symbol = order["symbol"]
         qty = order["qty"]
@@ -349,7 +349,7 @@ class AlpacaExecution(ExecutionBase):
     
     def step(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, bool]:
         """
-        Execute a single step of the execution process.
+        Execute a single step of the execution_complex process.
         
         Parameters
         ----------
@@ -359,14 +359,14 @@ class AlpacaExecution(ExecutionBase):
         Returns
         -------
         Dict[str, bool]
-            Dictionary mapping symbols to execution success
+            Dictionary mapping symbols to execution_complex success
         """
         timestamp = timestamp or pd.Timestamp.now()
         self.last_step_time = timestamp
         
         # Check if market is open
         if not self.check_market_status():
-            logger.warning("Market is closed, skipping execution step")
+            logger.warning("Market is closed, skipping execution_complex step")
             return {}
         
         try:
@@ -383,7 +383,7 @@ class AlpacaExecution(ExecutionBase):
             return results
             
         except Exception as e:
-            logger.error(f"Error in execution step: {e}")
+            logger.error(f"Error in execution_complex step: {e}")
             raise
     
     def __del__(self):

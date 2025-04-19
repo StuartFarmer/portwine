@@ -1,7 +1,7 @@
 """
 Execution module for the portwine framework.
 
-This module provides the base classes and interfaces for execution modules,
+This module provides the base classes and interfaces for execution_complex modules,
 which connect strategy implementations from the backtester to live trading.
 """
 
@@ -47,12 +47,12 @@ class AccountInfo(TypedDict):
 
 
 class ExecutionError(Exception):
-    """Base exception for execution-related errors."""
+    """Base exception for execution_complex-related errors."""
     pass
 
 
 class OrderExecutionError(ExecutionError):
-    """Exception raised when order execution fails."""
+    """Exception raised when order execution_complex fails."""
     pass
 
 
@@ -63,9 +63,9 @@ class DataFetchError(ExecutionError):
 
 class ExecutionBase(abc.ABC):
     """
-    Base class for execution implementations.
+    Base class for execution_complex implementations.
     
-    An execution implementation is responsible for:
+    An execution_complex implementation is responsible for:
     1. Fetching latest market data
     2. Passing data to strategy to get updated weights
     3. Calculating position changes needed
@@ -79,7 +79,7 @@ class ExecutionBase(abc.ABC):
         alternative_data_loader: Optional[MarketDataLoader] = None,
     ):
         """
-        Initialize the execution instance.
+        Initialize the execution_complex instance.
         
         Parameters
         ----------
@@ -125,7 +125,7 @@ class ExecutionBase(abc.ABC):
         Raises
         ------
         OrderExecutionError
-            If order execution fails
+            If order execution_complex fails
         """
         pass
     
@@ -141,7 +141,7 @@ class ExecutionBase(abc.ABC):
         Returns
         -------
         Dict[str, bool]
-            Dictionary mapping symbol to execution success
+            Dictionary mapping symbol to execution_complex success
         """
         results = {}
         for order in orders:
@@ -350,7 +350,7 @@ class ExecutionBase(abc.ABC):
     
     def step(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, bool]:
         """
-        Execute a single step of the execution process.
+        Execute a single step of the execution_complex process.
         
         Parameters
         ----------
@@ -360,7 +360,7 @@ class ExecutionBase(abc.ABC):
         Returns
         -------
         Dict[str, bool]
-            Dictionary mapping symbols to execution success
+            Dictionary mapping symbols to execution_complex success
         """
         timestamp = timestamp or pd.Timestamp.now()
         self.last_step_time = timestamp
@@ -390,5 +390,5 @@ class ExecutionBase(abc.ABC):
             return results
             
         except Exception as e:
-            logger.error(f"Error in execution step: {e}")
+            logger.error(f"Error in execution_complex step: {e}")
             raise 

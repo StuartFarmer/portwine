@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-Example script demonstrating the use of the portwine execution system.
+Example script demonstrating the use of the portwine execution_complex system.
 
-This script shows how to set up and run both mock and Alpaca execution
+This script shows how to set up and run both mock and Alpaca execution_complex
 systems with a simple momentum strategy. The Alpaca implementation uses
 direct REST API calls instead of a Python SDK.
 """
@@ -21,8 +21,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
-from portwine.execution_mock import MockExecution
-from portwine.execution_alpaca import AlpacaExecution
+from portwine.execution_complex import MockExecution
+from portwine.execution_complex import AlpacaExecution
 
 
 # Configure logging
@@ -123,7 +123,7 @@ class SimpleMomentumStrategy(StrategyBase):
 
 def run_mock_execution(tickers, days=10):
     """
-    Run a mock execution for testing.
+    Run a mock execution_complex for testing.
     
     Parameters
     ----------
@@ -132,7 +132,7 @@ def run_mock_execution(tickers, days=10):
     days : int, default 10
         Number of days to simulate
     """
-    logger.info("Setting up mock execution")
+    logger.info("Setting up mock execution_complex")
     
     # Create a strategy
     strategy = SimpleMomentumStrategy(tickers, lookback_days=5, top_n=2)
@@ -155,7 +155,7 @@ def run_mock_execution(tickers, days=10):
     # Create market data loader
     data_loader = MockMarketDataLoader(mock_data)
     
-    # Create execution
+    # Create execution_complex
     execution = MockExecution(
         strategy=strategy,
         market_data_loader=data_loader,
@@ -163,7 +163,7 @@ def run_mock_execution(tickers, days=10):
     )
     
     # Run for a number of days
-    logger.info(f"Running mock execution for {days} days")
+    logger.info(f"Running mock execution_complex for {days} days")
     
     simulation_dates = [end_date - timedelta(days=days-i) for i in range(days)]
     
@@ -186,12 +186,12 @@ def run_mock_execution(tickers, days=10):
         
         logger.info("-" * 50)
     
-    logger.info("Mock execution completed")
+    logger.info("Mock execution_complex completed")
 
 
 def run_alpaca_execution(tickers, paper_trading=True):
     """
-    Run a live execution with Alpaca using direct REST API calls.
+    Run a live execution_complex with Alpaca using direct REST API calls.
     
     Parameters
     ----------
@@ -200,7 +200,7 @@ def run_alpaca_execution(tickers, paper_trading=True):
     paper_trading : bool, default True
         Whether to use paper trading
     """
-    logger.info(f"Setting up Alpaca execution (paper_trading={paper_trading})")
+    logger.info(f"Setting up Alpaca execution_complex (paper_trading={paper_trading})")
     
     # Check for API keys
     api_key = os.environ.get("ALPACA_API_KEY")
@@ -224,7 +224,7 @@ def run_alpaca_execution(tickers, paper_trading=True):
         paper_trading=paper_trading
     )
     
-    # Create execution
+    # Create execution_complex
     execution = AlpacaExecution(
         strategy=strategy,
         market_data_loader=data_loader,
@@ -256,7 +256,7 @@ def run_alpaca_execution(tickers, paper_trading=True):
     for symbol, position in account_info['positions'].items():
         logger.info(f"Position: {symbol} - {position['qty']} shares, ${position['market_value']:.2f}")
     
-    logger.info("Alpaca execution completed")
+    logger.info("Alpaca execution_complex completed")
 
 
 def main():
