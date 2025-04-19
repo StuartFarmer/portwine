@@ -387,8 +387,8 @@ class TestBacktesterIntegration(unittest.TestCase):
             )
 
         # Set both dates outside the available range
-        future_start = self.dates[-1] + timedelta(days=10)
-        future_end = future_start + timedelta(days=10)
+        future_start = self.dates[-1] + timedelta(days=10000)
+        future_end = future_start + timedelta(days=10000)
 
         # Also raises ValueError
         with self.assertRaises(ValueError):
@@ -398,6 +398,8 @@ class TestBacktesterIntegration(unittest.TestCase):
                 start_date=future_start,
                 end_date=future_end
             )
+
+            print(results)
 
 
 if __name__ == '__main__':

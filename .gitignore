@@ -1,2 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# macOS system files
+.DS_Store
+
+# virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Poetry
+poetry.lock
+
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# Jupyter Notebook
 .ipynb_checkpoints
+
+# Logs
+*.log
+
+# Build artifacts
+build/
 dist/
+*.egg-info/

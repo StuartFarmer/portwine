@@ -1,30 +1,14 @@
 # portwine/backtester.py
-"""
-A step‑driven back‑tester that now supports **intraday bars** while
-remaining 100 % backward‑compatible with the existing daily test‑suite.
-
-Key points
-----------
-* Accepts any `DatetimeIndex` (e.g. 2025‑04‑17 09:30 and 2025‑04‑17 16:00
-  for “open” and “close” bars on the same calendar date).
-* Determines the trading calendar **only from regular market tickers
-  (and any regular‑ticker benchmark)**, so alternative monthly/weekly
-  data never add extra rows – exactly what the tests expect :contentReference[oaicite:0]{index=0}&#8203;:contentReference[oaicite:1]{index=1}.
-* Silent‑failure semantics preserved:
-  - empty strategy / unknown tickers → **return `None`** (no exception)
-  - unrecognised benchmark type → **return `None`**
-* Still raises `ValueError` when `start_date > end_date`, matching
-  `test_empty_date_range`.
-"""
 
 from __future__ import annotations
 
 import cvxpy as cp
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from tqdm import tqdm
+
+import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
 
 class InvalidBenchmarkError(Exception):
@@ -37,7 +21,6 @@ class InvalidBenchmarkError(Exception):
 def benchmark_equal_weight(ret_df: pd.DataFrame, *_, **__) -> pd.Series:
     return ret_df.mean(axis=1)
 
-
 def benchmark_markowitz(
     ret_df: pd.DataFrame,
     lookback: int = 60,
@@ -47,7 +30,6 @@ def benchmark_markowitz(
     tickers = ret_df.columns
     n = len(tickers)
     iterator = tqdm(ret_df.index, desc="Markowitz") if verbose else ret_df.index
-
     w_rows: List[np.ndarray] = []
     for ts in iterator:
         win = ret_df.loc[:ts].tail(lookback)
@@ -63,37 +45,45 @@ def benchmark_markowitz(
             except Exception:
                 w = np.ones(n) / n
         w_rows.append(w)
-
     w_df = pd.DataFrame(w_rows, index=ret_df.index, columns=tickers)
     if shift_signals:
         w_df = w_df.shift(1).ffill().fillna(1.0 / n)
     return (w_df * ret_df).sum(axis=1)
 
-
 STANDARD_BENCHMARKS: Dict[str, Callable] = {
     "equal_weight": benchmark_equal_weight,
-    "markowitz": benchmark_markowitz,
+    "markowitz":    benchmark_markowitz,
 }
 
 class BenchmarkTypes:
     STANDARD_BENCHMARK = 0
-    TICKER = 1
-    CUSTOM_METHOD = 2
-    INVALID = 3
+    TICKER             = 1
+    CUSTOM_METHOD      = 2
+    INVALID            = 3
 
+# ------------------------------------------------------------------------------
+# Backtester
+# ------------------------------------------------------------------------------
 class Backtester:
-    def __init__(self,
-                 market_data_loader: MarketDataLoader,
-                 alternative_data_loader=None):
-        self.market_data_loader = market_data_loader
-        self.alternative_data_loader = alternative_data_loader
+    """
+    A step‑driven back‑tester that supports intraday bars and,
+    optionally, an exchange trading calendar.
+    """
 
-    def _split_tickers(self, tickers: List[str]) -> (List[str], List[str]):
-        """
-        Split the universe into:
-          - regular tickers (no colon)
-          - alternative tickers (with SOURCE: prefix)
-        """
+    def __init__(
+        self,
+        market_data_loader: MarketDataLoader,
+        alternative_data_loader=None,
+        calendar: Optional[Union[str, mcal.ExchangeCalendar]] = None
+    ):
+        self.market_data_loader      = market_data_loader
+        self.alternative_data_loader = alternative_data_loader
+        if isinstance(calendar, str):
+            self.calendar = mcal.get_calendar(calendar)
+        else:
+            self.calendar = calendar
+
+    def _split_tickers(self, tickers: List[str]) -> Tuple[List[str], List[str]]:
         reg, alt = [], []
         for t in tickers:
             if isinstance(t, str) and ":" in t:
@@ -102,140 +92,158 @@ class Backtester:
                 reg.append(t)
         return reg, alt
 
-    def get_benchmark_type(self, benchmark):
-        # Test if benchmark is a standard method or a ticker
-        if type(benchmark) is str:
-
-            # If it's a method, return True
-            standard_benchmark = STANDARD_BENCHMARKS.get(benchmark)
-            if standard_benchmark is not None:
+    def get_benchmark_type(self, benchmark) -> int:
+        if isinstance(benchmark, str):
+            if benchmark in STANDARD_BENCHMARKS:
                 return BenchmarkTypes.STANDARD_BENCHMARK
-
-            # If we can find the ticker data, return True
-            bm_data = self.market_data_loader.fetch_data([benchmark])
-            if benchmark in bm_data:
+            if self.market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
                 return BenchmarkTypes.TICKER
-
-            # Otherwise? Return false
             return BenchmarkTypes.INVALID
-
-        # Assume all callables work
-        elif callable(benchmark):
+        if callable(benchmark):
             return BenchmarkTypes.CUSTOM_METHOD
-
-        # Otherwise, invalid.
         return BenchmarkTypes.INVALID
 
-    def run_backtest(self,
-                     strategy,
-                     shift_signals: bool = True,
-                     benchmark: Union[str, Callable, None] = 'equal_weight',
-                     start_date=None,
-                     end_date=None,
-                     require_all_history: bool = False,
-                     verbose: bool = False
-    ) -> Union[Dict[str, pd.DataFrame], None]:
-        # 1) split tickers only
+    def run_backtest(
+        self,
+        strategy,
+        shift_signals: bool = True,
+        benchmark: Union[str, Callable, None] = "equal_weight",
+        start_date=None,
+        end_date=None,
+        require_all_history: bool = False,
+        verbose: bool = False
+    ) -> Optional[Dict[str, pd.DataFrame]]:
+        # 1) normalize date filters
+        sd = pd.Timestamp(start_date) if start_date is not None else None
+        ed = pd.Timestamp(end_date)   if end_date   is not None else None
+        if sd is not None and ed is not None and sd > ed:
+            raise ValueError("start_date must be on or before end_date")
+
+        # 2) split tickers
         reg_tkrs, alt_tkrs = self._split_tickers(strategy.tickers)
 
-        # Verify that we can run a benchmark
-        benchmark_type = self.get_benchmark_type(benchmark)
+        # 3) classify benchmark
+        bm_type = self.get_benchmark_type(benchmark)
+        if bm_type == BenchmarkTypes.INVALID:
+            raise InvalidBenchmarkError(f"{benchmark} is not a valid benchmark.")
 
-        if benchmark_type == BenchmarkTypes.INVALID:
-            raise InvalidBenchmarkError(f'{benchmark} is not a valid benchmark.')
-
-        # 1b) load regular data
+        # 4) load regular data
         reg_data = self.market_data_loader.fetch_data(reg_tkrs)
         if not reg_tkrs or len(reg_data) < len(reg_tkrs):
             return None
 
-        # 2) build trading calendar
-        if hasattr(self.market_data_loader, "get_all_dates"):
-            all_ts = self.market_data_loader.get_all_dates(reg_tkrs)
+        # 5) build trading dates
+        if self.calendar is not None:
+            # data span
+            first_dt = min(df.index.min() for df in reg_data.values())
+            last_dt  = max(df.index.max() for df in reg_data.values())
+
+            # schedule uses dates only
+            sched = self.calendar.schedule(
+                start_date=first_dt.date(),
+                end_date=last_dt.date()
+            )
+            closes = sched["market_close"]
+
+            # drop tz if present
+            if getattr(getattr(closes, "dt", None), "tz", None) is not None:
+                closes = closes.dt.tz_convert(None)
+
+            # restrict to actual data
+            closes = closes[(closes >= first_dt) & (closes <= last_dt)]
+
+            # require history
+            if require_all_history and reg_tkrs:
+                common = max(df.index.min() for df in reg_data.values())
+                closes = closes[closes >= common]
+
+            # apply start/end (full timestamp)
+            if sd is not None:
+                closes = closes[closes >= sd]
+            if ed is not None:
+                closes = closes[closes <= ed]
+
+            all_ts = list(closes)
+
+            # **raise** on empty calendar range
+            if not all_ts:
+                raise ValueError("No trading dates after filtering")
+
         else:
-            all_ts = self._union_ts(reg_data)
+            # legacy union of data indices
+            if hasattr(self.market_data_loader, "get_all_dates"):
+                all_ts = self.market_data_loader.get_all_dates(reg_tkrs)
+            else:
+                all_ts = sorted({ts for df in reg_data.values() for ts in df.index})
 
-        # 3) date filters
-        if start_date:
-            dt0 = pd.Timestamp(start_date)
-            all_ts = [d for d in all_ts if d >= dt0]
-        if end_date:
-            dt1 = pd.Timestamp(end_date)
-            all_ts = [d for d in all_ts if d <= dt1]
+            # require history
+            if require_all_history and reg_tkrs:
+                common = max(df.index.min() for df in reg_data.values())
+                all_ts = [d for d in all_ts if d >= common]
 
-        # 4) require all history
-        if require_all_history and reg_tkrs:
-            firsts = [reg_data[t].index.min() for t in reg_tkrs]
-            common = max(firsts)
-            all_ts = [d for d in all_ts if d >= common]
+            # apply start/end
+            if sd is not None:
+                all_ts = [d for d in all_ts if d >= sd]
+            if ed is not None:
+                all_ts = [d for d in all_ts if d <= ed]
 
-        # 5) empty date‐range
-        if not all_ts:
-            raise ValueError("No trading dates after filtering")
+            if not all_ts:
+                raise ValueError("No trading dates after filtering")
 
-        # 6) preload string‐ticker benchmark if needed
-        if benchmark_type == BenchmarkTypes.TICKER:
+        # 6) preload benchmark ticker if needed
+        if bm_type == BenchmarkTypes.TICKER:
             bm_data = self.market_data_loader.fetch_data([benchmark])
 
-        # 7) main loop: collect raw signals
-        rows = []
+        # 7) main loop: signals
+        sig_rows = []
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
         for ts in iterator:
-            # market bars
             if hasattr(self.market_data_loader, "next"):
-                bar_data = self.market_data_loader.next(reg_tkrs, ts)
+                bar = self.market_data_loader.next(reg_tkrs, ts)
             else:
-                bar_data = self._bar_dict(ts, reg_data)
+                bar = self._bar_dict(ts, reg_data)
 
-            # alternative bars
-            alt_ld = self.alternative_data_loader
-            if alt_ld:
-                keys = alt_tkrs
+            if self.alternative_data_loader:
+                alt_ld = self.alternative_data_loader
                 if hasattr(alt_ld, "next"):
-                    bar_data.update(alt_ld.next(keys, ts))
+                    bar.update(alt_ld.next(alt_tkrs, ts))
                 else:
-                    alt_dfs = alt_ld.fetch_data(keys)
-                    for t, df in alt_dfs.items():
-                        bar_data[t] = self._bar_dict(ts, {t: df})[t]
+                    for t, df in alt_ld.fetch_data(alt_tkrs).items():
+                        bar[t] = self._bar_dict(ts, {t: df})[t]
 
-            sig = strategy.step(ts, bar_data)
-
+            sig = strategy.step(ts, bar)
             row = {"date": ts}
             for t in strategy.tickers:
                 row[t] = sig.get(t, 0.0)
-            rows.append(row)
+            sig_rows.append(row)
 
-        sig_df = pd.DataFrame(rows).set_index("date").sort_index()
-        sig_reg = (sig_df.shift(1).ffill() if shift_signals else sig_df)\
-                    .fillna(0.0)[reg_tkrs]
+        # 8) construct signals_df
+        sig_df = pd.DataFrame(sig_rows).set_index("date").sort_index()
+        sig_df.index.name = None
+        sig_reg = ((sig_df.shift(1).ffill() if shift_signals else sig_df)
+                   .fillna(0.0)[reg_tkrs])
 
-        # 8) compute returns
-        px = pd.DataFrame({t: reg_data[t]["close"] for t in reg_tkrs})
-        px = px.reindex(sig_reg.index).ffill()
+        # 9) compute returns
+        px     = pd.DataFrame({t: reg_data[t]["close"] for t in reg_tkrs})
+        px     = px.reindex(sig_reg.index).ffill()
         ret_df = px.pct_change(fill_method=None).fillna(0.0)
-
         strat_ret = (ret_df * sig_reg).sum(axis=1)
 
-        # 9) benchmark returns (stubbed)
-        if benchmark_type == BenchmarkTypes.CUSTOM_METHOD:
+        # 10) benchmark returns
+        if bm_type == BenchmarkTypes.CUSTOM_METHOD:
             bm_ret = benchmark(ret_df)
-        elif benchmark_type == BenchmarkTypes.STANDARD_BENCHMARK:
-            bm_fn = STANDARD_BENCHMARKS[benchmark]
-            bm_ret = bm_fn(ret_df)
-        elif benchmark_type == BenchmarkTypes.TICKER:
-            bm_data = self.market_data_loader.fetch_data([benchmark])
+        elif bm_type == BenchmarkTypes.STANDARD_BENCHMARK:
+            bm_ret = STANDARD_BENCHMARKS[benchmark](ret_df)
+        else:  # TICKER
             ser = bm_data[benchmark]["close"].reindex(sig_reg.index).ffill()
             bm_ret = ser.pct_change(fill_method=None).fillna(0.0)
-        else:
-            raise InvalidBenchmarkError(f'{benchmark} is invalid. Cannot calculate returns.')
 
-        # 10) update dynamic loader
-        alt_ld = self.alternative_data_loader
-        if alt_ld and hasattr(alt_ld, "update"):
+        # 11) dynamic alternative data update
+        if self.alternative_data_loader and hasattr(self.alternative_data_loader, "update"):
             for ts in sig_reg.index:
                 raw_sigs = sig_df.loc[ts, strategy.tickers].to_dict()
                 raw_rets = ret_df.loc[ts].to_dict()
-                alt_ld.update(ts, raw_sigs, raw_rets, strat_ret.loc[ts])
+                self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 
         return {
             "signals_df":       sig_reg,
@@ -244,27 +252,19 @@ class Backtester:
             "benchmark_returns": bm_ret
         }
 
-    # legacy helpers to keep old tests happy
-    def _union_ts(self, data: Dict[str, pd.DataFrame]) -> List[pd.Timestamp]:
-        all_ts = {ts for df in data.values() for ts in df.index}
-        return sorted(all_ts)
-
-    def _bar_dict(self,
-                  ts: pd.Timestamp,
-                  data: Dict[str, pd.DataFrame]
-    ) -> Dict[str, Union[dict, None]]:
-        out = {}
+    @staticmethod
+    def _bar_dict(ts: pd.Timestamp, data: Dict[str, pd.DataFrame]) -> Dict[str, dict | None]:
+        out: Dict[str, dict | None] = {}
         for t, df in data.items():
-            sub = df.loc[df.index == ts]
-            if sub.empty:
-                out[t] = None
-            else:
-                row = sub.iloc[-1]
+            if ts in df.index:
+                row = df.loc[ts]
                 out[t] = {
-                    "open":   row["open"],
-                    "high":   row["high"],
-                    "low":    row["low"],
-                    "close":  row["close"],
-                    "volume": row["volume"],
+                    "open":   float(row["open"]),
+                    "high":   float(row["high"]),
+                    "low":    float(row["low"]),
+                    "close":  float(row["close"]),
+                    "volume": float(row["volume"]),
                 }
+            else:
+                out[t] = None
         return out
