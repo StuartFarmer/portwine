@@ -1,258 +1,193 @@
 """
-Mock broker implementation for testing.
+Mock implementation of the BrokerBase class for testing.
 
-This module provides a mock broker implementation that can be used for testing
-strategies without connecting to a real broker.
+This module provides a mock implementation of the broker interface
+that can be used for testing purposes. It simulates account information,
+market status, and order execution without connecting to a real broker.
 """
 
-import logging
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
+import pytz
+from typing import Dict, List, Optional, Union
 
-from portwine.execution_complex.broker import BrokerBase
-
-logger = logging.getLogger(__name__)
+from portwine.execution_complex.broker import BrokerBase, AccountInfo, Position, Order
+from portwine.utils.market_calendar import MarketStatus
 
 
 class MockBroker(BrokerBase):
     """
-    Mock broker implementation for testing strategies.
+    Mock broker implementation for testing.
     
-    This class simulates a broker interface with in-memory state, allowing
-    for easy testing of strategies without connecting to a real broker.
+    This class provides a simulated broker environment for testing
+    execution systems without connecting to a real broker.
+    
+    Attributes:
+        cash: Current cash available.
+        positions: Dictionary of current positions by symbol.
+        orders: List of executed orders.
+        failed_symbols: List of symbols that should fail on order execution.
+        _is_market_open: Whether the market is currently open.
+        _next_market_open: Next market open time.
+        _next_market_close: Next market close time.
     """
     
-    def __init__(
-        self, 
-        initial_cash: float = 100000.0, 
-        initial_positions: Optional[Dict[str, Dict[str, Any]]] = None,
-        market_open: bool = True,
-        fail_symbols: Optional[List[str]] = None
-    ):
+    def __init__(self, initial_cash: float = 100000.0, 
+                 initial_positions: Optional[Dict[str, Position]] = None,
+                 failed_symbols: Optional[List[str]] = None,
+                 timezone: str = "America/New_York"):
         """
         Initialize the mock broker.
         
         Args:
-            initial_cash: Starting cash balance
-            initial_positions: Initial positions dictionary (symbol -> position info)
-            market_open: Whether the market should be considered open initially
-            fail_symbols: List of symbols that should fail on order execution (for testing error handling)
+            initial_cash: Initial cash available.
+            initial_positions: Dictionary of initial positions by symbol.
+            failed_symbols: List of symbols that should fail on order execution.
+            timezone: Timezone to use for market hours.
         """
-        super().__init__()
         self.cash = initial_cash
         self.positions = initial_positions or {}
-        self.market_open = market_open
-        self.fail_symbols = fail_symbols or []
-        
-        # Track order history
         self.orders = []
+        self.failed_symbols = failed_symbols or []
+        self.timezone = timezone
         
-        logger.info(f"Initialized MockBroker with ${initial_cash:.2f} cash")
-        if initial_positions:
-            logger.info(f"Initial positions: {len(initial_positions)} assets")
-        if fail_symbols:
-            logger.info(f"Set up to fail orders for: {', '.join(fail_symbols)}")
-    
-    def check_market_status(self) -> bool:
-        """
-        Check if the market is currently open.
+        # Default market status
+        self._is_market_open = True
+        now = datetime.now(pytz.timezone(self.timezone))
+        self._next_market_open = now
+        self._next_market_close = now + timedelta(hours=8)  # Default market day is 8 hours
         
-        Returns:
-            True if market is open, False otherwise
+    def set_market_status(self, is_open: bool, 
+                          next_open: Optional[datetime] = None, 
+                          next_close: Optional[datetime] = None):
         """
-        return self.market_open
-    
-    def set_market_status(self, is_open: bool) -> None:
-        """
-        Set the market status for testing different scenarios.
+        Set the market status for testing.
         
         Args:
-            is_open: Whether the market should be considered open
+            is_open: Whether the market is currently open.
+            next_open: Next market open time.
+            next_close: Next market close time.
         """
-        self.market_open = is_open
-        logger.info(f"Market status set to {'open' if is_open else 'closed'}")
+        self._is_market_open = is_open
+        
+        now = datetime.now(pytz.timezone(self.timezone))
+        self._next_market_open = next_open or now
+        self._next_market_close = next_close or (now + timedelta(hours=8))
+        
+    def check_market_status(self) -> MarketStatus:
+        """
+        Check the current market status.
+        
+        Returns:
+            MarketStatus object with current market status.
+        """
+        return MarketStatus(
+            is_open=self._is_market_open, 
+            next_open=self._next_market_open,
+            next_close=self._next_market_close
+        )
     
-    def get_account_info(self) -> Dict[str, Any]:
+    def get_account_info(self) -> AccountInfo:
         """
         Get current account information.
         
         Returns:
-            Dictionary with account information
+            AccountInfo object with current account information.
         """
         # Calculate portfolio value
-        position_value = sum(pos.get('market_value', 0) for pos in self.positions.values())
-        portfolio_value = self.cash + position_value
-        
-        return {
-            'cash': self.cash,
-            'portfolio_value': portfolio_value,
-            'positions': self.positions
-        }
+        portfolio_value = self.cash
+        for symbol, position in self.positions.items():
+            portfolio_value += position.current_price * position.quantity
+            
+        return AccountInfo(
+            cash=self.cash, 
+            portfolio_value=portfolio_value, 
+            positions=self.positions
+        )
     
-    def execute_order(
-        self, 
-        symbol: str, 
-        qty: float, 
-        order_type: str = "market",
-        limit_price: Optional[float] = None,
-        stop_price: Optional[float] = None,
-        time_in_force: str = "day",
-        extended_hours: bool = False
-    ) -> bool:
+    def execute_order(self, order: Order) -> bool:
         """
         Execute a simulated order.
         
         Args:
-            symbol: The ticker symbol
-            qty: Quantity to buy/sell (positive for buy, negative for sell)
-            order_type: Type of order (market, limit, stop, stop_limit)
-            limit_price: Price for limit orders
-            stop_price: Price for stop orders
-            time_in_force: Time in force parameter (day, gtc, ioc, fok)
-            extended_hours: Whether to allow trading during extended hours
+            order: Order to execute.
             
         Returns:
-            True if order execution succeeded, False otherwise
+            True if the order was successfully executed, False otherwise.
         """
-        # Check if this symbol is set to fail
-        if symbol in self.fail_symbols:
-            logger.warning(f"Order for {symbol} failed (in fail_symbols list)")
+        # Check if this symbol should fail
+        if order.symbol in self.failed_symbols:
             return False
         
-        # Ensure we have a price for this symbol
-        price = self._get_price(symbol)
-        if price is None:
-            logger.error(f"No price available for {symbol}")
-            return False
-        
-        # For limit orders, check if the price is acceptable
-        if order_type == "limit" and limit_price is not None:
-            if (qty > 0 and price > limit_price) or (qty < 0 and price < limit_price):
-                logger.warning(f"Limit price condition not met for {symbol}")
-                return False
-        
-        order_value = abs(qty) * price
-        
-        # For buy orders, check if we have enough cash
-        if qty > 0 and order_value > self.cash:
-            logger.error(f"Insufficient cash for order: {symbol} {qty} @ ${price:.2f}")
-            return False
-        
-        # For sell orders, check if we have the position
-        if qty < 0:
-            current_position = self.positions.get(symbol, {}).get('qty', 0)
-            if abs(qty) > current_position:
-                logger.error(f"Insufficient position for sell order: {symbol} {qty}")
-                return False
-        
-        # Execute the order
-        order = {
-            'symbol': symbol,
-            'qty': qty,
-            'price': price,
-            'order_type': order_type,
-            'time_in_force': time_in_force,
-            'timestamp': datetime.now(timezone.utc)
-        }
-        
-        if limit_price is not None:
-            order['limit_price'] = limit_price
-            
-        if stop_price is not None:
-            order['stop_price'] = stop_price
-            
+        # Record the order
         self.orders.append(order)
         
-        # Update cash
-        self.cash -= qty * price
-        
-        # Update position
-        self._update_position(symbol, qty, price)
-        
-        logger.info(f"Executed order: {symbol} {qty} @ ${price:.2f}")
+        # Update positions and cash
+        if order.symbol in self.positions:
+            position = self.positions[order.symbol]
+            
+            # Update position
+            if order.quantity > 0:  # Buy
+                new_quantity = position.quantity + order.quantity
+                total_cost = (position.quantity * position.cost_basis) + (order.quantity * order.price)
+                new_cost_basis = total_cost / new_quantity if new_quantity > 0 else 0
+                
+                self.positions[order.symbol] = Position(
+                    symbol=order.symbol,
+                    quantity=new_quantity,
+                    cost_basis=new_cost_basis,
+                    current_price=order.price
+                )
+                
+                # Update cash
+                self.cash -= order.quantity * order.price
+                
+            else:  # Sell
+                new_quantity = position.quantity + order.quantity  # order.quantity is negative for sells
+                
+                if new_quantity > 0:
+                    # Partial sell
+                    self.positions[order.symbol] = Position(
+                        symbol=order.symbol,
+                        quantity=new_quantity,
+                        cost_basis=position.cost_basis,  # Cost basis doesn't change on sells
+                        current_price=order.price
+                    )
+                else:
+                    # Complete sell
+                    del self.positions[order.symbol]
+                    
+                # Update cash
+                self.cash -= order.quantity * order.price  # order.quantity is negative, so this adds to cash
+                
+        else:
+            # New position
+            if order.quantity > 0:  # Can only create a position with a buy
+                self.positions[order.symbol] = Position(
+                    symbol=order.symbol,
+                    quantity=order.quantity,
+                    cost_basis=order.price,
+                    current_price=order.price
+                )
+                
+                # Update cash
+                self.cash -= order.quantity * order.price
+            else:
+                # Can't sell what we don't have
+                return False
+                
         return True
-    
-    def _update_position(self, symbol: str, qty: float, price: float) -> None:
+        
+    def get_position(self, symbol: str) -> Optional[Position]:
         """
-        Update a position after an order execution.
+        Get position for a specific symbol.
         
         Args:
-            symbol: The ticker symbol
-            qty: Quantity bought/sold
-            price: Execution price
-        """
-        if symbol not in self.positions:
-            self.positions[symbol] = {
-                'symbol': symbol,
-                'qty': 0,
-                'market_value': 0,
-                'avg_entry_price': price,
-                'unrealized_pl': 0
-            }
-        
-        position = self.positions[symbol]
-        old_qty = position['qty']
-        new_qty = old_qty + qty
-        
-        # Calculate new average price for buys
-        if qty > 0:
-            position['avg_entry_price'] = ((old_qty * position['avg_entry_price']) + (qty * price)) / new_qty
-        
-        position['qty'] = new_qty
-        position['market_value'] = new_qty * price
-        position['unrealized_pl'] = (price - position['avg_entry_price']) * new_qty
-        
-        # Remove position if quantity is zero
-        if abs(new_qty) < 1e-6:
-            del self.positions[symbol]
-    
-    def _get_price(self, symbol: str) -> Optional[float]:
-        """
-        Get the current price for a symbol.
-        
-        Args:
-            symbol: The ticker symbol
+            symbol: Symbol to get position for.
             
         Returns:
-            Current price or None if not available
+            Position object if the position exists, None otherwise.
         """
-        # First check if we have a position with this symbol, and use its price
-        if symbol in self.positions:
-            position = self.positions[symbol]
-            if position['qty'] != 0:
-                return position['market_value'] / position['qty']
-        
-        # Otherwise use a default price
-        return 100.0  # Default price for testing
-    
-    def set_price(self, symbol: str, price: float) -> None:
-        """
-        Set the current price for a symbol.
-        
-        This is useful for testing market movements.
-        
-        Args:
-            symbol: The ticker symbol
-            price: New price
-        """
-        # Update market value and unrealized P&L for existing positions
-        if symbol in self.positions:
-            position = self.positions[symbol]
-            old_price = position['market_value'] / position['qty'] if position['qty'] != 0 else 0
-            position['market_value'] = position['qty'] * price
-            position['unrealized_pl'] = (price - position['avg_entry_price']) * position['qty']
-            
-            logger.info(f"Updated price for {symbol}: ${old_price:.2f} -> ${price:.2f}")
-        else:
-            # Create a new position with zero quantity just to track the price
-            self.positions[symbol] = {
-                'symbol': symbol,
-                'qty': 0,
-                'market_value': 0,
-                'avg_entry_price': price,
-                'unrealized_pl': 0
-            }
-            logger.info(f"Set price for {symbol}: ${price:.2f}")
+        return self.positions.get(symbol)
     
     def get_order_status(self, order_id: str) -> Optional[str]:
         """
@@ -285,17 +220,17 @@ class MockBroker(BrokerBase):
             True if successful, False otherwise
         """
         for symbol, position in list(self.positions.items()):
-            qty = position['qty']
+            qty = position.quantity
             if qty != 0:
-                self.execute_order(symbol, -qty)
+                self.execute_order(Order(symbol=symbol, quantity=-qty))
         return True
     
-    def get_positions(self) -> List[Dict[str, Any]]:
+    def get_positions(self) -> List[Position]:
         """
         Get all current positions.
         
         Returns:
-            List of position dictionaries
+            List of position objects
         """
         return list(self.positions.values())
     
@@ -315,20 +250,10 @@ class MockBroker(BrokerBase):
         Returns:
             Total portfolio value (cash + positions)
         """
-        position_value = sum(pos.get('market_value', 0) for pos in self.positions.values())
-        return self.cash + position_value
-    
-    def get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """
-        Get position information for a specific symbol.
-        
-        Args:
-            symbol: The ticker symbol
-            
-        Returns:
-            Position information or None if not held
-        """
-        return self.positions.get(symbol)
+        portfolio_value = self.cash
+        for symbol, position in self.positions.items():
+            portfolio_value += position.current_price * position.quantity
+        return portfolio_value
     
     def reset(self, initial_cash: float = 100000.0, keep_positions: bool = False) -> None:
         """
@@ -342,7 +267,6 @@ class MockBroker(BrokerBase):
         if not keep_positions:
             self.positions = {}
         self.orders = []
-        logger.info(f"Reset MockBroker with ${initial_cash:.2f} cash")
     
     def simulate_market_move(self, percent_change: float) -> None:
         """
@@ -352,18 +276,21 @@ class MockBroker(BrokerBase):
             percent_change: Percentage change to apply to all positions
         """
         for symbol, position in self.positions.items():
-            if position['qty'] != 0:
-                old_price = position['market_value'] / position['qty']
+            if position.quantity != 0:
+                old_price = position.current_price
                 new_price = old_price * (1 + percent_change / 100.0)
-                self.set_price(symbol, new_price)
+                self.positions[symbol] = Position(
+                    symbol=symbol,
+                    quantity=position.quantity,
+                    cost_basis=position.cost_basis,
+                    current_price=new_price
+                )
         
-        logger.info(f"Simulated market move of {percent_change:.2f}%")
-    
-    def get_order_history(self) -> List[Dict[str, Any]]:
+    def get_order_history(self) -> List[Order]:
         """
         Get history of all executed orders.
         
         Returns:
-            List of order dictionaries
+            List of order objects
         """
         return self.orders 

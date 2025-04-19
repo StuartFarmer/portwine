@@ -1,6 +1,35 @@
 # Trading Execution with Portwine
 
-This document explains how to configure and run trading strategies using the DailyExecutor class in the portwine package.
+This document explains how to configure and run trading strategies using Portwine's execution framework.
+
+## New Scheduling Approach
+
+The scheduling functionality has been integrated directly into the `ExecutionBase` class, eliminating the need for the separate `DailyExecutor` class. The new approach is simpler and more flexible:
+
+```python
+from portwine.execution_complex.base import ExecutionBase
+from portwine.utils.schedule_iterator import DailyMarketScheduleIterator
+
+# Create your execution system
+execution = ExecutionBase(strategy, data_loader, broker)
+
+# Create a schedule iterator
+schedule = DailyMarketScheduleIterator(
+    exchange="NYSE",
+    minutes_before_close=15,
+    timezone="America/New_York"
+)
+
+# Run with the schedule
+execution.run(schedule)
+```
+
+This approach allows for more flexibility in scheduling and better integration with the execution system. The `ExecutionBase.run()` method:
+
+1. Takes a `ScheduleIterator` that determines when to execute trades
+2. Enters an infinite loop, waiting for the next scheduled time
+3. Executes the trading step at each scheduled time
+4. Can be stopped with Ctrl+C or by calling `execution.stop()`
 
 ## Configuration Files
 
@@ -54,15 +83,15 @@ The `SimpleMovingAverageStrategy` provided in the examples has the following par
 
 ## Execution Options
 
-Two execution implementations are provided:
+Two broker implementations are provided:
 
-1. **AlpacaExecution** - For executing trades with the Alpaca API
+1. **AlpacaBroker** - For executing trades with the Alpaca API
    - Parameters:
      - `paper_trading`: Whether to use paper trading (default: true)
      - `api_key`: Your Alpaca API key
      - `api_secret`: Your Alpaca API secret
 
-2. **MockExecution** - For mock/simulated trading (testing)
+2. **MockBroker** - For mock/simulated trading (testing)
    - Parameters:
      - `initial_cash`: Initial cash amount (default: 100000.0)
      - `fail_symbols`: List of symbols that should fail when executing orders (for testing)
@@ -80,60 +109,35 @@ The `AlpacaMarketDataLoader` has the following parameters:
 
 ## Schedule Options
 
-Several scheduling options are available:
+Several scheduling options are available via the `ScheduleIterator` classes:
 
-- `run_time`: When to run the strategy each day
-  - Fixed time (e.g., "15:45")
-  - Market event based (e.g., "market_open", "market_close")
-  - Offset from market events (e.g., "market_open+30m", "market_close-15m")
-- `time_zone`: Timezone for the run time (e.g., "US/Eastern")
-- `days`: Days of the week to run (e.g., ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
-- `market_hours_only`: Whether to only run during market hours (default: true)
-- `intraday`: Intraday scheduling option (e.g., "interval:30m" for every 30 minutes)
-- `exchange`: Exchange to use for market hours (default: "NYSE")
+1. **DailyMarketScheduleIterator** - For scheduling execution at a specific time relative to market close
+   - Parameters:
+     - `exchange`: Exchange to use for market hours (default: "NYSE")
+     - `minutes_before_close`: Number of minutes before market close to execute (default: 15)
+     - `timezone`: Timezone for execution times (default: UTC)
+     - `start_date`: Optional start date (default: current time)
+
+More schedule iterators can be created by implementing the `ScheduleIterator` abstract base class.
 
 ## Running the Examples
 
-### Standard Daily Trading
+The new example script demonstrates how to use the integrated scheduling approach:
 
 ```bash
-python example_daily_executor.py --config example_config.json
+python examples/run_execution_with_schedule.py --config example_config.json
 ```
 
 To run once without scheduling:
 
 ```bash
-python example_daily_executor.py --config example_config.json --run-once
+python examples/run_execution_with_schedule.py --config example_config.json --run-once
 ```
 
-### Mock Execution (Testing)
+To run for a limited number of iterations:
 
 ```bash
-python run_mock_strategy.py --config mock_config.json
-```
-
-To run once without scheduling:
-
-```bash
-python run_mock_strategy.py --config mock_config.json --run-once
-```
-
-### Intraday Trading
-
-```bash
-python example_daily_executor.py --config intraday_config.json
-```
-
-## Using the Custom Daily Executor
-
-The `CustomDailyExecutor` class is provided to properly handle initialization of the AlpacaExecution class, ensuring that market_data_loader is correctly passed as a parameter.
-
-```python
-from custom_daily_executor import CustomDailyExecutor
-
-executor = CustomDailyExecutor.from_config_file("example_config.json")
-executor.initialize()
-executor.run_once()  # Or executor.run_scheduled()
+python examples/run_execution_with_schedule.py --config example_config.json --iterations 3
 ```
 
 ## API Keys
@@ -152,8 +156,31 @@ Then you can use placeholders in your configuration files:
 "api_secret": "${ALPACA_API_SECRET}"
 ```
 
+## Creating Custom Schedules
+
+You can create custom scheduling by implementing your own `ScheduleIterator`. For example:
+
+```python
+from portwine.utils.schedule_iterator import ScheduleIterator
+import pandas as pd
+
+class HourlyScheduleIterator(ScheduleIterator):
+    """Iterator that yields times on the hour, every hour during market hours."""
+    
+    def __next__(self) -> pd.Timestamp:
+        # Calculate next hour
+        next_time = self.current_time.floor('H') + pd.Timedelta(hours=1)
+        self.current_time = next_time
+        return next_time
+```
+
 ## Troubleshooting
 
-If you encounter issues with the AlpacaExecution class, make sure you're using the CustomDailyExecutor which correctly handles passing the market_data_loader to the execution system.
+If you encounter issues:
+
+1. Check your API keys and make sure they have the necessary permissions
+2. Verify that your configuration file is correctly formatted JSON
+3. Look at the log file for detailed error messages
+4. Ensure that you're using compatible versions of all dependencies
 
 For more detailed information about specific classes, consult the module docstrings and source code. 
