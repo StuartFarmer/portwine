@@ -16,7 +16,9 @@ import re
 from datetime import datetime, timedelta, time as dt_time
 from typing import Dict, Any, Optional, List, Union, Tuple, Callable
 
+import pandas as pd
 import pandas_market_calendars as mcal
+from portwine.utils.schedule_iterator import ScheduleIterator, DailyMarketScheduleIterator
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +390,102 @@ class DailyExecutor:
         self._scheduled_jobs = []
         logger.debug("Cleared intraday scheduled jobs")
     
+    def _create_schedule_iterator(self) -> ScheduleIterator:
+        """
+        Create an appropriate schedule iterator based on configuration.
+        
+        Returns
+        -------
+        ScheduleIterator
+            The schedule iterator that will yield execution times
+        """
+        # Default configuration
+        timezone = self.time_zone
+        
+        # Check if the run_time is a market event-based time
+        if self.MARKET_EVENT_PATTERN.match(self.run_time):
+            # For market-based times, use a DailyMarketScheduleIterator
+            market_match = self.MARKET_EVENT_PATTERN.match(self.run_time)
+            event_type = market_match.group(1)
+            op = market_match.group(2)
+            amount = int(market_match.group(3)) if market_match.group(3) else 0
+            unit = market_match.group(4) if market_match.group(4) else 'm'
+            
+            # Calculate minutes from close
+            if event_type == "market_close":
+                if op == "-":
+                    minutes_before_close = amount * (60 if unit == 'h' else 1)
+                elif op == "+":
+                    # After market close (negative minutes before close)
+                    minutes_before_close = -amount * (60 if unit == 'h' else 1)
+                else:
+                    # Exactly at market close
+                    minutes_before_close = 0
+            else:  # market_open
+                # Convert to minutes before close
+                # First calculate the offset from market open
+                offset_minutes = amount * (60 if unit == 'h' else 1)
+                if op == "-":
+                    offset_minutes = -offset_minutes
+                
+                # We'll use a custom implementation later, but for now
+                # we'll estimate the trading day as 6.5 hours (390 minutes)
+                minutes_before_close = 390 - offset_minutes
+            
+            return DailyMarketScheduleIterator(
+                exchange=self.exchange,
+                minutes_before_close=minutes_before_close,
+                timezone=timezone
+            )
+        else:
+            # For fixed times, we'll use a DailyMarketScheduleIterator with manual calculation
+            # Parse the fixed time
+            try:
+                hour, minute = map(int, self.run_time.split(':'))
+                
+                # Get market hours for calculation
+                now = datetime.now(pytz.timezone(timezone))
+                market_times = self._get_market_times(now)
+                
+                if market_times:
+                    market_close = market_times['market_close']
+                    
+                    # Calculate time difference from market close
+                    fixed_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    
+                    # Convert both to minutes since midnight for easy comparison
+                    fixed_minutes = hour * 60 + minute
+                    close_minutes = market_close.hour * 60 + market_close.minute
+                    
+                    # Calculate minutes before close
+                    minutes_before_close = close_minutes - fixed_minutes
+                    
+                    # Handle case where time is after market close
+                    if minutes_before_close < 0:
+                        minutes_before_close = 0  # Execute at market close
+                    
+                    return DailyMarketScheduleIterator(
+                        exchange=self.exchange,
+                        minutes_before_close=minutes_before_close,
+                        timezone=timezone
+                    )
+                else:
+                    # No market times available, use a default
+                    logger.warning("Could not determine market hours. Using default 15 minutes before close.")
+                    return DailyMarketScheduleIterator(
+                        exchange=self.exchange,
+                        minutes_before_close=15,
+                        timezone=timezone
+                    )
+                
+            except (ValueError, TypeError):
+                logger.error(f"Invalid time format: {self.run_time}. Using default 15 minutes before close.")
+                return DailyMarketScheduleIterator(
+                    exchange=self.exchange,
+                    minutes_before_close=15,
+                    timezone=timezone
+                )
+    
     def run_scheduled(self) -> None:
         """
         Run the strategy on a schedule based on the configuration.
@@ -397,75 +495,61 @@ class DailyExecutor:
         if not self.initialized:
             logger.error("Components not initialized. Call initialize() first.")
             return
-            
-        # Clear any existing schedules
-        schedule.clear()
         
-        # Set up intraday schedule if configured
-        self._setup_intraday_schedule()
+        # Create appropriate schedule iterator
+        schedule_iterator = self._create_schedule_iterator()
         
-        # For regular (not intraday interval) schedules, set up fixed time runs
-        if not self.INTERVAL_PATTERN.match(self.intraday_schedule or ""):
-            # Check if the run_time is a market event-based time
-            is_market_time = self.MARKET_EVENT_PATTERN.match(self.run_time)
-            
-            if is_market_time:
-                # For market-based times, we need to calculate the actual time each day
-                for day in self.days:
-                    # Schedule a job to set up the day's market-based execution_complex
-                    getattr(schedule.every(), day.lower()).at("00:01").do(
-                        self._schedule_market_based_run, time_expr=self.run_time
-                    )
-                
-                logger.info(f"Scheduled market-based execution_complex at {self.run_time} on {', '.join(self.days)}")
-            else:
-                # For fixed times, we can schedule directly
-                for day in self.days:
-                    getattr(schedule.every(), day.lower()).at(self.run_time).do(self.run_once)
-                
-                logger.info(f"Scheduled execution_complex at {self.run_time} on {', '.join(self.days)}")
+        logger.info(f"Scheduled execution on {', '.join(self.days)}")
         
-        # Calculate and log time to next run
-        self._log_next_run_time()
+        # Get the first execution time
+        next_run_time = next(schedule_iterator)
+        
+        # Log when the next run will occur
+        self._log_next_run_time(next_run_time)
         
         # Run the scheduler indefinitely
-        while True:
-            schedule.run_pending()
-            time.sleep(60)  # Check every minute
+        try:
+            while True:
+                # Get the current time
+                now = pd.Timestamp.now(tz=schedule_iterator.timezone)
+                
+                # Check if it's time to run
+                if now >= next_run_time:
+                    # Check if today is in the configured days
+                    current_day = now.day_name()
+                    if current_day in self.days:
+                        logger.info(f"Executing scheduled run at {now}")
+                        self.run_once()
+                    else:
+                        logger.info(f"Skipping execution on {current_day} (not in configured days)")
+                    
+                    # Get the next execution time
+                    next_run_time = next(schedule_iterator)
+                    self._log_next_run_time(next_run_time)
+                
+                # Sleep to avoid busy waiting
+                time.sleep(60)  # Check every minute
+        except KeyboardInterrupt:
+            logger.info("Scheduler interrupted by user")
     
-    def _schedule_market_based_run(self, time_expr: str) -> None:
+    def _log_next_run_time(self, next_run_time: pd.Timestamp) -> None:
         """
-        Schedule a run based on market events for the current day.
+        Calculate and log the time until the next scheduled run.
         
-        Args:
-            time_expr: Market-based time expression
+        Parameters
+        ----------
+        next_run_time : pd.Timestamp
+            The next scheduled run time
         """
-        today = datetime.now(pytz.timezone(self.time_zone))
-        run_time = self._parse_time_expression(time_expr, today)
+        now = pd.Timestamp.now(tz=next_run_time.tzinfo)
+        time_diff = next_run_time - now
         
-        if not run_time:
-            logger.info(f"Cannot schedule {time_expr} for today as it's not a trading day")
-            return
+        # Convert to hours and minutes
+        seconds = time_diff.total_seconds()
+        hours, remainder = divmod(seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
         
-        # Only schedule if the time is in the future
-        now = datetime.now(pytz.timezone(self.time_zone))
-        if run_time > now:
-            # Convert to local time string for schedule library
-            time_str = run_time.astimezone(pytz.timezone(self.time_zone)).strftime('%H:%M')
-            
-            job = schedule.every().day.at(time_str).do(self.run_once)
-            self._scheduled_jobs.append(job)
-            logger.info(f"Scheduled market-based execution_complex at {time_str} today")
-    
-    def _log_next_run_time(self) -> None:
-        """Calculate and log the time until the next scheduled run."""
-        next_run = schedule.next_run()
-        if next_run:
-            now = datetime.now()
-            time_diff = next_run - now
-            hours, remainder = divmod(time_diff.seconds, 3600)
-            minutes, _ = divmod(remainder, 60)
-            logger.info(f"Next run scheduled in {hours} hours and {minutes} minutes at {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Next run scheduled in {int(hours)} hours and {int(minutes)} minutes at {next_run_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     def shutdown(self) -> None:
         """

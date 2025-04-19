@@ -13,37 +13,19 @@ from datetime import datetime
 from typing import Dict, List, Optional, Protocol, Tuple, TypedDict, Union
 
 import pandas as pd
+import numpy as np
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
+from portwine.execution_complex.broker import BrokerBase, Position, Order, AccountInfo
+from portwine.execution_complex.execution_utils import (
+    create_bar_dict, 
+    calculate_position_changes, 
+    generate_orders
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-
-class Position(TypedDict):
-    """Represents a position in a security."""
-    symbol: str
-    qty: float  # Quantity of shares/contracts
-    market_value: float  # Current market value of position
-    avg_entry_price: float  # Average entry price
-    unrealized_pl: float  # Unrealized profit/loss
-
-
-class Order(TypedDict):
-    """Represents a trade order."""
-    symbol: str
-    qty: float  # Positive for buy, negative for sell
-    order_type: str  # market, limit, etc.
-    time_in_force: str  # day, gtc, etc.
-    limit_price: Optional[float]  # For limit orders
-
-
-class AccountInfo(TypedDict):
-    """Represents account information."""
-    cash: float  # Available cash
-    portfolio_value: float  # Total portfolio value including cash
-    positions: Dict[str, Position]  # Current positions
 
 
 class ExecutionError(Exception):
@@ -69,14 +51,17 @@ class ExecutionBase(abc.ABC):
     1. Fetching latest market data
     2. Passing data to strategy to get updated weights
     3. Calculating position changes needed
-    4. Executing necessary trades
+    4. Executing necessary trades using a broker
     """
     
     def __init__(
         self,
         strategy: StrategyBase,
         market_data_loader: MarketDataLoader,
+        broker: BrokerBase,
         alternative_data_loader: Optional[MarketDataLoader] = None,
+        min_change_pct: float = 0.01,
+        min_order_value: float = 1.0,
     ):
         """
         Initialize the execution_complex instance.
@@ -87,249 +72,70 @@ class ExecutionBase(abc.ABC):
             The strategy implementation to use for generating trading signals
         market_data_loader : MarketDataLoader
             Market data loader for price data
-        alternative_data_loader : MarketDataLoader, optional
-            Alternative data loader for other data sources
+        broker : BrokerBase
+            Broker implementation for executing trades
+        alternative_data_loader : Optional[MarketDataLoader]
+            Additional data loader for alternative data
+        min_change_pct : float, default 0.01
+            Minimum change percentage required to trigger a trade
+        min_order_value : float, default 1.0
+            Minimum dollar value required for an order
         """
         self.strategy = strategy
         self.market_data_loader = market_data_loader
+        self.broker = broker
         self.alternative_data_loader = alternative_data_loader
-        self.last_step_time: Optional[pd.Timestamp] = None
-    
-    @abc.abstractmethod
-    def get_account_info(self) -> AccountInfo:
-        """
-        Get current account information including cash, portfolio value, and positions.
+        self.min_change_pct = min_change_pct
+        self.min_order_value = min_order_value
         
-        Returns
-        -------
-        AccountInfo
-            Dictionary with account information
-        """
-        pass
+        # Initialize ticker list from strategy
+        self.tickers = strategy.tickers
+        
+        logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
     
-    @abc.abstractmethod
-    def execute_order(self, order: Order) -> bool:
+    def fetch_latest_data(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, Optional[Dict[str, float]]]:
         """
-        Execute a single order.
+        Fetch latest market data for the tickers in the strategy.
         
         Parameters
         ----------
-        order : Order
-            Order to execute
+        timestamp : Optional[pd.Timestamp]
+            Timestamp to get data for, or current time if None
             
         Returns
         -------
-        bool
-            True if order was successfully submitted, False otherwise
+        Dict[str, Optional[Dict[str, float]]]
+            Dictionary of latest bar data for each ticker
         
-        Raises
-        ------
-        OrderExecutionError
-            If order execution_complex fails
-        """
-        pass
-    
-    def execute_orders(self, orders: List[Order]) -> Dict[str, bool]:
-        """
-        Execute multiple orders.
-        
-        Parameters
-        ----------
-        orders : List[Order]
-            List of orders to execute
-            
-        Returns
-        -------
-        Dict[str, bool]
-            Dictionary mapping symbol to execution_complex success
-        """
-        results = {}
-        for order in orders:
-            try:
-                success = self.execute_order(order)
-                results[order["symbol"]] = success
-            except OrderExecutionError as e:
-                logger.error(f"Failed to execute order for {order['symbol']}: {e}")
-                results[order["symbol"]] = False
-        return results
-    
-    def fetch_latest_data(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, dict]:
-        """
-        Fetch latest data for all tickers in the strategy.
-        
-        Parameters
-        ----------
-        timestamp : pd.Timestamp, optional
-            Timestamp to fetch data for, defaults to now
-            
-        Returns
-        -------
-        Dict[str, dict]
-            Dictionary of ticker data in the format expected by strategy.step()
-            
         Raises
         ------
         DataFetchError
-            If data fetching fails
+            If data cannot be fetched
         """
-        timestamp = timestamp or pd.Timestamp.now()
-        
-        # Split tickers into regular and alternative (if format includes ":")
-        reg_tickers = [t for t in self.strategy.tickers if ":" not in t]
-        alt_tickers = [t for t in self.strategy.tickers if ":" in t]
-        
         try:
-            # Get regular market data
-            if reg_tickers:
-                if hasattr(self.market_data_loader, "next"):
-                    bar_data = self.market_data_loader.next(reg_tickers, timestamp)
-                else:
-                    reg_data = self.market_data_loader.fetch_data(reg_tickers)
-                    bar_data = self._create_bar_dict(timestamp, reg_data)
-            else:
-                bar_data = {}
+            # Use the provided timestamp or current time
+            if timestamp is None:
+                timestamp = pd.Timestamp.now(tz='UTC')
+                
+            # Get latest data from market data loader
+            data = self.market_data_loader.next(self.tickers, timestamp)
             
-            # Get alternative data if available
-            if alt_tickers and self.alternative_data_loader:
-                if hasattr(self.alternative_data_loader, "next"):
-                    alt_data = self.alternative_data_loader.next(alt_tickers, timestamp)
-                    bar_data.update(alt_data)
-                else:
-                    alt_df_dict = self.alternative_data_loader.fetch_data(alt_tickers)
-                    alt_bar_data = self._create_bar_dict(timestamp, alt_df_dict)
-                    bar_data.update(alt_bar_data)
+            # Also fetch alternative data if available
+            if self.alternative_data_loader is not None:
+                alt_data = self.alternative_data_loader.next(self.tickers, timestamp)
+                # Merge alternative data with market data
+                for ticker, ticker_data in alt_data.items():
+                    if ticker in data and data[ticker] is not None:
+                        data[ticker].update(ticker_data)
             
-            return bar_data
-        
+            return data
         except Exception as e:
+            logger.exception(f"Error fetching latest data: {e}")
             raise DataFetchError(f"Failed to fetch latest data: {e}")
-    
-    def _create_bar_dict(self, ts: pd.Timestamp, data: Dict[str, pd.DataFrame]) -> Dict[str, dict]:
-        """
-        Create a bar dictionary for strategy.step() from dataframes.
-        
-        Parameters
-        ----------
-        ts : pd.Timestamp
-            Timestamp to get data for
-        data : Dict[str, pd.DataFrame]
-            Dictionary of ticker dataframes
-            
-        Returns
-        -------
-        Dict[str, dict]
-            Dictionary of bar data
-        """
-        out = {}
-        for ticker, df in data.items():
-            # Find the most recent data point at or before the timestamp
-            if df is not None and not df.empty:
-                idx = df.index
-                pos = idx.searchsorted(ts, side="right") - 1
-                if pos >= 0:
-                    row = df.iloc[pos]
-                    out[ticker] = {
-                        "open": float(row.get("open", row.get("close", 0))),
-                        "high": float(row.get("high", row.get("close", 0))),
-                        "low": float(row.get("low", row.get("close", 0))),
-                        "close": float(row.get("close", 0)),
-                        "volume": float(row.get("volume", 0)),
-                    }
-                else:
-                    out[ticker] = None
-            else:
-                out[ticker] = None
-        return out
-    
-    def calculate_position_changes(
-        self, target_weights: Dict[str, float], account_info: AccountInfo
-    ) -> Dict[str, float]:
-        """
-        Calculate required position changes based on target weights and current positions.
-        
-        Parameters
-        ----------
-        target_weights : Dict[str, float]
-            Target portfolio weights for each ticker
-        account_info : AccountInfo
-            Current account information
-            
-        Returns
-        -------
-        Dict[str, float]
-            Required position changes in dollars for each ticker
-        """
-        portfolio_value = account_info["portfolio_value"]
-        current_positions = account_info["positions"]
-        
-        # Calculate current weights
-        current_weights = {}
-        for symbol, position in current_positions.items():
-            current_weights[symbol] = position["market_value"] / portfolio_value if portfolio_value > 0 else 0
-        
-        # Calculate target dollar values
-        target_values = {}
-        for symbol, weight in target_weights.items():
-            target_values[symbol] = weight * portfolio_value
-        
-        # Calculate required changes
-        changes = {}
-        for symbol in set(target_weights.keys()) | set(current_positions.keys()):
-            target_value = target_values.get(symbol, 0)
-            current_value = current_positions.get(symbol, {}).get("market_value", 0)
-            changes[symbol] = target_value - current_value
-        
-        return changes
-    
-    def generate_orders(
-        self, position_changes: Dict[str, float], prices: Dict[str, float]
-    ) -> List[Order]:
-        """
-        Generate orders from position changes.
-        
-        Parameters
-        ----------
-        position_changes : Dict[str, float]
-            Required position changes in dollars
-        prices : Dict[str, float]
-            Current prices for each ticker
-            
-        Returns
-        -------
-        List[Order]
-            List of orders to execute
-        """
-        orders = []
-        for symbol, dollar_change in position_changes.items():
-            if abs(dollar_change) < 1.0:  # Skip very small changes
-                continue
-                
-            price = prices.get(symbol)
-            if not price or price <= 0:
-                logger.warning(f"No valid price for {symbol}, skipping order")
-                continue
-                
-            # Calculate share quantity
-            qty = dollar_change / price
-            
-            # Round to nearest whole share
-            qty = round(qty)
-            
-            if qty != 0:
-                order: Order = {
-                    "symbol": symbol,
-                    "qty": qty,
-                    "order_type": "market",
-                    "time_in_force": "day",
-                    "limit_price": None,
-                }
-                orders.append(order)
-        
-        return orders
     
     def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
         """
-        Get current prices for a list of symbols.
+        Get current prices for the specified symbols.
         
         Parameters
         ----------
@@ -339,56 +145,118 @@ class ExecutionBase(abc.ABC):
         Returns
         -------
         Dict[str, float]
-            Dictionary mapping symbols to current prices
+            Dictionary mapping symbols to their current prices
         """
         data = self.fetch_latest_data()
         prices = {}
+        
         for symbol in symbols:
             if symbol in data and data[symbol] is not None:
-                prices[symbol] = data[symbol]["close"]
+                price = data[symbol].get('close')
+                if price is not None:
+                    prices[symbol] = price
+        
         return prices
     
     def step(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, bool]:
         """
-        Execute a single step of the execution_complex process.
+        Execute a single step of the trading strategy.
+        
+        This method:
+        1. Checks if market is open
+        2. Fetches latest data
+        3. Gets new signals from the strategy
+        4. Calculates position changes
+        5. Executes necessary trades
         
         Parameters
         ----------
-        timestamp : pd.Timestamp, optional
-            Timestamp to execute step for, defaults to now
+        timestamp : Optional[pd.Timestamp]
+            Timestamp to execute at, or current time if None
             
         Returns
         -------
         Dict[str, bool]
-            Dictionary mapping symbols to execution_complex success
+            Dictionary mapping symbols to trade execution_complex success/failure
         """
-        timestamp = timestamp or pd.Timestamp.now()
-        self.last_step_time = timestamp
+        if timestamp is None:
+            timestamp = pd.Timestamp.now(tz='UTC')
+            
+        logger.info(f"Executing step at {timestamp}")
+        
+        # Check if market is open
+        is_open = self.broker.check_market_status()
+        if not is_open:
+            logger.warning("Market is closed, skipping execution")
+            return {}
         
         try:
-            # 1. Fetch latest data
-            bar_data = self.fetch_latest_data(timestamp)
+            # Fetch latest data
+            latest_data = self.fetch_latest_data(timestamp)
             
-            # 2. Get signals from strategy
-            target_weights = self.strategy.step(timestamp, bar_data)
+            # Get target allocations from strategy
+            self.strategy.step(timestamp, latest_data)
+            target_weights = self.strategy.generate_signals()
             
-            # 3. Get current account info
-            account_info = self.get_account_info()
+            logger.info(f"Strategy generated target weights: {target_weights}")
             
-            # 4. Calculate position changes
-            position_changes = self.calculate_position_changes(target_weights, account_info)
+            # Get current account information
+            account_info = self.broker.get_account_info()
             
-            # 5. Get current prices for all symbols that need changes
-            current_prices = self.get_current_prices(list(position_changes.keys()))
+            # Calculate position changes needed
+            current_positions = {symbol: position.get('qty', 0) 
+                               for symbol, position in account_info.get('positions', {}).items()}
             
-            # 6. Generate orders
-            orders = self.generate_orders(position_changes, current_prices)
+            # Convert weights to target position sizes
+            portfolio_value = account_info.get('portfolio_value', 0)
+            prices = self.get_current_prices(self.tickers)
             
-            # 7. Execute orders
-            results = self.execute_orders(orders)
+            target_positions = {}
+            for symbol, weight in target_weights.items():
+                if symbol in prices and prices[symbol] > 0:
+                    target_value = weight * portfolio_value
+                    target_positions[symbol] = target_value / prices[symbol]
+            
+            # Calculate changes needed
+            position_changes = calculate_position_changes(target_positions, current_positions)
+            
+            if not position_changes:
+                logger.info("No position changes required")
+                return {}
+                
+            logger.info(f"Position changes: {position_changes}")
+            
+            # Generate orders
+            orders = generate_orders(position_changes)
+            
+            # Execute orders
+            results = {}
+            for order in orders:
+                symbol = order['symbol']
+                qty = order['qty']
+                order_type = order.get('order_type', 'market')
+                
+                logger.info(f"Executing order: {symbol} {qty} shares")
+                
+                try:
+                    # Execute the order using the broker
+                    success = self.broker.execute_order(
+                        symbol=symbol,
+                        qty=qty,
+                        order_type=order_type
+                    )
+                    results[symbol] = success
+                    
+                    if success:
+                        logger.info(f"Successfully executed order for {symbol}")
+                    else:
+                        logger.error(f"Failed to execute order for {symbol}")
+                except Exception as e:
+                    logger.exception(f"Error executing order for {symbol}: {e}")
+                    results[symbol] = False
             
             return results
             
         except Exception as e:
-            logger.error(f"Error in execution_complex step: {e}")
-            raise 
+            logger.exception(f"Error in step execution: {e}")
+            return {} 
