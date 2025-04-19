@@ -12,22 +12,17 @@ from datetime import datetime, timezone
 class AccountInfo:
     """Container for account information."""
     
-    def __init__(self, cash: float, portfolio_value: float = None, equity: float = None, 
-                 buying_power: float = None, positions: Dict[str, Any] = None):
+    def __init__(self, cash: float, portfolio_value: float, positions: Dict[str, Any]):
         """Initialize with account details.
         
         Args:
             cash: Available cash balance
             portfolio_value: Total portfolio value including cash and positions
-            equity: Total account equity (alias for portfolio_value)
-            buying_power: Available buying power
             positions: Dictionary of positions by symbol
         """
         self.cash = cash
-        # Allow equity as an alias for portfolio_value
-        self.portfolio_value = portfolio_value if portfolio_value is not None else equity
-        self.buying_power = buying_power if buying_power is not None else cash
-        self.positions = positions if positions is not None else {}
+        self.portfolio_value = portfolio_value
+        self.positions = positions
 
 
 class Position:
@@ -63,45 +58,25 @@ class Order:
     def __init__(
         self,
         symbol: str,
-        qty: float = None,
-        quantity: float = None,
-        order_type: str = "market",
+        qty: float,
+        order_type: str,
         limit_price: Optional[float] = None,
-        time_in_force: str = "day",
-        id: Optional[str] = None,
-        status: Optional[str] = None,
-        filled_quantity: Optional[float] = None,
-        filled_avg_price: Optional[float] = None,
-        side: Optional[str] = None,
-        created_at: Optional[datetime] = None
+        time_in_force: str = "day"
     ):
         """Initialize with order details.
         
         Args:
             symbol: The ticker symbol
             qty: Number of shares to buy/sell (negative for sell)
-            quantity: Alias for qty
             order_type: One of: market, limit, stop, stop_limit
             limit_price: Price for limit orders
             time_in_force: One of: day, gtc, ioc, fok
-            id: Order ID
-            status: Order status
-            filled_quantity: Quantity filled
-            filled_avg_price: Average fill price
-            side: Order side (buy/sell)
-            created_at: Order creation time
         """
         self.symbol = symbol
-        self.qty = qty if qty is not None else quantity
+        self.qty = qty
         self.order_type = order_type
         self.limit_price = limit_price
         self.time_in_force = time_in_force
-        self.id = id
-        self.status = status
-        self.filled_quantity = filled_quantity
-        self.filled_avg_price = filled_avg_price
-        self.side = side
-        self.created_at = created_at
 
 
 class BrokerBase(ABC):
