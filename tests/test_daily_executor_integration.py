@@ -243,8 +243,9 @@ class TestDailyExecutorIntegration(unittest.TestCase):
             # Initialize components
             executor.initialize()
             
-            # Mock the schedule setup methods
-            with patch('portwine.utils.daily_executor.schedule') as mock_schedule:
+            # Mock the schedule setup methods and _log_next_run_time
+            with patch('portwine.utils.daily_executor.schedule') as mock_schedule, \
+                 patch.object(executor, '_log_next_run_time') as mock_log_next_run:
                 # Configure mock run_pending to exit the loop
                 mock_schedule.run_pending.side_effect = KeyboardInterrupt
                 
@@ -299,8 +300,9 @@ class TestDailyExecutorIntegration(unittest.TestCase):
             executor = DailyExecutor(market_config)
             executor.initialize()
             
-            # Mock time expression parsing and schedule module
-            with patch('portwine.utils.daily_executor.schedule') as mock_schedule:
+            # Mock time expression parsing, schedule module, and _log_next_run_time
+            with patch('portwine.utils.daily_executor.schedule') as mock_schedule, \
+                 patch.object(executor, '_log_next_run_time') as mock_log_next_run:
                 # Configure mock run_pending to exit the loop
                 mock_schedule.run_pending.side_effect = KeyboardInterrupt
                 

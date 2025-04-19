@@ -9,7 +9,7 @@
         }
     },
     "execution": {
-        "class": "portwine.execution_alpaca.AlpacaExecution",
+        "class": "portwine.execution_complex.AlpacaExecution",
         "params": {
             "paper_trading": true,
             "api_key": "YOUR_ALPACA_API_KEY",
