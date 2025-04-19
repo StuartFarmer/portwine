@@ -195,9 +195,8 @@ class ExecutionBase(abc.ABC):
             latest_data = self.fetch_latest_data(timestamp)
             
             # Get target allocations from strategy
-            self.strategy.step(timestamp, latest_data)
-            target_weights = self.strategy.generate_signals()
-            
+            target_weights = self.strategy.step(timestamp, latest_data)
+
             logger.info(f"Strategy generated target weights: {target_weights}")
             
             # Get current account information

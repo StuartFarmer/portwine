@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from portwine.execution_complex.execution_base import ExecutionBase
+from portwine.execution_complex.base import ExecutionBase
 from portwine.execution_complex.broker import BrokerBase, AccountInfo, Position, Order
 from portwine.utils.market_calendar import MarketStatus
 
