@@ -11,7 +11,7 @@ import abc
 import logging
 import warnings
 from datetime import datetime
-from typing import Dict, List, Optional, Protocol, Tuple, TypedDict, Union, Any
+from typing import Dict, List, Optional, Protocol, Tuple, TypedDict, Union, Any, Iterator
 from functools import wraps
 
 import pandas as pd
@@ -393,3 +393,22 @@ class ExecutionBase(abc.ABC):
         # Determine orders and execute them
         orders = self._target_positions_to_orders(target_positions, current_positions)
         return self._execute_orders(orders)
+
+    def run(self, schedule: Iterator[int]) -> None:
+        """
+        Continuously execute `step` at each timestamp provided by the schedule iterator,
+        waiting until the scheduled time before running.
+
+        Args:
+            schedule: An iterator yielding UNIX timestamps in milliseconds for when to run each step.
+
+        The loop terminates when the iterator is exhausted (StopIteration).
+        """
+        for timestamp_ms in schedule:
+            # compute time until next scheduled timestamp
+            now_ms = int(time.time() * 1000)
+            wait_ms = timestamp_ms - now_ms
+            if wait_ms > 0:
+                time.sleep(wait_ms / 1000)
+            # execute step at or after scheduled time
+            self.step(timestamp_ms)
