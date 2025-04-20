@@ -13,7 +13,6 @@ class TestIntervalScheduleReal(unittest.TestCase):
         self.end = '2023-03-21'
 
     def test_error_interval_on_close_real(self):
-        # Cannot specify interval_seconds on close-only schedule
         with self.assertRaises(ValueError):
             list(daily_schedule(
                 after_open_minutes=None,
@@ -135,6 +134,114 @@ class TestIntervalScheduleReal(unittest.TestCase):
             expected.append(int(end_dt.timestamp() * 1000))
         self.assertEqual(result, expected)
 
+
+class TestDailyScheduleReal(unittest.TestCase):
+    def setUp(self):
+        self.calendar_name = 'NYSE'
+        # pick a known recent trading day
+        self.test_date = '2023-03-20'
+
+    def test_on_open_only_real(self):
+        # 5 minutes after market open
+        after = 5
+        gen = daily_schedule(
+            after_open_minutes=after,
+            before_close_minutes=None,
+            calendar_name=self.calendar_name,
+            start_date=self.test_date,
+            end_date=self.test_date
+        )
+        result = list(gen)
+        # Fetch actual calendar open time
+        cal = mcal.get_calendar(self.calendar_name)
+        sched = cal.schedule(start_date=self.test_date, end_date=self.test_date)
+        open_ts = sched['market_open'].iloc[0] + timedelta(minutes=after)
+        expected = [int(open_ts.timestamp() * 1000)]
+        self.assertEqual(result, expected)
+
+    def test_on_close_only_real(self):
+        # 10 minutes before market close
+        before = 10
+        gen = daily_schedule(
+            after_open_minutes=None,
+            before_close_minutes=before,
+            calendar_name=self.calendar_name,
+            start_date=self.test_date,
+            end_date=self.test_date
+        )
+        result = list(gen)
+        cal = mcal.get_calendar(self.calendar_name)
+        sched = cal.schedule(start_date=self.test_date, end_date=self.test_date)
+        close_ts = sched['market_close'].iloc[0] - timedelta(minutes=before)
+        expected = [int(close_ts.timestamp() * 1000)]
+        self.assertEqual(result, expected)
+
+    def test_open_and_close_real(self):
+        # 15 min after open, 20 min before close
+        after = 15
+        before = 20
+        gen = daily_schedule(
+            after_open_minutes=after,
+            before_close_minutes=before,
+            calendar_name=self.calendar_name,
+            start_date=self.test_date,
+            end_date=self.test_date
+        )
+        result = list(gen)
+        cal = mcal.get_calendar(self.calendar_name)
+        sched = cal.schedule(start_date=self.test_date, end_date=self.test_date)
+        open_ts = sched['market_open'].iloc[0] + timedelta(minutes=after)
+        close_ts = sched['market_close'].iloc[0] - timedelta(minutes=before)
+        expected = [int(open_ts.timestamp() * 1000), int(close_ts.timestamp() * 1000)]
+        self.assertEqual(result, expected)
+
+    def test_neither_offset_raises(self):
+        with self.assertRaises(ValueError):
+            list(daily_schedule(
+                after_open_minutes=None,
+                before_close_minutes=None,
+                calendar_name=self.calendar_name,
+                start_date=self.test_date,
+                end_date=self.test_date
+            ))
+
+    def test_start_and_end_date_range(self):
+        # Range of two days should yield 2 events each for open-only
+        after = 3
+        start = '2023-03-20'
+        end = '2023-03-21'
+        gen = daily_schedule(
+            after_open_minutes=after,
+            before_close_minutes=None,
+            calendar_name=self.calendar_name,
+            start_date=start,
+            end_date=end
+        )
+        result = list(gen)
+        cal = mcal.get_calendar(self.calendar_name)
+        sched = cal.schedule(start_date=start, end_date=end)
+        expected = [int((ts + timedelta(minutes=after)).timestamp() * 1000)
+                    for ts in sched['market_open']]
+        self.assertEqual(result, expected)
+
+    def test_end_date_stopiteration_real(self):
+        # Single-day on-close, check StopIteration after one
+        before = 1
+        gen = daily_schedule(
+            after_open_minutes=None,
+            before_close_minutes=before,
+            calendar_name=self.calendar_name,
+            start_date=self.test_date,
+            end_date=self.test_date
+        )
+        it = iter(gen)
+        first = next(it)
+        with self.assertRaises(StopIteration):
+            next(it)
+
+
+if __name__ == '__main__':
+    unittest.main()
 
 if __name__ == '__main__':
     unittest.main() 
