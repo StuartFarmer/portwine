@@ -16,6 +16,7 @@ from functools import wraps
 
 import pandas as pd
 import numpy as np
+import math
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
@@ -42,6 +43,11 @@ class OrderExecutionError(ExecutionError):
 
 class DataFetchError(ExecutionError):
     """Exception raised when data fetching fails."""
+    pass
+
+
+class PortfolioExceededError(ExecutionError):
+    """Raised when current portfolio weights exceed 100% of portfolio value."""
     pass
 
 
@@ -100,6 +106,21 @@ class ExecutionBase(abc.ABC):
         
         logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
     
+    @staticmethod
+    def _split_tickers(tickers: List[str]) -> Tuple[List[str], List[str]]:
+        """
+        Split full ticker list into regular and alternative tickers.
+        Regular tickers have no ':'; alternative contain ':'
+        """
+        reg: List[str] = []
+        alt: List[str] = []
+        for t in tickers:
+            if isinstance(t, str) and ":" in t:
+                alt.append(t)
+            else:
+                reg.append(t)
+        return reg, alt
+
     def fetch_latest_data(self, timestamp: Optional[float] = None) -> Dict[str, Optional[Dict[str, float]]]:
         """
         Fetch latest market data for the tickers in the strategy.
@@ -126,16 +147,17 @@ class ExecutionBase(abc.ABC):
             else:
                 # timestamp is seconds since epoch
                 dt = datetime.fromtimestamp(timestamp, tz=self.timezone)
-            # Get latest data from market data loader (expects datetime)
-            data = self.market_data_loader.next(self.tickers, dt)
-            
-            # Also fetch alternative data if available
-            if self.alternative_data_loader is not None:
-                alt_data = self.alternative_data_loader.next(self.tickers, dt)
-                # Merge alternative data with market data
-                for ticker, ticker_data in alt_data.items():
-                    if ticker in data and data[ticker] is not None:
-                        data[ticker].update(ticker_data)
+            # Strip tzinfo for loader to match tz-naive indices
+            loader_dt = dt.replace(tzinfo=None)
+            # Split tickers into market vs alternative
+            reg_tkrs, alt_tkrs = self._split_tickers(self.tickers)
+            # Fetch market data only for regular tickers
+            data = self.market_data_loader.next(reg_tkrs, loader_dt)
+            # Fetch alternative data only for alternative tickers
+            if self.alternative_data_loader is not None and alt_tkrs:
+                alt_data = self.alternative_data_loader.next(alt_tkrs, loader_dt)
+                # Merge alternative entries into result
+                data.update(alt_data)
             
             return data
         except Exception as e:
@@ -144,27 +166,24 @@ class ExecutionBase(abc.ABC):
     
     def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
         """
-        Get current prices for the specified symbols.
-        
-        Parameters
-        ----------
-        symbols : List[str]
-            List of symbols to get prices for
-            
-        Returns
-        -------
-        Dict[str, float]
-            Dictionary mapping symbols to their current prices
+        Get current closing prices for the specified symbols by querying only market data.
+
+        This method bypasses alternative data and directly uses market_data_loader.next
+        with a timezone-naive datetime matching the execution timezone.
         """
-        data = self.fetch_latest_data()
-        prices = {}
-        
-        for symbol in symbols:
-            if symbol in data and data[symbol] is not None:
-                price = data[symbol].get('close')
-                if price is not None:
-                    prices[symbol] = price
-        
+        # Build current datetime in execution timezone
+        dt = datetime.now(tz=self.timezone)
+        # Align to loader timezone (no-op if same) and strip tzinfo
+        loader_dt = dt.astimezone(self.timezone).replace(tzinfo=None)
+        # Fetch only market data for given symbols
+        data = self.market_data_loader.next(symbols, loader_dt)
+        prices: Dict[str, float] = {}
+        for symbol, bar in data.items():
+            if bar is None:
+                continue
+            price = bar.get('close')
+            if price is not None:
+                prices[symbol] = price
         return prices
     
     def _get_current_positions(self) -> Tuple[Dict[str, float], float]:
@@ -184,11 +203,17 @@ class ExecutionBase(abc.ABC):
         
         return current_positions, portfolio_value
 
-    def _calculate_target_positions(self, target_weights: Dict[str, float], 
-                                  portfolio_value: float, 
-                                  prices: Dict[str, float]) -> Dict[str, float]:
+    def _calculate_target_positions(
+        self,
+        target_weights: Dict[str, float],
+        portfolio_value: float,
+        prices: Dict[str, float],
+        fractional: bool = True,
+    ) -> Dict[str, float]:
         """
         Convert target weights to absolute position sizes.
+        
+        Optionally prevent fractional shares by rounding down when `fractional=False`.
         
         Parameters
         ----------
@@ -198,7 +223,9 @@ class ExecutionBase(abc.ABC):
             Current portfolio value
         prices : Dict[str, float]
             Current prices for each ticker
-            
+        fractional : bool, default True
+            If False, positions are floored to the nearest integer
+        
         Returns
         -------
         Dict[str, float]
@@ -206,10 +233,54 @@ class ExecutionBase(abc.ABC):
         """
         target_positions = {}
         for symbol, weight in target_weights.items():
-            if symbol in prices and prices[symbol] > 0:
-                target_value = weight * portfolio_value
-                target_positions[symbol] = target_value / prices[symbol]
+            price = prices.get(symbol)
+            if price is None or price <= 0:
+                continue
+            target_value = weight * portfolio_value
+            raw_qty = target_value / price
+            if fractional:
+                qty = raw_qty
+            else:
+                qty = math.floor(raw_qty)
+            target_positions[symbol] = qty
         return target_positions
+
+    def _calculate_current_weights(
+        self,
+        positions: List[Tuple[str, float]],
+        portfolio_value: float,
+        prices: Dict[str, float],
+        raises: bool = False,
+    ) -> Dict[str, float]:
+        """
+        Calculate current weights of positions based on prices and portfolio value.
+
+        Args:
+            positions: List of (ticker, quantity) tuples.
+            portfolio_value: Total portfolio value.
+            prices: Mapping of ticker to current price.
+            raises: If True, raise PortfolioExceededError when total weights > 1.
+
+        Returns:
+            Dict[ticker, weight] mapping.
+
+        Raises:
+            PortfolioExceededError: If raises=True and sum(weights) > 1.
+        """
+        # Map positions
+        pos_map: Dict[str, float] = {t: q for t, q in positions}
+        weights: Dict[str, float] = {}
+        total: float = 0.0
+        for ticker, price in prices.items():
+            qty = pos_map.get(ticker, 0.0)
+            w = (price * qty) / portfolio_value if portfolio_value else 0.0
+            weights[ticker] = w
+            total += w
+        if raises and total > 1.0:
+            raise PortfolioExceededError(
+                f"Total weights {total:.2f} exceed 1.0"
+            )
+        return weights
 
     def _execute_orders(self, orders: List[Dict[str, Any]]) -> Dict[str, bool]:
         """
