@@ -17,6 +17,8 @@ from functools import wraps
 import pandas as pd
 import numpy as np
 import math
+import time
+from datetime import datetime
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
@@ -286,140 +288,108 @@ class ExecutionBase(abc.ABC):
         self,
         target_positions: Dict[str, float],
         current_positions: Dict[str, float],
-    ) -> List[List[str]]:
+    ) -> List[Order]:
         """
-        Determine necessary orders given target and current positions.
+        Determine necessary orders given target and current positions, returning Order objects.
 
         Args:
             target_positions: Mapping ticker -> desired quantity
             current_positions: Mapping ticker -> existing quantity
 
         Returns:
-            List of [ticker, quantity_str, side] for each non-zero change.
+            List of Order dataclasses for each non-zero change.
         """
-        orders: List[List[str]] = []
+        orders: List[Order] = []
         for ticker, target_qty in target_positions.items():
             current_qty = current_positions.get(ticker, 0.0)
             diff = target_qty - current_qty
-            if diff > 0:
-                orders.append([ticker, str(int(diff)), 'buy'])
-            elif diff < 0:
-                orders.append([ticker, str(int(abs(diff))), 'sell'])
+            if diff == 0:
+                continue
+            side = 'buy' if diff > 0 else 'sell'
+            qty = abs(int(diff))
+            # Build an Order dataclass with default/trivial values for non-relevant fields
+            order = Order(
+                order_id="",
+                ticker=ticker,
+                side=side,
+                quantity=float(qty),
+                order_type="market",
+                status="new",
+                time_in_force="day",
+                average_price=0.0,
+                remaining_quantity=0.0,
+                created_at=0,
+                last_updated_at=0,
+            )
+            orders.append(order)
         return orders
 
-    def _execute_orders(self, orders: List[Dict[str, Any]]) -> Dict[str, bool]:
+    def _execute_orders(self, orders: List[Order]) -> List[Order]:
         """
-        Execute a list of orders through the broker.
-        
+        Execute a list of Order objects through the broker.
+
         Parameters
         ----------
-        orders : List[Dict[str, Any]]
-            List of order specifications
-            
+        orders : List[Order]
+            List of Order dataclasses to submit.
+
         Returns
         -------
-        Dict[str, bool]
-            Execution results by symbol (True for success, False for failure)
-            
-        Raises
-        ------
-        OrderExecutionError
-            If any order is missing required fields like quantity
+        List[Order]
+            List of updated Order objects returned by the broker.
         """
-        results = {}
+        executed_orders: List[Order] = []
         for order in orders:
-            symbol = order['symbol']
-            qty = order.get('qty')  # Use get() to safely handle missing qty
-            
-            if qty is None:
-                raise OrderExecutionError(f"Missing quantity for order: {symbol}")
-            
-            logger.info(f"Executing order: {symbol} {qty} shares")
-            
-            try:
-                # Determine the side (BUY for positive qty, SELL for negative)
-                side = OrderSide.BUY if qty > 0 else OrderSide.SELL
-                
-                # Execute the order using the broker
-                executed_order = self.broker.submit_order(
-                    symbol=symbol,
-                    quantity=abs(qty),
-                )
-                results[symbol] = True
-                logger.info(f"Successfully executed order for {symbol}")
-            except BrokerOrderExecutionError as e:
-                logger.error(f"Failed to execute order for {symbol}: {e}")
-                results[symbol] = False
-            except Exception as e:
-                logger.exception(f"Error executing order for {symbol}: {e}")
-                results[symbol] = False
-        
-        return results
+            # Determine signed quantity: negative for sell, positive for buy
+            qty_arg = order.quantity if order.side == 'buy' else -order.quantity
+            # Submit each order and collect the updated result
+            updated = self.broker.submit_order(
+                symbol=order.ticker,
+                quantity=qty_arg,
+            )
+            # Restore expected positive quantity and original side
+            updated.quantity = order.quantity
+            updated.side = order.side
+            executed_orders.append(updated)
+        return executed_orders
     
-    def step(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, bool]:
+    def step(self, timestamp_ms: Optional[int] = None) -> List[Order]:
         """
         Execute a single step of the trading strategy.
-        
-        This method:
-        1. Checks if market is open
-        2. Fetches latest data
-        3. Gets new signals from the strategy
-        4. Calculates position changes
-        5. Executes necessary trades
-        
-        Parameters
-        ----------
-        timestamp : Optional[pd.Timestamp]
-            Timestamp to execute at, or current time if None
-            
-        Returns
-        -------
-        Dict[str, bool]
-            Dictionary mapping symbols to trade execution success/failure
+
+        Uses a UNIX timestamp in milliseconds; if None, uses current time.
+
+        Returns a list of updated Order objects.
         """
-        if timestamp is None:
-            timestamp = pd.Timestamp.now(tz='UTC')
-            
-        logger.info(f"Executing step at {timestamp}")
-        
+
+        # Determine timestamp in ms
+        if timestamp_ms is None:
+            timestamp_ms = int(time.time() * 1000)
+        # Convert ms to datetime in execution timezone
+        dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=self.timezone)
+
         # Check if market is open
-        is_open = self.broker.check_market_status()
-        if not is_open:
-            logger.warning("Market is closed, skipping execution")
-            return {}
-        
-        try:
-            # Fetch latest data
-            latest_data = self.fetch_latest_data(timestamp)
-            
-            # Get target allocations from strategy
-            target_weights = self.strategy.step(timestamp, latest_data)
-            logger.info(f"Strategy generated target weights: {target_weights}")
-            
-            # Get current positions and portfolio value
-            current_positions, portfolio_value = self._get_current_positions()
-            
-            # Get current prices
-            prices = self.get_current_prices(self.tickers)
-            
-            # Calculate target positions
-            target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices)
-            
-            # Calculate changes needed
-            position_changes = calculate_position_changes(target_positions, current_positions)
-            
-            if not position_changes:
-                logger.info("No position changes required")
-                return {}
-                
-            logger.info(f"Position changes: {position_changes}")
-            
-            # Generate orders
-            orders = generate_orders(position_changes)
-            
-            # Execute orders
-            return self._execute_orders(orders)
-            
-        except Exception as e:
-            logger.exception(f"Error in step execution: {e}")
-            return {} 
+        if not self.broker.market_is_open(dt):
+            return []
+
+        # Fetch latest market data
+        latest_data = self.fetch_latest_data(dt.timestamp())
+        # Get target weights from strategy
+        target_weights = self.strategy.step(dt, latest_data)
+        # Get current positions and portfolio value
+        current_positions, portfolio_value = self._get_current_positions()
+        # Extract prices from fetched data
+        prices = {
+            symbol: bar['close']
+            for symbol, bar in latest_data.items() if bar and 'close' in bar
+        }
+        # Compute target positions and optionally current weights
+        target_positions = self._calculate_target_positions(
+            target_weights, portfolio_value, prices
+        )
+        _ = self._calculate_current_weights(
+            list(current_positions.items()), portfolio_value, prices
+        )
+        # Determine orders and execute them
+        orders = self._target_positions_to_orders(target_positions, current_positions)
+        return self._execute_orders(orders)

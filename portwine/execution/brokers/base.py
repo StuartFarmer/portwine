@@ -108,7 +108,6 @@ class BrokerBase(ABC):
         Args:
             symbol: Trading pair symbol (e.g., 'BTCUSDT')
             quantity: Order quantity
-            side: Order side (BUY or SELL)
         
         Returns:
             Order object representing the executed order
@@ -116,5 +115,12 @@ class BrokerBase(ABC):
         Raises:
             ValueError: If the order parameters are invalid
             OrderExecutionError: If the order fails to execute
+        """
+        pass
+
+    @abstractmethod
+    def market_is_open(self, timestamp: datetime) -> bool:
+        """
+        Check if the market is open at the given datetime.
         """
         pass
