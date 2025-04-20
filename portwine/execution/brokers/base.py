@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Any
 @dataclass
 class Position:
     """Represents a trading position."""
-    symbol: str
+    ticker: str
     quantity: float
     last_updated_at: int # UNIX timestamp in second for last time the data was updated
 

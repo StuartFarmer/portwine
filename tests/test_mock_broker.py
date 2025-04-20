@@ -25,7 +25,7 @@ class TestMockBroker(unittest.TestCase):
     def test_get_position_not_held(self):
         pos = self.broker.get_position("AAPL")
         self.assertIsInstance(pos, Position)
-        self.assertEqual(pos.symbol, "AAPL")
+        self.assertEqual(pos.ticker, "AAPL")
         self.assertEqual(pos.quantity, 0.0)
 
     def test_submit_buy_updates_position_and_returns_order(self):

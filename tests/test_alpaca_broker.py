@@ -64,7 +64,7 @@ class TestAlpacaBroker(unittest.TestCase):
         resp = DummyResponse(ok=True, status_code=200, json_data={"symbol": "AAPL", "qty": "7"})
         self.session.get.return_value = resp
         pos = self.broker.get_position("AAPL")
-        self.assertEqual(pos.symbol, "AAPL")
+        self.assertEqual(pos.ticker, "AAPL")
         self.assertEqual(pos.quantity, 7.0)
 
     def test_get_position_not_found(self):
@@ -72,7 +72,7 @@ class TestAlpacaBroker(unittest.TestCase):
         resp = DummyResponse(ok=False, status_code=404)
         self.session.get.return_value = resp
         pos = self.broker.get_position("GOOG")
-        self.assertEqual(pos.symbol, "GOOG")
+        self.assertEqual(pos.ticker, "GOOG")
         self.assertEqual(pos.quantity, 0.0)
 
     def test_get_position_error(self):

@@ -62,7 +62,7 @@ class AlpacaBroker(BrokerBase):
         positions = {}
         for p in resp.json():
             positions[p["symbol"]] = Position(
-                symbol=p["symbol"],
+                ticker=p["symbol"],
                 quantity=float(p["qty"]),
                 last_updated_at=int(time.time() * 1000)
             )
@@ -72,11 +72,11 @@ class AlpacaBroker(BrokerBase):
         url = f"{self._base_url}/v2/positions/{ticker}"
         resp = self._session.get(url)
         if resp.status_code == 404:
-            return Position(symbol=ticker, quantity=0.0, last_updated_at=int(time.time() * 1000))
+            return Position(ticker=ticker, quantity=0.0, last_updated_at=int(time.time() * 1000))
         if not resp.ok:
             raise OrderExecutionError(f"Position fetch failed: {resp.text}")
         p = resp.json()
-        return Position(symbol=p["symbol"], quantity=float(p["qty"]), last_updated_at=int(time.time() * 1000))
+        return Position(ticker=p["symbol"], quantity=float(p["qty"]), last_updated_at=int(time.time() * 1000))
 
     def get_order(self, order_id: str) -> Order:
         url = f"{self._base_url}/v2/orders/{order_id}"

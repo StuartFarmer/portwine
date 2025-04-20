@@ -43,7 +43,7 @@ class MockBroker(BrokerBase):
         """
         return {
             symbol: Position(
-                symbol=pos.symbol,
+                ticker=pos.ticker,
                 quantity=pos.quantity,
                 last_updated_at=pos.last_updated_at
             )
@@ -58,9 +58,9 @@ class MockBroker(BrokerBase):
         pos = self._positions.get(ticker)
         if pos is None:
             ts = int(time.time() * 1_000)
-            return Position(symbol=ticker, quantity=0.0, last_updated_at=ts)
+            return Position(ticker=ticker, quantity=0.0, last_updated_at=ts)
         return Position(
-            symbol=pos.symbol,
+            ticker=pos.ticker,
             quantity=pos.quantity,
             last_updated_at=pos.last_updated_at
         )
@@ -105,7 +105,7 @@ class MockBroker(BrokerBase):
             self._positions.pop(symbol, None)
         else:
             self._positions[symbol] = Position(
-                symbol=symbol,
+                ticker=symbol,
                 quantity=new_qty,
                 last_updated_at=now_ts
             )
