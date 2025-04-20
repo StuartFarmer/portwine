@@ -154,3 +154,14 @@ class AlpacaBroker(BrokerBase):
             created_at=_parse_datetime(o["created_at"]),
             last_updated_at=_parse_datetime(o["updated_at"]),
         )
+
+    def market_is_open(self, timestamp: datetime) -> bool:
+        """
+        Check if the market is open at the time of the request using the Alpaca clock endpoint.
+        """
+        url = f"{self._base_url}/v2/clock"
+        resp = self._session.get(url)
+        if not resp.ok:
+            raise OrderExecutionError(f"Clock fetch failed: {resp.text}")
+        data = resp.json()
+        return bool(data.get("is_open", False))

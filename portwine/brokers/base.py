@@ -18,6 +18,33 @@ class Position:
     quantity: float
     last_updated_at: int # UNIX timestamp in second for last time the data was updated
 
+class TimeInForce(Enum):
+    DAY = "day"
+    GOOD_TILL_CANCELLED = "gtc"
+    IMMEDIATE_OR_CANCEL = "ioc"
+    FILL_OR_KILL = "fok"
+    MARKET_ON_OPEN = "opg"
+    MARKET_ON_CLOSE = "cls"
+
+class OrderType(Enum):
+    MARKET = "market"
+    LIMIT = "limit"
+    STOP = "stop"
+    STOP_LIMIT = "stop_limit"
+    TRAILING_STOP = "trailing_stop"
+    
+class OrderStatus(Enum):
+    SUBMITTED = "submitted"
+    REJECTED = "rejected"
+    FILLED = "filled"
+    PARTIALLY_FILLED = "partially_filled"
+    CANCELLED = "cancelled"
+    PENDING = "pending"
+
+class Side(Enum):
+    BUY = "buy"
+    SELL = "sell"
+
 '''
     Order dataclass. All brokers must adhere to this standard. 
 '''

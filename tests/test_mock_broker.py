@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
-from portwine.execution.brokers.base import Position, OrderNotFoundError, Order
-from portwine.execution.brokers.mock import MockBroker
+from portwine.brokers.base import Position, OrderNotFoundError, Order
+from portwine.brokers.mock import MockBroker
 
 
 class TestMockBroker(unittest.TestCase):

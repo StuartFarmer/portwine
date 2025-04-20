@@ -36,9 +36,9 @@ class TestExecutionRun(unittest.TestCase):
         schedule = schedule_generator(1000, intervals)
 
         fake_exec = FakeExec()
-        # Patch time.time and time.sleep so no real waiting
-        with patch('portwine.execution.base.time.time', return_value=base_time_s), \
-             patch('portwine.execution.base.time.sleep') as mock_sleep:
+        # Patch global time.time and time.sleep so no real waiting
+        with patch('time.time', return_value=base_time_s), \
+             patch('time.sleep') as mock_sleep:
             fake_exec.run(schedule)
 
         # Ensure step() was called with each scheduled timestamp

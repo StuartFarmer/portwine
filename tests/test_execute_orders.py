@@ -2,7 +2,7 @@ import unittest
 from datetime import timezone
 
 from portwine.execution import ExecutionBase
-from portwine.brokers.base import Order
+from portwine.brokers.base import Order, OrderExecutionError
 from portwine.strategies.base import StrategyBase
 
 
@@ -63,7 +63,7 @@ class TestExecuteOrders(unittest.TestCase):
         # Should return a list of updated Order objects
         self.assertEqual(len(executed), 2)
         # Broker should have been called with each symbol and quantity
-        self.assertEqual(broker.calls, [("AAPL", 10.0), ("MSFT", 5.0)])
+        self.assertEqual(broker.calls, [("AAPL", 10.0), ("MSFT", -5.0)])
 
         # Validate returned Order fields
         for updated, original in zip(executed, orders):

@@ -29,7 +29,7 @@ class MockBroker(BrokerBase):
 
     def get_account(self) -> Account:
         """
-        Return a snapshot of the account with a unix‐timestamp last_updated_at.
+        Return a snapshot of the account with a unix‐timestamp last_updated_at (ms).
         """
         ts = int(time.time() * 1_000)
         return Account(
@@ -84,8 +84,8 @@ class MockBroker(BrokerBase):
         """
         Simulate a market order fill:
           - Immediately 'fills' at self._fill_price
-          - Updates in‑memory positions with a unix‐timestamp last_updated_at
-          - Records the order with status 'filled' and last_updated_at as unix timestamp
+          - Updates in‑memory positions with a unix‐timestamp last_updated_at (ms)
+          - Records the order with status 'filled' and last_updated_at as unix timestamp (ms)
         """
         with self._lock:
             self._order_counter += 1
@@ -93,7 +93,6 @@ class MockBroker(BrokerBase):
 
         side = "buy" if quantity > 0 else "sell"
         qty = abs(quantity)
-        now_dt = datetime.now()
         now_ts = int(time.time() * 1_000)
 
         # Update position
@@ -126,3 +125,19 @@ class MockBroker(BrokerBase):
 
         self._orders[oid] = order
         return order
+
+    def market_is_open(self, timestamp: datetime) -> bool:
+        """
+        Stub implementation of market hours:
+        - Returns True if it's a weekday (Monday=0 … Friday=4)
+          between 09:30 and 16:00 in the local system time.
+        """
+        # Weekday check
+        if timestamp.weekday() >= 5:
+            return False
+
+        # Hour/minute check: between 9:30 and 16:00
+        hm = timestamp.hour * 60 + timestamp.minute
+        open_time = 9 * 60 + 30   # 9:30 = 570 minutes
+        close_time = 16 * 60      # 16:00 = 960 minutes
+        return open_time <= hm < close_time

@@ -3,7 +3,7 @@ from datetime import timezone
 
 from portwine.execution import ExecutionBase
 from portwine.strategies.base import StrategyBase
-from portwine.execution.brokers.base import Order
+from portwine.brokers.base import Order
 
 
 def make_exec_base(tickers):

@@ -257,7 +257,7 @@ class TestGetCurrentPricesRealData(unittest.TestCase):
         cls.df_msft = cls.loader.load_ticker('MSFT')
         cls.df_nflx = cls.loader.load_ticker('NFLX')
 
-    @patch('portwine.execution.base.datetime', new=FakeDateTime)
+    @patch('portwine.execution.datetime', new=FakeDateTime)
     def test_one_ticker(self):
         # Test a single ticker on a date where data exists
         # choose second row of AAPL
@@ -291,7 +291,7 @@ class TestGetCurrentPricesRealData(unittest.TestCase):
             expected_msft = float(self.df_msft.iloc[pos]['close'])
         self.assertAlmostEqual(prices['MSFT'], expected_msft)
 
-    @patch('portwine.execution.base.datetime', new=FakeDateTime)
+    @patch('portwine.execution.datetime', new=FakeDateTime)
     def test_three_tickers_with_missing_nflx(self):
         # Test three tickers, NFLX missing on specific date; use 2024-02-09 where NFLX is missing
         test_date = pd.Timestamp('2024-02-09')
