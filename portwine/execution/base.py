@@ -64,6 +64,7 @@ class ExecutionBase(abc.ABC):
         alternative_data_loader: Optional[MarketDataLoader] = None,
         min_change_pct: float = 0.01,
         min_order_value: float = 1.0,
+        timezone: Optional[datetime.tzinfo] = None,
     ):
         """
         Initialize the execution instance.
@@ -82,6 +83,8 @@ class ExecutionBase(abc.ABC):
             Minimum change percentage required to trigger a trade
         min_order_value : float, default 1.0
             Minimum dollar value required for an order
+        timezone : Optional[datetime.tzinfo], default None
+            Timezone for timestamp conversion
         """
         self.strategy = strategy
         self.market_data_loader = market_data_loader
@@ -90,19 +93,21 @@ class ExecutionBase(abc.ABC):
         self.min_change_pct = min_change_pct
         self.min_order_value = min_order_value
         
+        # Store timezone (tzinfo); default to system local timezone
+        self.timezone = timezone if timezone is not None else datetime.now().astimezone().tzinfo
         # Initialize ticker list from strategy
         self.tickers = strategy.tickers
         
         logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
     
-    def fetch_latest_data(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, Optional[Dict[str, float]]]:
+    def fetch_latest_data(self, timestamp: Optional[float] = None) -> Dict[str, Optional[Dict[str, float]]]:
         """
         Fetch latest market data for the tickers in the strategy.
         
         Parameters
         ----------
-        timestamp : Optional[pd.Timestamp]
-            Timestamp to get data for, or current time if None
+        timestamp : Optional[float]
+            UNIX timestamp to get data for, or current time if None
             
         Returns
         -------
@@ -115,16 +120,18 @@ class ExecutionBase(abc.ABC):
             If data cannot be fetched
         """
         try:
-            # Use the provided timestamp or current time
+            # Convert UNIX timestamp to timezone-aware datetime, default to now
             if timestamp is None:
-                timestamp = pd.Timestamp.now(tz='UTC')
-                
-            # Get latest data from market data loader
-            data = self.market_data_loader.next(self.tickers, timestamp)
+                dt = datetime.now(tz=self.timezone)
+            else:
+                # timestamp is seconds since epoch
+                dt = datetime.fromtimestamp(timestamp, tz=self.timezone)
+            # Get latest data from market data loader (expects datetime)
+            data = self.market_data_loader.next(self.tickers, dt)
             
             # Also fetch alternative data if available
             if self.alternative_data_loader is not None:
-                alt_data = self.alternative_data_loader.next(self.tickers, timestamp)
+                alt_data = self.alternative_data_loader.next(self.tickers, dt)
                 # Merge alternative data with market data
                 for ticker, ticker_data in alt_data.items():
                     if ticker in data and data[ticker] is not None:

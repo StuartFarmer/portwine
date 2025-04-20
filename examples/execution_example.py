@@ -138,7 +138,7 @@ def run_mock_execution(tickers, days=10):
     strategy = SimpleMomentumStrategy(tickers, lookback_days=5, top_n=2)
     
     # Create mock data
-    from tests.test_execution import create_mock_price_data, MockMarketDataLoader
+    from tests.test_execution2 import create_mock_price_data, MockMarketDataLoader
     
     end_date = pd.Timestamp.now().normalize()
     start_date = end_date - timedelta(days=30)
