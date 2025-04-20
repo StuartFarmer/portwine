@@ -282,6 +282,31 @@ class ExecutionBase(abc.ABC):
             )
         return weights
 
+    def _target_positions_to_orders(
+        self,
+        target_positions: Dict[str, float],
+        current_positions: Dict[str, float],
+    ) -> List[List[str]]:
+        """
+        Determine necessary orders given target and current positions.
+
+        Args:
+            target_positions: Mapping ticker -> desired quantity
+            current_positions: Mapping ticker -> existing quantity
+
+        Returns:
+            List of [ticker, quantity_str, side] for each non-zero change.
+        """
+        orders: List[List[str]] = []
+        for ticker, target_qty in target_positions.items():
+            current_qty = current_positions.get(ticker, 0.0)
+            diff = target_qty - current_qty
+            if diff > 0:
+                orders.append([ticker, str(int(diff)), 'buy'])
+            elif diff < 0:
+                orders.append([ticker, str(int(abs(diff))), 'sell'])
+        return orders
+
     def _execute_orders(self, orders: List[Dict[str, Any]]) -> Dict[str, bool]:
         """
         Execute a list of orders through the broker.

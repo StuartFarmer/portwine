@@ -3,8 +3,6 @@ from datetime import timezone
 import os
 
 from portwine.execution.base import ExecutionBase
-from portwine.execution.base import PortfolioExceededError
-from portwine.execution.base import PortfolioExceededError
 from portwine.loaders.eodhd import EODHDMarketDataLoader
 
 
@@ -90,8 +88,11 @@ class TestCalculateTargetPositionsWithRealData(unittest.TestCase):
     def test_real_all_in_one_ticker(self):
         # Use first available date
         dt = self.df_aapl.index[0]
+        # AAPL price exact
         price_aapl = float(self.df_aapl.loc[dt, 'close'])
-        price_msft = float(self.df_msft.loc[dt, 'close'])
+        # MSFT may have earlier start; get bar at or before dt
+        pos = self.df_msft.index.searchsorted(dt, side='right') - 1
+        price_msft = float(self.df_msft.iloc[pos]['close'])
         target_weights = {'AAPL': 1.0, 'MSFT': 0.0}
         prices = {'AAPL': price_aapl, 'MSFT': price_msft}
         positions = self.exec_base._calculate_target_positions(
@@ -106,7 +107,8 @@ class TestCalculateTargetPositionsWithRealData(unittest.TestCase):
         # Use first available date
         dt = self.df_aapl.index[0]
         price_aapl = float(self.df_aapl.loc[dt, 'close'])
-        price_msft = float(self.df_msft.loc[dt, 'close'])
+        pos_msft = self.df_msft.index.searchsorted(dt, side='right') - 1
+        price_msft = float(self.df_msft.iloc[pos_msft]['close'])
         target_weights = {'AAPL': 0.5, 'MSFT': 0.5}
         prices = {'AAPL': price_aapl, 'MSFT': price_msft}
         positions = self.exec_base._calculate_target_positions(
@@ -116,10 +118,11 @@ class TestCalculateTargetPositionsWithRealData(unittest.TestCase):
         self.assertEqual(positions['MSFT'], int((self.portfolio_value * 0.5) / price_msft))
 
     def test_real_no_fractional_rounds_down(self):
-        # Use date where MSFT close price is not an integer divisor
+        # Use a date from AAPL for overlap, MSFT price may not divide evenly
         dt = self.df_aapl.index[1]
         price_aapl = float(self.df_aapl.loc[dt, 'close'])
-        price_msft = float(self.df_msft.loc[dt, 'close'])
+        pos_msft = self.df_msft.index.searchsorted(dt, side='right') - 1
+        price_msft = float(self.df_msft.iloc[pos_msft]['close'])
         target_weights = {'AAPL': 0.7, 'MSFT': 0.3}
         prices = {'AAPL': price_aapl, 'MSFT': price_msft}
         positions = self.exec_base._calculate_target_positions(
@@ -131,10 +134,11 @@ class TestCalculateTargetPositionsWithRealData(unittest.TestCase):
         self.assertEqual(positions['MSFT'], math.floor(raw_msft))
 
     def test_real_fractional_keeps(self):
-        # Use same date as above
+        # Use same date from AAPL
         dt = self.df_aapl.index[1]
         price_aapl = float(self.df_aapl.loc[dt, 'close'])
-        price_msft = float(self.df_msft.loc[dt, 'close'])
+        pos_msft = self.df_msft.index.searchsorted(dt, side='right') - 1
+        price_msft = float(self.df_msft.iloc[pos_msft]['close'])
         target_weights = {'AAPL': 0.7, 'MSFT': 0.3}
         prices = {'AAPL': price_aapl, 'MSFT': price_msft}
         positions = self.exec_base._calculate_target_positions(
