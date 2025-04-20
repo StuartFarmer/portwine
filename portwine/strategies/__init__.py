@@ -1,1 +1,2 @@
 from portwine.strategies.base import StrategyBase
+from portwine.strategies.simple_moving_average import SimpleMovingAverageStrategy
