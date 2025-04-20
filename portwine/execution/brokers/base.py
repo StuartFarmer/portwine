@@ -11,40 +11,34 @@ from enum import Enum
 from typing import Dict, List, Optional, Any
 
 
-class OrderSide(Enum):
-    """Order side enumeration."""
-    BUY = "BUY"
-    SELL = "SELL"
-
-
 @dataclass
 class Position:
     """Represents a trading position."""
     symbol: str
     quantity: float
-    entry_price: float
-    current_price: float
 
-
+'''
+    Order dataclass. All brokers must adhere to this standard. 
+'''
 @dataclass
 class Order:
-    """Represents a trading order."""
-    order_id: str
-    symbol: str
-    quantity: float
-    side: OrderSide
-    status: str
-    filled_quantity: float = 0.0
-    average_price: float = 0.0
-    created_at: datetime = datetime.now()
-
+    order_id: str               # unique identifier for the order
+    ticker: str                 # asset ticker
+    side: str                   # buy or sell
+    quantity: float             # amount / size of order
+    order_type: str             # market, limit, etc
+    status: str                 # submitted, rejected, filled, etc
+    time_in_force: str          # gtc, fok, etc
+    average_price: float        # average fill price of order
+    remaining_quantity: float   # how much of the order still needs to be filled
+    created_at: datetime        # when the order was created
+    last_updated_at: datetime   # when the data on this order was last updated with the broker
 
 @dataclass
 class Account:
-    """Represents an account state."""
-    balance: float
-    equity: float
-    margin: float
+    equity: float         # amount of money available to purchase securities (can include margin)
+    # net_liquidation_value     liquid value, total_equity... all are names for the same thing, equity...
+    # buying power includes margin, equity does not
 
 
 class OrderExecutionError(Exception):
@@ -86,11 +80,25 @@ class BrokerBase(ABC):
         pass
 
     @abstractmethod
-    def execute_order(
+    def get_position(self, ticker) -> Position:
+        # Returns a position object for a given ticker
+        # if there is no position, then an empty position is returned
+        # with quantity 0
+        pass
+
+    @abstractmethod
+    def get_order(self, order_id) -> Order:
+        pass
+
+    @abstractmethod
+    def get_orders(self) -> List[Order]:
+        pass
+
+    @abstractmethod
+    def submit_order(
         self,
         symbol: str,
         quantity: float,
-        side: OrderSide,
     ) -> Order:
         """
         Execute a market order.

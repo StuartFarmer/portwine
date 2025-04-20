@@ -33,8 +33,8 @@ from portwine.execution.execution_utils import (
 )
 
 # Broker implementations
-from portwine.execution.brokers.broker_alpaca import AlpacaBroker
-from portwine.execution.brokers.mock_broker import MockBroker
+from portwine.execution.brokers.alpaca import AlpacaBroker
+from portwine.execution.brokers.mock import MockBroker
 
 __all__ = [
     # Base classes

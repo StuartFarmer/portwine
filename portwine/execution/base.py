@@ -19,7 +19,7 @@ import numpy as np
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
-from portwine.broker import BrokerBase, Position, Order, Account, OrderSide, OrderExecutionError as BrokerOrderExecutionError
+from portwine.execution.brokers.base import BrokerBase, Position, Order, Account, OrderSide, OrderExecutionError as BrokerOrderExecutionError
 from portwine.execution.execution_utils import (
     create_bar_dict, 
     calculate_position_changes, 

@@ -11,7 +11,7 @@ from datetime import datetime
 import alpaca_trade_api as alpaca
 from alpaca_trade_api.rest import APIError
 
-from portwine.broker import BrokerBase, OrderSide, Order, Position, Account, OrderExecutionError
+from portwine.execution.brokers.base import BrokerBase, OrderSide, Order, Position, Account, OrderExecutionError
 
 
 class AlpacaBroker(BrokerBase):
