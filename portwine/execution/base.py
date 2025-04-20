@@ -19,7 +19,7 @@ import numpy as np
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
-from portwine.execution.brokers.base import BrokerBase, Position, Order, Account, OrderSide, OrderExecutionError as BrokerOrderExecutionError
+from portwine.execution.brokers.base import BrokerBase, Position, Order, Account, OrderExecutionError as BrokerOrderExecutionError
 from portwine.execution.execution_utils import (
     create_bar_dict, 
     calculate_position_changes, 
@@ -238,10 +238,9 @@ class ExecutionBase(abc.ABC):
                 side = OrderSide.BUY if qty > 0 else OrderSide.SELL
                 
                 # Execute the order using the broker
-                executed_order = self.broker.execute_order(
+                executed_order = self.broker.submit_order(
                     symbol=symbol,
                     quantity=abs(qty),
-                    side=side
                 )
                 results[symbol] = True
                 logger.info(f"Successfully executed order for {symbol}")

@@ -1,4 +1,5 @@
 import threading
+import time
 from datetime import datetime
 from typing import Dict, List
 
@@ -28,30 +29,41 @@ class MockBroker(BrokerBase):
 
     def get_account(self) -> Account:
         """
-        Return a snapshot of the account. Equity remains constant
-        in this mock.
+        Return a snapshot of the account with a unix‐timestamp last_updated_at.
         """
-        return Account(equity=self._equity)
+        ts = int(time.time() * 1_000)
+        return Account(
+            equity=self._equity,
+            last_updated_at=ts
+        )
 
     def get_positions(self) -> Dict[str, Position]:
         """
-        Return all current positions.
+        Return all current positions, preserving each position's last_updated_at.
         """
-        # Return copies to avoid external mutation
         return {
-            symbol: Position(symbol=symbol, quantity=pos.quantity)
+            symbol: Position(
+                symbol=pos.symbol,
+                quantity=pos.quantity,
+                last_updated_at=pos.last_updated_at
+            )
             for symbol, pos in self._positions.items()
         }
 
     def get_position(self, ticker: str) -> Position:
         """
-        Return position for a single ticker (zero if not held).
+        Return position for a single ticker (zero if not held),
+        with last_updated_at from the stored position or now if none.
         """
         pos = self._positions.get(ticker)
         if pos is None:
-            return Position(symbol=ticker, quantity=0.0)
-        # Return a copy
-        return Position(symbol=pos.symbol, quantity=pos.quantity)
+            ts = int(time.time() * 1_000)
+            return Position(symbol=ticker, quantity=0.0, last_updated_at=ts)
+        return Position(
+            symbol=pos.symbol,
+            quantity=pos.quantity,
+            last_updated_at=pos.last_updated_at
+        )
 
     def get_order(self, order_id: str) -> Order:
         """
@@ -72,8 +84,8 @@ class MockBroker(BrokerBase):
         """
         Simulate a market order fill:
           - Immediately 'fills' at self._fill_price
-          - Updates in‑memory positions
-          - Records the order with status 'filled'
+          - Updates in‑memory positions with a unix‐timestamp last_updated_at
+          - Records the order with status 'filled' and last_updated_at as unix timestamp
         """
         with self._lock:
             self._order_counter += 1
@@ -81,15 +93,22 @@ class MockBroker(BrokerBase):
 
         side = "buy" if quantity > 0 else "sell"
         qty = abs(quantity)
-        now = datetime.now()
+        now_dt = datetime.now()
+        now_ts = int(time.time() * 1_000)
 
         # Update position
-        prev_qty = self._positions.get(symbol, Position(symbol, 0.0)).quantity
+        prev = self._positions.get(symbol)
+        prev_qty = prev.quantity if prev is not None else 0.0
         new_qty = prev_qty + quantity
+
         if new_qty == 0:
             self._positions.pop(symbol, None)
         else:
-            self._positions[symbol] = Position(symbol=symbol, quantity=new_qty)
+            self._positions[symbol] = Position(
+                symbol=symbol,
+                quantity=new_qty,
+                last_updated_at=now_ts
+            )
 
         order = Order(
             order_id=oid,
@@ -101,8 +120,8 @@ class MockBroker(BrokerBase):
             time_in_force="day",
             average_price=self._fill_price,
             remaining_quantity=0.0,
-            created_at=now,
-            last_updated_at=now,
+            created_at=now_ts,
+            last_updated_at=now_ts
         )
 
         self._orders[oid] = order

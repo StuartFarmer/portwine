@@ -16,6 +16,7 @@ class Position:
     """Represents a trading position."""
     symbol: str
     quantity: float
+    last_updated_at: int # UNIX timestamp in second for last time the data was updated
 
 '''
     Order dataclass. All brokers must adhere to this standard. 
@@ -31,12 +32,13 @@ class Order:
     time_in_force: str          # gtc, fok, etc
     average_price: float        # average fill price of order
     remaining_quantity: float   # how much of the order still needs to be filled
-    created_at: datetime        # when the order was created
-    last_updated_at: datetime   # when the data on this order was last updated with the broker
+    created_at: int        # when the order was created (UNIX timestamp milliseconds)
+    last_updated_at: int   # when the data on this order was last updated with the broker
 
 @dataclass
 class Account:
     equity: float         # amount of money available to purchase securities (can include margin)
+    last_updated_at: int
     # net_liquidation_value     liquid value, total_equity... all are names for the same thing, equity...
     # buying power includes margin, equity does not
 

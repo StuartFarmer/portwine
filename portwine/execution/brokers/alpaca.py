@@ -1,4 +1,5 @@
 import requests
+import time
 from datetime import datetime
 from typing import Dict, List
 
@@ -51,7 +52,7 @@ class AlpacaBroker(BrokerBase):
         if not resp.ok:
             raise OrderExecutionError(f"Account fetch failed: {resp.text}")
         data = resp.json()
-        return Account(equity=float(data["equity"]))
+        return Account(equity=float(data["equity"]), last_updated_at=int(time.time() * 1000))
 
     def get_positions(self) -> Dict[str, Position]:
         url = f"{self._base_url}/v2/positions"
@@ -62,7 +63,8 @@ class AlpacaBroker(BrokerBase):
         for p in resp.json():
             positions[p["symbol"]] = Position(
                 symbol=p["symbol"],
-                quantity=float(p["qty"])
+                quantity=float(p["qty"]),
+                last_updated_at=int(time.time() * 1000)
             )
         return positions
 
@@ -70,11 +72,11 @@ class AlpacaBroker(BrokerBase):
         url = f"{self._base_url}/v2/positions/{ticker}"
         resp = self._session.get(url)
         if resp.status_code == 404:
-            return Position(symbol=ticker, quantity=0.0)
+            return Position(symbol=ticker, quantity=0.0, last_updated_at=int(time.time() * 1000))
         if not resp.ok:
             raise OrderExecutionError(f"Position fetch failed: {resp.text}")
         p = resp.json()
-        return Position(symbol=p["symbol"], quantity=float(p["qty"]))
+        return Position(symbol=p["symbol"], quantity=float(p["qty"]), last_updated_at=int(time.time() * 1000))
 
     def get_order(self, order_id: str) -> Order:
         url = f"{self._base_url}/v2/orders/{order_id}"

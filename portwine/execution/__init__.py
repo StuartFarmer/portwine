@@ -13,18 +13,6 @@ from portwine.execution.base import (
     DataFetchError,
 )
 
-# Broker classes
-from portwine.broker import (
-    BrokerBase,
-    Position,
-    Order,
-    Account,
-    OrderSide,
-    OrderExecutionError as BrokerOrderExecutionError,
-    OrderNotFoundError,
-    OrderCancelError,
-)
-
 # Utility functions
 from portwine.execution.execution_utils import (
     create_bar_dict,
