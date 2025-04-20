@@ -31,7 +31,7 @@ def create_intraday_config():
                 "position_size": 0.1
             }
         },
-        "execution_complex": {
+        "execution": {
             "class": "portwine.execution_alpaca.AlpacaExecution",
             "params": {
                 "paper": True,
@@ -116,7 +116,7 @@ def main():
             logger.info("Running strategy once...")
             executor.run_once()
         else:
-            logger.info("Starting scheduled execution_complex...")
+            logger.info("Starting scheduled execution...")
             executor.run_scheduled()
             
     except KeyboardInterrupt:

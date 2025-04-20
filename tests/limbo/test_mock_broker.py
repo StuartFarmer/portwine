@@ -11,7 +11,7 @@ import unittest
 from decimal import Decimal
 from datetime import datetime
 
-from portwine.execution_complex.broker_mock import MockBroker
+from portwine.execution.broker_mock import MockBroker
 
 
 class TestMockBroker(unittest.TestCase):

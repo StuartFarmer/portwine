@@ -55,7 +55,7 @@ def create_mock_config(run_time):
             }
         },
         "execution": {
-            "class": "portwine.execution_complex.MockExecution",
+            "class": "portwine.execution.MockExecution",
             "params": {
                 "initial_cash": 100000.0,
                 "fail_symbols": []

@@ -36,7 +36,7 @@ class SimpleTestStrategy:
 
 class SimpleTestExecutor:
     """
-    Simple execution_complex system for integration testing.
+    Simple execution system for integration testing.
     """
     
     def __init__(self, strategy=None, market_data_loader=None, **kwargs):
@@ -52,7 +52,7 @@ class SimpleTestExecutor:
         return True
     
     def step(self):
-        """Alternative execution_complex method."""
+        """Alternative execution method."""
         return self.execute()
     
     def shutdown(self):
@@ -101,7 +101,7 @@ class TestDailyExecutorIntegration(unittest.TestCase):
                     "lookback_days": 5
                 }
             },
-            "execution_complex": {
+            "execution": {
                 "class": "__main__.SimpleTestExecutor",
                 "params": {
                     "paper": True
@@ -177,7 +177,7 @@ class TestDailyExecutorIntegration(unittest.TestCase):
                 # Run once
                 executor.run_once()
             
-            # Check that the strategy generated signals and execution_complex processed them
+            # Check that the strategy generated signals and execution processed them
             self.assertIsNotNone(executor.executor.last_signals)
             self.assertEqual(len(executor.executor.last_signals), 3)  # 3 tickers
             

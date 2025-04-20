@@ -1,7 +1,7 @@
 """
 Execution module for the portwine framework.
 
-This module provides the base classes and interfaces for execution_complex modules,
+This module provides the base classes and interfaces for execution modules,
 which connect strategy implementations from the backtester to live trading.
 """
 
@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import abc
 import logging
+import warnings
 from datetime import datetime
-from typing import Dict, List, Optional, Protocol, Tuple, TypedDict, Union
+from typing import Dict, List, Optional, Protocol, Tuple, TypedDict, Union, Any
+from functools import wraps
 
 import pandas as pd
 import numpy as np
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
-from portwine.execution_complex.broker import BrokerBase, Position, Order, AccountInfo
-from portwine.execution_complex.execution_utils import (
+from portwine.broker import BrokerBase, Position, Order, Account, OrderSide, OrderExecutionError as BrokerOrderExecutionError
+from portwine.execution.execution_utils import (
     create_bar_dict, 
     calculate_position_changes, 
     generate_orders
@@ -29,12 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionError(Exception):
-    """Base exception for execution_complex-related errors."""
+    """Base exception for execution-related errors."""
     pass
 
 
 class OrderExecutionError(ExecutionError):
-    """Exception raised when order execution_complex fails."""
+    """Exception raised when order execution fails."""
     pass
 
 
@@ -45,9 +47,9 @@ class DataFetchError(ExecutionError):
 
 class ExecutionBase(abc.ABC):
     """
-    Base class for execution_complex implementations.
+    Base class for execution implementations.
     
-    An execution_complex implementation is responsible for:
+    An execution implementation is responsible for:
     1. Fetching latest market data
     2. Passing data to strategy to get updated weights
     3. Calculating position changes needed
@@ -64,7 +66,7 @@ class ExecutionBase(abc.ABC):
         min_order_value: float = 1.0,
     ):
         """
-        Initialize the execution_complex instance.
+        Initialize the execution instance.
         
         Parameters
         ----------
@@ -158,6 +160,100 @@ class ExecutionBase(abc.ABC):
         
         return prices
     
+    def _get_current_positions(self) -> Tuple[Dict[str, float], float]:
+        """
+        Get current positions from broker account info.
+        
+        Returns
+        -------
+        Tuple[Dict[str, float], float]
+            Current position quantities for each ticker and the portfolio value
+        """
+        positions = self.broker.get_positions()
+        account = self.broker.get_account()
+        
+        current_positions = {symbol: position.quantity for symbol, position in positions.items()}
+        portfolio_value = account.equity
+        
+        return current_positions, portfolio_value
+
+    def _calculate_target_positions(self, target_weights: Dict[str, float], 
+                                  portfolio_value: float, 
+                                  prices: Dict[str, float]) -> Dict[str, float]:
+        """
+        Convert target weights to absolute position sizes.
+        
+        Parameters
+        ----------
+        target_weights : Dict[str, float]
+            Target allocation weights for each ticker
+        portfolio_value : float
+            Current portfolio value
+        prices : Dict[str, float]
+            Current prices for each ticker
+            
+        Returns
+        -------
+        Dict[str, float]
+            Target position quantities for each ticker
+        """
+        target_positions = {}
+        for symbol, weight in target_weights.items():
+            if symbol in prices and prices[symbol] > 0:
+                target_value = weight * portfolio_value
+                target_positions[symbol] = target_value / prices[symbol]
+        return target_positions
+
+    def _execute_orders(self, orders: List[Dict[str, Any]]) -> Dict[str, bool]:
+        """
+        Execute a list of orders through the broker.
+        
+        Parameters
+        ----------
+        orders : List[Dict[str, Any]]
+            List of order specifications
+            
+        Returns
+        -------
+        Dict[str, bool]
+            Execution results by symbol (True for success, False for failure)
+            
+        Raises
+        ------
+        OrderExecutionError
+            If any order is missing required fields like quantity
+        """
+        results = {}
+        for order in orders:
+            symbol = order['symbol']
+            qty = order.get('qty')  # Use get() to safely handle missing qty
+            
+            if qty is None:
+                raise OrderExecutionError(f"Missing quantity for order: {symbol}")
+            
+            logger.info(f"Executing order: {symbol} {qty} shares")
+            
+            try:
+                # Determine the side (BUY for positive qty, SELL for negative)
+                side = OrderSide.BUY if qty > 0 else OrderSide.SELL
+                
+                # Execute the order using the broker
+                executed_order = self.broker.execute_order(
+                    symbol=symbol,
+                    quantity=abs(qty),
+                    side=side
+                )
+                results[symbol] = True
+                logger.info(f"Successfully executed order for {symbol}")
+            except BrokerOrderExecutionError as e:
+                logger.error(f"Failed to execute order for {symbol}: {e}")
+                results[symbol] = False
+            except Exception as e:
+                logger.exception(f"Error executing order for {symbol}: {e}")
+                results[symbol] = False
+        
+        return results
+    
     def step(self, timestamp: Optional[pd.Timestamp] = None) -> Dict[str, bool]:
         """
         Execute a single step of the trading strategy.
@@ -177,7 +273,7 @@ class ExecutionBase(abc.ABC):
         Returns
         -------
         Dict[str, bool]
-            Dictionary mapping symbols to trade execution_complex success/failure
+            Dictionary mapping symbols to trade execution success/failure
         """
         if timestamp is None:
             timestamp = pd.Timestamp.now(tz='UTC')
@@ -196,25 +292,16 @@ class ExecutionBase(abc.ABC):
             
             # Get target allocations from strategy
             target_weights = self.strategy.step(timestamp, latest_data)
-
             logger.info(f"Strategy generated target weights: {target_weights}")
             
-            # Get current account information
-            account_info = self.broker.get_account_info()
+            # Get current positions and portfolio value
+            current_positions, portfolio_value = self._get_current_positions()
             
-            # Calculate position changes needed
-            current_positions = {symbol: position.get('qty', 0) 
-                               for symbol, position in account_info.get('positions', {}).items()}
-            
-            # Convert weights to target position sizes
-            portfolio_value = account_info.get('portfolio_value', 0)
+            # Get current prices
             prices = self.get_current_prices(self.tickers)
             
-            target_positions = {}
-            for symbol, weight in target_weights.items():
-                if symbol in prices and prices[symbol] > 0:
-                    target_value = weight * portfolio_value
-                    target_positions[symbol] = target_value / prices[symbol]
+            # Calculate target positions
+            target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices)
             
             # Calculate changes needed
             position_changes = calculate_position_changes(target_positions, current_positions)
@@ -229,32 +316,7 @@ class ExecutionBase(abc.ABC):
             orders = generate_orders(position_changes)
             
             # Execute orders
-            results = {}
-            for order in orders:
-                symbol = order['symbol']
-                qty = order['qty']
-                order_type = order.get('order_type', 'market')
-                
-                logger.info(f"Executing order: {symbol} {qty} shares")
-                
-                try:
-                    # Execute the order using the broker
-                    success = self.broker.execute_order(
-                        symbol=symbol,
-                        qty=qty,
-                        order_type=order_type
-                    )
-                    results[symbol] = success
-                    
-                    if success:
-                        logger.info(f"Successfully executed order for {symbol}")
-                    else:
-                        logger.error(f"Failed to execute order for {symbol}")
-                except Exception as e:
-                    logger.exception(f"Error executing order for {symbol}: {e}")
-                    results[symbol] = False
-            
-            return results
+            return self._execute_orders(orders)
             
         except Exception as e:
             logger.exception(f"Error in step execution: {e}")

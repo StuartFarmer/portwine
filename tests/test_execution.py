@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 from datetime import datetime, timezone
 
-from portwine.execution_complex.base import ExecutionBase, DataFetchError
+from portwine.execution.base import ExecutionBase, DataFetchError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
-from portwine.execution_complex.broker import BrokerBase
+from portwine.execution.broker import BrokerBase
 
 
 class MockStrategy(StrategyBase):

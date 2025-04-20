@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from portwine.execution_complex.broker import BrokerBase, AccountInfo, Position, Order
+from portwine.execution.broker import BrokerBase, AccountInfo, Position, Order
 
 
 class MockBroker(BrokerBase):

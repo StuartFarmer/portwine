@@ -1,17 +1,17 @@
 {
     "strategy": {
-        "class": "portwine.strategies.momentum.MomentumStrategy",
+        "class": "portwine.strategies.simple_moving_average.SimpleMovingAverageStrategy",
         "tickers": ["AAPL", "MSFT", "AMZN", "GOOGL", "META"],
         "params": {
-            "lookback_days": 5,
-            "top_n": 2,
-            "position_size": 0.1
+            "short_window": 10,
+            "long_window": 30,
+            "position_size": 0.05
         }
     },
     "execution": {
-        "class": "portwine.execution_alpaca.AlpacaExecution",
+        "class": "portwine.execution_complex.AlpacaExecution",
         "params": {
-            "paper": true,
+            "paper_trading": true,
             "api_key": "YOUR_ALPACA_API_KEY",
             "api_secret": "YOUR_ALPACA_API_SECRET"
         }
@@ -22,7 +22,9 @@
             "api_key": "YOUR_ALPACA_API_KEY",
             "api_secret": "YOUR_ALPACA_API_SECRET",
             "timeframe": "15Min",
-            "limit": 100
+            "limit": 100,
+            "cache_dir": "./data/alpaca_cache",
+            "paper_trading": true
         }
     },
     "schedule": {

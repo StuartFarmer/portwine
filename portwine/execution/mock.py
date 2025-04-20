@@ -1,7 +1,7 @@
 """
-Mock execution_complex implementation for testing.
+Mock execution implementation for testing.
 
-This module provides a mock implementation of the execution_complex interface
+This module provides a mock implementation of the execution interface
 that can be used for testing without connecting to real brokers.
 """
 
@@ -9,16 +9,16 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
-from portwine.execution_complex import AccountInfo, ExecutionBase, Order, Position
+from portwine.execution import AccountInfo, ExecutionBase, Order, Position
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 
 
 class MockExecution(ExecutionBase):
     """
-    Mock implementation of execution_complex for testing.
+    Mock implementation of execution for testing.
     
-    This implementation simulates an execution_complex environment without real trades.
+    This implementation simulates an execution environment without real trades.
     It tracks orders, positions, and portfolio value for testing purposes.
     """
     
@@ -32,7 +32,7 @@ class MockExecution(ExecutionBase):
         fail_symbols: Optional[Set[str]] = None,
     ):
         """
-        Initialize the mock execution_complex.
+        Initialize the mock execution.
         
         Parameters
         ----------
@@ -47,7 +47,7 @@ class MockExecution(ExecutionBase):
         initial_positions : Dict[str, Position], optional
             Initial positions in the account
         fail_symbols : Set[str], optional
-            Set of symbols that should fail on order execution_complex
+            Set of symbols that should fail on order execution
         """
         super().__init__(strategy, market_data_loader, alternative_data_loader)
         self.cash = initial_cash

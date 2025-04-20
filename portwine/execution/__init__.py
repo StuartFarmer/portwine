@@ -6,7 +6,7 @@ connecting strategies to real trading platforms.
 """
 
 # Base classes
-from portwine.execution_complex.base import (
+from portwine.execution.base import (
     ExecutionBase,
     ExecutionError,
     OrderExecutionError,
@@ -14,23 +14,27 @@ from portwine.execution_complex.base import (
 )
 
 # Broker classes
-from portwine.execution_complex.broker import (
+from portwine.broker import (
     BrokerBase,
-    AccountInfo,
     Position,
     Order,
+    Account,
+    OrderSide,
+    OrderExecutionError as BrokerOrderExecutionError,
+    OrderNotFoundError,
+    OrderCancelError,
 )
 
 # Utility functions
-from portwine.execution_complex.execution_utils import (
+from portwine.execution.execution_utils import (
     create_bar_dict,
     calculate_position_changes,
     generate_orders,
 )
 
 # Broker implementations
-from portwine.execution_complex.alpaca_broker import AlpacaBroker
-from portwine.execution_complex.mock_broker import MockBroker
+from portwine.execution.brokers.broker_alpaca import AlpacaBroker
+from portwine.execution.brokers.mock_broker import MockBroker
 
 __all__ = [
     # Base classes
@@ -41,9 +45,13 @@ __all__ = [
     
     # Broker classes
     'BrokerBase',
-    'AccountInfo',
     'Position',
     'Order',
+    'Account',
+    'OrderSide',
+    'BrokerOrderExecutionError',
+    'OrderNotFoundError',
+    'OrderCancelError',
     
     # Utility functions
     'create_bar_dict',

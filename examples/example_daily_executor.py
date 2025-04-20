@@ -73,7 +73,7 @@ def main():
             print("Running strategy once...")
             executor.run_once()
         else:
-            print("Starting scheduled execution_complex...")
+            print("Starting scheduled execution...")
             executor.run_scheduled()
     
     except KeyboardInterrupt:

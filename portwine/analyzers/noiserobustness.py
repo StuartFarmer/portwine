@@ -42,7 +42,7 @@ class NoiseRobustnessAnalyzer(Analyzer):
                 shift_signals=True, require_all_history=False, verbose=True, n_jobs=-1):
         """
         Run multiple backtest iterations at each noise level to analyze strategy robustness.
-        Uses joblib for parallel processing to speed up execution_complex.
+        Uses joblib for parallel processing to speed up execution.
 
         Parameters
         ----------

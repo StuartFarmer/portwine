@@ -34,7 +34,7 @@ if __name__ == "__main__":
                 "top_n": 2
             }
         },
-        "execution_complex": {
+        "execution": {
             "class": "portwine.execution_alpaca.AlpacaExecution",
             "params": {
                 "paper": True,

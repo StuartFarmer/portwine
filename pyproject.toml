@@ -20,6 +20,9 @@ pytz = "^2024.1"
 django-scheduler = "^0.10.1"
 
 
+[tool.poetry.group.dev.dependencies]
+coverage = "^7.8.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

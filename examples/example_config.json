@@ -1,17 +1,17 @@
 {
     "strategy": {
-        "class": "portwine.strategies.momentum.MomentumStrategy",
+        "class": "portwine.strategies.simple_moving_average.SimpleMovingAverageStrategy",
         "tickers": ["AAPL", "MSFT", "AMZN", "GOOGL", "META"],
         "params": {
-            "lookback_days": 20,
-            "top_n": 3,
+            "short_window": 20,
+            "long_window": 50,
             "position_size": 0.1
         }
     },
     "execution": {
-        "class": "portwine.execution_alpaca.AlpacaExecution",
+        "class": "portwine.execution_complex.AlpacaExecution",
         "params": {
-            "paper": true,
+            "paper_trading": true,
             "api_key": "YOUR_ALPACA_API_KEY",
             "api_secret": "YOUR_ALPACA_API_SECRET"
         }
@@ -21,17 +21,17 @@
         "params": {
             "api_key": "YOUR_ALPACA_API_KEY",
             "api_secret": "YOUR_ALPACA_API_SECRET",
-            "timeframe": "1Day",
-            "limit": 100
+            "start_date": null,
+            "end_date": null,
+            "cache_dir": "./data/alpaca_cache",
+            "paper_trading": true
         }
     },
     "schedule": {
-        "run_time": "market_close-15m",
+        "run_time": "15:45",
         "time_zone": "US/Eastern",
         "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-        "exchange": "NYSE",
-        "market_hours_only": true,
-        "intraday": null
+        "market_hours_only": true
     },
     "logging": {
         "level": "INFO",

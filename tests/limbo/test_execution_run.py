@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytz
 
-from portwine.execution_complex.base import ExecutionBase
-from portwine.execution_complex.broker import BrokerBase, AccountInfo, Position
+from portwine.execution.base import ExecutionBase
+from portwine.execution.broker import BrokerBase, AccountInfo, Position
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 from portwine.utils.schedule_iterator import ScheduleIterator

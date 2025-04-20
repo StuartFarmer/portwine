@@ -28,7 +28,7 @@ class DailyExecutor:
     
     This class handles the orchestration of:
     - Loading configuration
-    - Initializing strategy, execution_complex, and data components
+    - Initializing strategy, execution, and data components
     - Running strategies on configurable schedules (daily, intraday, market-based)
     - Proper shutdown and resource cleanup
     
@@ -49,7 +49,7 @@ class DailyExecutor:
         
         Args:
             config: Dictionary containing configuration for strategy, 
-                   execution_complex, data loading, and scheduling.
+                   execution, data loading, and scheduling.
         """
         self.config = config
         self.strategy = None
@@ -57,7 +57,7 @@ class DailyExecutor:
         self.data_loader = None
         self.initialized = False
         
-        # Extract execution_complex schedule settings
+        # Extract execution schedule settings
         self.schedule_config = config.get("schedule", {})
         self.run_time = self.schedule_config.get("run_time", "15:45")  # Default to 15:45 ET
         self.time_zone = self.schedule_config.get("time_zone", "US/Eastern")
@@ -144,9 +144,9 @@ class DailyExecutor:
             self.strategy = strategy_class(**strategy_params)
             logger.info(f"Initialized strategy: {strategy_class.__name__}")
         
-        # Initialize execution_complex system
-        if "execution_complex" in self.config:
-            execution_config = self.config["execution_complex"]
+        # Initialize execution system
+        if "execution" in self.config:
+            execution_config = self.config["execution"]
             execution_class = self._import_class(execution_config["class"])
             execution_params = execution_config.get("params", {})
             
@@ -155,16 +155,16 @@ class DailyExecutor:
                 execution_params["strategy"] = self.strategy
                 
             self.executor = execution_class(**execution_params)
-            logger.info(f"Initialized execution_complex system: {execution_class.__name__}")
+            logger.info(f"Initialized execution system: {execution_class.__name__}")
         
         self.initialized = True
         logger.info("All components initialized successfully")
     
     def run_once(self) -> None:
         """
-        Run the strategy execution_complex once.
+        Run the strategy execution once.
         
-        This is useful for manual execution_complex or testing.
+        This is useful for manual execution or testing.
         """
         if not self.initialized:
             logger.error("Components not initialized. Call initialize() first.")
@@ -172,10 +172,10 @@ class DailyExecutor:
             
         # Check if we should only run during market hours
         if self.market_hours_only and not self._is_market_open():
-            logger.info("Market is closed. Skipping execution_complex as market_hours_only is enabled.")
+            logger.info("Market is closed. Skipping execution as market_hours_only is enabled.")
             return
             
-        logger.info("Running strategy execution_complex...")
+        logger.info("Running strategy execution...")
         try:
             # Update market data
             if self.data_loader:
@@ -204,10 +204,10 @@ class DailyExecutor:
                     else:
                         logger.warning("Executor does not have execute or step method")
                 
-            logger.info("Strategy execution_complex completed successfully")
+            logger.info("Strategy execution completed successfully")
             
         except Exception as e:
-            logger.exception(f"Error during strategy execution_complex: {e}")
+            logger.exception(f"Error during strategy execution: {e}")
     
     def _is_market_open(self) -> bool:
         """
@@ -377,7 +377,7 @@ class DailyExecutor:
             if current_time > now:
                 job = schedule.every().day.at(time_str).do(self.run_once)
                 self._scheduled_jobs.append(job)
-                logger.debug(f"Scheduled intraday execution_complex at {time_str}")
+                logger.debug(f"Scheduled intraday execution at {time_str}")
             
             # Move to next interval
             current_time += timedelta(minutes=interval_minutes)
@@ -557,14 +557,14 @@ class DailyExecutor:
         """
         logger.info("Shutting down components...")
         
-        # Shutdown execution_complex system
+        # Shutdown execution system
         if self.executor:
             try:
                 if hasattr(self.executor, 'shutdown'):
                     self.executor.shutdown()
                 logger.info("Execution system shut down")
             except Exception as e:
-                logger.exception(f"Error shutting down execution_complex system: {e}")
+                logger.exception(f"Error shutting down execution system: {e}")
         
         # Shutdown strategy
         if self.strategy:

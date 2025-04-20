@@ -1,7 +1,7 @@
 """
 Tests for the DailyExecutor class.
 
-This test suite uses mock components to test the scheduling and execution_complex
+This test suite uses mock components to test the scheduling and execution
 functionality of the DailyExecutor without requiring actual market data
 or trading systems.
 """
@@ -38,7 +38,7 @@ class MockStrategy:
 
 
 class MockExecutor:
-    """Mock execution_complex system for testing."""
+    """Mock execution system for testing."""
     
     def __init__(self, strategy=None, market_data_loader=None, **kwargs):
         self.strategy = strategy
@@ -48,12 +48,12 @@ class MockExecutor:
         self.called_shutdown = False
     
     def execute(self):
-        """Record execution_complex was called."""
+        """Record execution was called."""
         self.executed = True
         return True
     
     def step(self):
-        """Alternative execution_complex method."""
+        """Alternative execution method."""
         return self.execute()
     
     def shutdown(self):
@@ -96,7 +96,7 @@ class TestDailyExecutor(unittest.TestCase):
                     "lookback_days": 5
                 }
             },
-            "execution_complex": {
+            "execution": {
                 "class": "__main__.MockExecutor",
                 "params": {
                     "paper": True

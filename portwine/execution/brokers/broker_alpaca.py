@@ -6,11 +6,13 @@ This module provides a broker implementation that interfaces with the Alpaca tra
 
 import logging
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 
 import alpaca_trade_api as alpaca
 from alpaca_trade_api.rest import APIError
 
-from portwine.execution_complex.broker_base import BrokerBase
+from portwine.broker import BrokerBase, OrderSide, Order, Position, Account, OrderExecutionError
+
 
 class AlpacaBroker(BrokerBase):
     """
@@ -36,75 +38,108 @@ class AlpacaBroker(BrokerBase):
             Whether to use paper trading (True) or live trading (False)
         """
         self.logger = logging.getLogger(__name__)
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = base_url
         self.paper = paper
         
         # Initialize Alpaca API client
         self.api = alpaca.REST(api_key, api_secret, base_url)
         self.logger.info(f"Initialized AlpacaBroker with paper={paper}")
     
-    def get_account_info(self) -> Dict[str, Any]:
+    def get_account(self) -> Account:
         """
         Get current account information from Alpaca.
         
         Returns
         -------
-        Dict[str, Any]
-            Account information including cash, portfolio value, and positions
+        Account
+            Account object containing current account information
         """
         try:
-            account = self.api.get_account()
-            return {
-                'cash': float(account.cash),
-                'portfolio_value': float(account.portfolio_value),
-                'buying_power': float(account.buying_power),
-                'equity': float(account.equity),
-                'long_market_value': float(account.long_market_value),
-                'short_market_value': float(account.short_market_value),
-                'initial_margin': float(account.initial_margin),
-                'maintenance_margin': float(account.maintenance_margin),
-                'last_equity': float(account.last_equity),
-                'last_maintenance_margin': float(account.last_maintenance_margin),
-                'status': account.status
-            }
+            account_data = self.api.get_account()
+            return Account(
+                balance=float(account_data.cash),
+                equity=float(account_data.equity),
+                margin=float(account_data.margin_used) if hasattr(account_data, 'margin_used') else 0.0
+            )
         except APIError as e:
             self.logger.error(f"Error getting account info: {e}")
+            raise
+    
+    def get_positions(self) -> Dict[str, Position]:
+        """
+        Get all current positions from Alpaca.
+        
+        Returns
+        -------
+        Dict[str, Position]
+            Dictionary mapping symbol to Position objects
+        """
+        try:
+            alpaca_positions = self.api.list_positions()
+            positions = {}
+            for pos in alpaca_positions:
+                positions[pos.symbol] = Position(
+                    symbol=pos.symbol,
+                    quantity=float(pos.qty),
+                    entry_price=float(pos.avg_entry_price),
+                    current_price=float(pos.current_price)
+                )
+            return positions
+        except APIError as e:
+            self.logger.error(f"Error getting positions: {e}")
             return {}
     
-    def execute_order(self, symbol: str, qty: float, order_type: str = "market") -> bool:
+    def execute_order(self, symbol: str, quantity: float, side: OrderSide) -> Order:
         """
-        Execute a trade order through Alpaca.
+        Execute a market order through Alpaca.
         
         Parameters
         ----------
         symbol : str
             The ticker symbol of the asset to trade
-        qty : float
-            The quantity to trade (positive for buy, negative for sell)
-        order_type : str, default "market"
-            The type of order (market, limit, etc.)
+        quantity : float
+            The quantity to trade
+        side : OrderSide
+            The order side (BUY or SELL)
             
         Returns
         -------
-        bool
-            True if order was executed successfully, False otherwise
+        Order
+            Order object representing the executed order
+            
+        Raises
+        ------
+        OrderExecutionError
+            If the order fails to execute
         """
         try:
-            side = "buy" if qty > 0 else "sell"
-            abs_qty = abs(qty)
+            alpaca_side = "buy" if side == OrderSide.BUY else "sell"
             
-            self.logger.info(f"Executing {side} order for {abs_qty} shares of {symbol}")
+            self.logger.info(f"Executing {alpaca_side} order for {quantity} shares of {symbol}")
             
-            self.api.submit_order(
+            order = self.api.submit_order(
                 symbol=symbol,
-                qty=abs_qty,
-                side=side,
-                type=order_type,
+                qty=quantity,
+                side=alpaca_side,
+                type="market",
                 time_in_force="day"
             )
-            return True
+            
+            return Order(
+                order_id=order.id,
+                symbol=order.symbol,
+                quantity=float(order.qty),
+                side=OrderSide.BUY if order.side == "buy" else OrderSide.SELL,
+                status=order.status,
+                filled_quantity=float(order.filled_qty) if hasattr(order, 'filled_qty') else 0.0,
+                average_price=float(order.filled_avg_price) if hasattr(order, 'filled_avg_price') else 0.0,
+                created_at=datetime.fromisoformat(order.created_at.replace('Z', '+00:00'))
+            )
         except APIError as e:
             self.logger.error(f"Error executing order: {e}")
-            return False
+            raise OrderExecutionError(f"Failed to execute order: {e}")
     
     def check_market_status(self) -> bool:
         """
@@ -176,33 +211,6 @@ class AlpacaBroker(BrokerBase):
         except APIError as e:
             self.logger.error(f"Error closing positions: {e}")
             return False
-    
-    def get_positions(self) -> List[Dict[str, Any]]:
-        """
-        Get current positions from Alpaca API.
-        
-        Returns
-        -------
-        List[Dict[str, Any]]
-            List of current positions
-        """
-        try:
-            positions = self.api.list_positions()
-            result = []
-            for position in positions:
-                result.append({
-                    'symbol': position.symbol,
-                    'qty': float(position.qty),
-                    'market_value': float(position.market_value),
-                    'cost_basis': float(position.cost_basis),
-                    'unrealized_pl': float(position.unrealized_pl),
-                    'current_price': float(position.current_price),
-                    'side': position.side
-                })
-            return result
-        except APIError as e:
-            self.logger.error(f"Error getting positions: {e}")
-            return []
     
     def get_cash(self) -> float:
         """

@@ -1,5 +1,5 @@
 """
-Unit tests for the execution_complex module.
+Unit tests for the execution module.
 """
 
 import unittest
@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
-from portwine.execution_complex import Order, Position
-from portwine.execution_complex import MockExecution
+from portwine.execution import Order, Position
+from portwine.execution import MockExecution
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 
@@ -119,7 +119,7 @@ class TestMockExecution(unittest.TestCase):
         # Create strategy
         self.strategy = SimpleTestStrategy(self.tickers)
         
-        # Create execution_complex
+        # Create execution
         self.execution = MockExecution(
             strategy=self.strategy,
             market_data_loader=self.data_loader,
@@ -197,7 +197,7 @@ class TestMockExecution(unittest.TestCase):
     
     def test_execute_order_fail(self):
         """Test executing an order that fails."""
-        # Create an execution_complex with failing symbols
+        # Create an execution with failing symbols
         execution = MockExecution(
             strategy=self.strategy,
             market_data_loader=self.data_loader,
