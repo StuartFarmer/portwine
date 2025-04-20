@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 from datetime import datetime, timezone
 
-from portwine.execution.brokers.alpaca import AlpacaBroker, _parse_datetime
+from portwine.brokers.alpaca import AlpacaBroker, _parse_datetime
 from portwine.execution.brokers.base import OrderExecutionError, OrderNotFoundError, Position, Order
 
 

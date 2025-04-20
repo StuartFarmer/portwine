@@ -1,7 +1,7 @@
 import unittest
 from datetime import timezone
 
-from portwine.execution.base import ExecutionBase
+from portwine.execution import ExecutionBase
 from portwine.strategies.base import StrategyBase
 from portwine.execution.brokers.base import Order
 

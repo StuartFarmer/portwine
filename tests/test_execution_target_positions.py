@@ -2,7 +2,7 @@ import unittest
 from datetime import timezone
 import os
 
-from portwine.execution.base import ExecutionBase
+from portwine.execution import ExecutionBase
 from portwine.loaders.eodhd import EODHDMarketDataLoader
 
 

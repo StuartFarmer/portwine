@@ -22,7 +22,7 @@ from datetime import datetime
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
-from portwine.execution.brokers.base import BrokerBase, Position, Order, Account, OrderExecutionError as BrokerOrderExecutionError
+from portwine.brokers.base import BrokerBase, Position, Order, Account, OrderExecutionError as BrokerOrderExecutionError
 
 # Configure logging
 logger = logging.getLogger(__name__)

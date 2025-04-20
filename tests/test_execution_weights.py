@@ -1,7 +1,7 @@
 import unittest
 from datetime import timezone
 
-from portwine.execution.base import ExecutionBase, PortfolioExceededError
+from portwine.execution import ExecutionBase, PortfolioExceededError
 
 
 class DummyStrategy:

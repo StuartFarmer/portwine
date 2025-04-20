@@ -1,8 +1,8 @@
 import unittest
 from datetime import timezone
 
-from portwine.execution.base import ExecutionBase
-from portwine.execution.brokers.base import Order, Position, Account
+from portwine.execution import ExecutionBase
+from portwine.brokers.base import Order, Position, Account
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 

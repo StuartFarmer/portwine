@@ -2,7 +2,7 @@ import unittest
 from datetime import timedelta
 import pandas_market_calendars as mcal
 
-from portwine.execution.scheduler import daily_schedule
+from portwine.scheduler import daily_schedule
 
 
 class TestIntervalScheduleReal(unittest.TestCase):

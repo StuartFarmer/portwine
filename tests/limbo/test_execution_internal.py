@@ -6,12 +6,8 @@ _get_current_positions, _calculate_target_positions, and _execute_orders.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
-import pandas as pd
-from datetime import datetime
-from typing import Dict, Any, List
 
-from portwine.execution.base import ExecutionBase, OrderExecutionError
+from portwine.execution import ExecutionBase, OrderExecutionError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 from portwine.execution.broker import BrokerBase

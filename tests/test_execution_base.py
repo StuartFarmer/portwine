@@ -4,7 +4,7 @@ import os
 from unittest.mock import patch
 import pandas as pd
 
-from portwine.execution.base import ExecutionBase, DataFetchError
+from portwine.execution import ExecutionBase, DataFetchError
 from portwine.loaders.eodhd import EODHDMarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
@@ -271,7 +271,7 @@ class TestGetCurrentPricesRealData(unittest.TestCase):
         expected = float(self.df_aapl.loc[test_date, 'close'])
         self.assertAlmostEqual(prices['AAPL'], expected)
 
-    @patch('portwine.execution.base.datetime', new=FakeDateTime)
+    @patch('portwine.execution.datetime', new=FakeDateTime)
     def test_two_tickers(self):
         # Test two tickers with different start dates on a date where both have data
         # choose first date AAPL has data

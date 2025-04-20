@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from typing import Dict, List
 
-from portwine.execution.brokers.base import (
+from portwine.brokers.base import (
     BrokerBase,
     Account,
     Position,

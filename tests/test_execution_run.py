@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from portwine.execution.base import ExecutionBase
+from portwine.execution import ExecutionBase
 
 
 class FakeExec(ExecutionBase):

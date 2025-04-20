@@ -6,11 +6,8 @@ different broker implementations.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
-import pandas as pd
-from datetime import datetime, timezone
 
-from portwine.execution.base import ExecutionBase
+from portwine.execution import ExecutionBase
 from portwine.execution.broker import BrokerBase
 
 
