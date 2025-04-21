@@ -18,6 +18,7 @@ pandas-market-calendars = "^5.0.0"
 requests = "^2.31.0"
 pytz = "^2024.1"
 django-scheduler = "^0.10.1"
+flask = "^3.1.0"
 
 
 [tool.poetry.group.dev.dependencies]

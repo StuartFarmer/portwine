@@ -9,20 +9,14 @@ from __future__ import annotations
 
 import abc
 import logging
-import warnings
-from datetime import datetime
-from typing import Dict, List, Optional, Protocol, Tuple, TypedDict, Union, Any, Iterator
-from functools import wraps
-
-import pandas as pd
-import numpy as np
+from typing import Dict, List, Optional, Tuple, Iterator
 import math
 import time
 from datetime import datetime
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
-from portwine.brokers.base import BrokerBase, Position, Order, Account, OrderExecutionError as BrokerOrderExecutionError
+from portwine.brokers.base import BrokerBase, Order
 
 # Configure logging
 logger = logging.getLogger(__name__)
