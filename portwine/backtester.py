@@ -111,6 +111,7 @@ class Backtester:
         start_date=None,
         end_date=None,
         require_all_history: bool = False,
+        require_all_tickers: bool = False,
         verbose: bool = False
     ) -> Optional[Dict[str, pd.DataFrame]]:
         # 1) normalize date filters
@@ -129,8 +130,20 @@ class Backtester:
 
         # 4) load regular data
         reg_data = self.market_data_loader.fetch_data(reg_tkrs)
-        if not reg_tkrs or len(reg_data) < len(reg_tkrs):
-            return None
+        # identify any tickers for which we got no data
+        missing = [t for t in reg_tkrs if t not in reg_data]
+        if missing:
+            msg = (
+                f"Market data loader returned data for {len(reg_data)}/"
+                f"{len(reg_tkrs)} requested tickers. Missing: {missing}"
+            )
+            if require_all_tickers:
+                raise ValueError(msg)
+            else:
+                import warnings
+                warnings.warn(msg)
+        # only keep tickers that have data
+        reg_tkrs = [t for t in reg_tkrs if t in reg_data]
 
         # 5) build trading dates
         if self.calendar is not None:

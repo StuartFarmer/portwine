@@ -429,18 +429,18 @@ class TestBacktester(unittest.TestCase):
         # Create strategy with no tickers
         strategy = SimpleTestStrategy(tickers=[])
 
-        # Run backtest - should return None
-        results = self.backtester.run_backtest(strategy=strategy)
-        self.assertIsNone(results)
+        # Run backtest - should raise because no tickers loaded
+        with self.assertRaises(ValueError):
+            results = self.backtester.run_backtest(strategy=strategy)
 
     def test_nonexistent_ticker(self):
         """Test backtest with non-existent tickers"""
         # Strategy with non-existent ticker
         strategy = SimpleTestStrategy(tickers=['NONEXISTENT'])
 
-        # Run backtest - should return None
-        results = self.backtester.run_backtest(strategy=strategy)
-        self.assertIsNone(results)
+        # Run backtest - should raise because ticker doesnt exist
+        with self.assertRaises(ValueError):
+            results = self.backtester.run_backtest(strategy=strategy)
 
     def test_invalid_benchmark(self):
         """Test backtest with invalid benchmark"""

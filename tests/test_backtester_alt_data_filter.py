@@ -235,13 +235,13 @@ class TestAltDataDateFiltering(unittest.TestCase):
         strategy = TestStrategy([], alt_tickers)
 
         # Run backtest
-        results = self.backtester.run_backtest(
-            strategy=strategy,
-            verbose=False
-        )
+        with self.assertRaises(ValueError):
+            results = self.backtester.run_backtest(
+                strategy=strategy,
+                verbose=False
+            )
 
-        # Should fail because there's no market data to determine trading dates
-        self.assertIsNone(results)
+            # Should fail because there's no market data to determine trading dates
 
     def test_with_date_filtering(self):
         """Test date filtering with both market and alternative data"""
