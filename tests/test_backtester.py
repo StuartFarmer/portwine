@@ -621,9 +621,44 @@ class TestBacktesterWithCalendar(unittest.TestCase):
     def test_invalid_benchmark_raises(self):
         with self.assertRaises(InvalidBenchmarkError):
             self.bt.run_backtest(self.strategy, benchmark="NONEXISTENT")
+    def test_require_all_history_cuts_before_benchmark_start(self):
+        loader = MockMarketDataLoader()
+        idx_full = pd.date_range("2020-01-01", "2020-01-10", freq="D")
+        idx_bench = pd.date_range("2020-01-05", "2020-01-10", freq="D")
+        base = {'open': 1.0, 'high': 1.0, 'low': 1.0, 'close': 1.0, 'volume': 1.0}
+        loader.set_data('A', pd.DataFrame(base, index=idx_full))
+        loader.set_data('B', pd.DataFrame(base, index=idx_full))
+        loader.set_data('BENCH', pd.DataFrame(base, index=idx_bench))
 
-if __name__ == "__main__":
-    unittest.main()
+        backtester = Backtester(loader)
+        strat = SimpleTestStrategy(['A', 'B'])
+        # With require_all_history=True, the backtest should begin at BENCH's first date
+        result = backtester.run_backtest(
+            strategy=strat,
+            benchmark='BENCH',
+            require_all_history=True
+        )
+        signals = result['signals_df']
+        self.assertEqual(signals.index.min(), pd.Timestamp("2020-01-05"))
+
+    def test_without_require_all_history_includes_earliest_ticker(self):
+        loader = MockMarketDataLoader()
+        idx_full = pd.date_range("2020-01-01", "2020-01-10", freq="D")
+        idx_bench = pd.date_range("2020-01-05", "2020-01-10", freq="D")
+        base = {'open': 1.0, 'high': 1.0, 'low': 1.0, 'close': 1.0, 'volume': 1.0}
+        loader.set_data('A', pd.DataFrame(base, index=idx_full))
+        loader.set_data('B', pd.DataFrame(base, index=idx_full))
+        loader.set_data('BENCH', pd.DataFrame(base, index=idx_bench))
+        backtester = Backtester(loader)
+        strat = SimpleTestStrategy(['A', 'B'])
+        # With require_all_history=False, the backtest should begin at the earliest ticker date
+        result = backtester.run_backtest(
+            strategy=strat,
+            benchmark='BENCH',
+            require_all_history=False
+        )
+        signals = result['signals_df']
+        self.assertEqual(signals.index.min(), pd.Timestamp("2020-01-01"))
 
 
 if __name__ == "__main__":

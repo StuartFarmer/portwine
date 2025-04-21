@@ -145,7 +145,11 @@ class Backtester:
         # only keep tickers that have data
         reg_tkrs = [t for t in reg_tkrs if t in reg_data]
 
-        # 5) build trading dates
+        # 5) preload benchmark ticker if needed (for require_all_history and later returns)
+        if bm_type == BenchmarkTypes.TICKER:
+            bm_data = self.market_data_loader.fetch_data([benchmark])
+
+        # 6) build trading dates
         if self.calendar is not None:
             # data span
             first_dt = min(df.index.min() for df in reg_data.values())
@@ -165,10 +169,15 @@ class Backtester:
             # restrict to actual data
             closes = closes[(closes >= first_dt) & (closes <= last_dt)]
 
-            # require history
-            if require_all_history and reg_tkrs:
-                common = max(df.index.min() for df in reg_data.values())
-                closes = closes[closes >= common]
+            # require full history across tickers and benchmark if ticker
+            if require_all_history:
+                # collect earliest available dates
+                idx_mins = [df.index.min() for df in reg_data.values()]
+                if bm_type == BenchmarkTypes.TICKER and benchmark in bm_data:
+                    idx_mins.append(bm_data[benchmark]["close"].index.min())
+                if idx_mins:
+                    common = max(idx_mins)
+                    closes = closes[closes >= common]
 
             # apply start/end (full timestamp)
             if sd is not None:
@@ -189,10 +198,14 @@ class Backtester:
             else:
                 all_ts = sorted({ts for df in reg_data.values() for ts in df.index})
 
-            # require history
-            if require_all_history and reg_tkrs:
-                common = max(df.index.min() for df in reg_data.values())
-                all_ts = [d for d in all_ts if d >= common]
+            # require full history across tickers and benchmark if ticker
+            if require_all_history:
+                idx_mins = [df.index.min() for df in reg_data.values()]
+                if bm_type == BenchmarkTypes.TICKER and benchmark in bm_data:
+                    idx_mins.append(bm_data[benchmark]["close"].index.min())
+                if idx_mins:
+                    common = max(idx_mins)
+                    all_ts = [d for d in all_ts if d >= common]
 
             # apply start/end
             if sd is not None:
@@ -202,10 +215,6 @@ class Backtester:
 
             if not all_ts:
                 raise ValueError("No trading dates after filtering")
-
-        # 6) preload benchmark ticker if needed
-        if bm_type == BenchmarkTypes.TICKER:
-            bm_data = self.market_data_loader.fetch_data([benchmark])
 
         # 7) main loop: signals
         sig_rows = []
@@ -259,9 +268,9 @@ class Backtester:
                 self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 
         return {
-            "signals_df":       sig_reg,
-            "tickers_returns":  ret_df,
-            "strategy_returns": strat_ret,
+            "signals_df":        sig_reg,
+            "tickers_returns":   ret_df,
+            "strategy_returns":  strat_ret,
             "benchmark_returns": bm_ret
         }
 
