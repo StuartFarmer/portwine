@@ -1,13 +1,9 @@
 import unittest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-import tempfile
-import os
-import shutil
 
 # Import components to be tested
-from portwine.backtester import Backtester, STANDARD_BENCHMARKS, InvalidBenchmarkError
+from portwine.backtester import Backtester, InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 
@@ -87,6 +83,14 @@ class DynamicTestStrategy(StrategyBase):
 
         # Equal weight until we have enough history
         return {ticker: 1.0 / len(self.tickers) for ticker in self.tickers}
+
+class FakeCalendar:
+    tz = "UTC"
+    def schedule(self, start_date, end_date):
+        days = pd.date_range(start_date, end_date, freq="D")
+        sel = [d for d in days if d.day % 2 == 1]
+        closes = [pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in sel]
+        return pd.DataFrame({"market_close": closes}, index=sel)
 
 
 class TestBacktester(unittest.TestCase):
@@ -429,18 +433,18 @@ class TestBacktester(unittest.TestCase):
         # Create strategy with no tickers
         strategy = SimpleTestStrategy(tickers=[])
 
-        # Run backtest - should return None
-        results = self.backtester.run_backtest(strategy=strategy)
-        self.assertIsNone(results)
+        # Run backtest - should raise because no tickers loaded
+        with self.assertRaises(ValueError):
+            results = self.backtester.run_backtest(strategy=strategy)
 
     def test_nonexistent_ticker(self):
         """Test backtest with non-existent tickers"""
         # Strategy with non-existent ticker
         strategy = SimpleTestStrategy(tickers=['NONEXISTENT'])
 
-        # Run backtest - should return None
-        results = self.backtester.run_backtest(strategy=strategy)
-        self.assertIsNone(results)
+        # Run backtest - should raise because ticker doesnt exist
+        with self.assertRaises(ValueError):
+            results = self.backtester.run_backtest(strategy=strategy)
 
     def test_invalid_benchmark(self):
         """Test backtest with invalid benchmark"""
@@ -460,5 +464,167 @@ class TestBacktester(unittest.TestCase):
                 benchmark='NONEXISTENT'
             )
 
-if __name__ == '__main__':
+
+class TestRequireAllHistory(unittest.TestCase):
+    def setUp(self):
+        dates = pd.date_range("2020-01-01", periods=10, freq="D")
+        self.loader = MockMarketDataLoader(
+            mock_data={
+                'A': pd.DataFrame({
+                        "open":   range(1, 11),
+                        "high":   range(1, 11),
+                        "low":    range(1, 11),
+                        "close":  range(1, 11),
+                        "volume": [100] * 10
+                    }, index=dates),
+                'B': pd.DataFrame({
+                        "open":   list(range(10, 0, -1)),
+                        "high":   list(range(10, 0, -1)),
+                        "low":    list(range(10, 0, -1)),
+                        "close":  list(range(10, 0, -1)),
+                        "volume": [100] * 10
+                    }, index=dates)
+            }
+        )
+        self.bt = Backtester(self.loader)
+        self.strat = SimpleTestStrategy(["A", "B"])
+
+    def test_require_all_history_false_keeps_full_length(self):
+        res = self.bt.run_backtest(self.strat, require_all_history=False)
+        self.assertEqual(len(res["signals_df"]), 10)
+
+    def test_require_all_history_true_trims_to_common_start(self):
+        res = self.bt.run_backtest(self.strat, require_all_history=True)
+        # Both tickers start on 2020-01-01, so still 10
+        self.assertEqual(len(res["signals_df"]), 10)
+
+class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
+    def setUp(self):
+        dates = pd.date_range("2020-01-01", periods=10, freq="D")
+        self.loader = MockMarketDataLoader(
+            mock_data={
+                'A': pd.DataFrame({
+                    "open": range(1, 11),
+                    "high": range(1, 11),
+                    "low": range(1, 11),
+                    "close": range(1, 11),
+                    "volume": [100] * 10
+                }, index=dates),
+                'B': pd.DataFrame({
+                    "open": list(range(10, 0, -1)),
+                    "high": list(range(10, 0, -1)),
+                    "low": list(range(10, 0, -1)),
+                    "close": list(range(10, 0, -1)),
+                    "volume": [100] * 10
+                }, index=dates)
+            }
+        )
+        self.bt = Backtester(self.loader)
+
+    def test_default_benchmark_equal_weight(self):
+        strat = SimpleTestStrategy(["A", "B"])
+        res = self.bt.run_backtest(strat)  # no benchmark specified
+        bm = res["benchmark_returns"]
+        ret = res["tickers_returns"]
+        expected = (ret["A"] + ret["B"]) / 2
+        pd.testing.assert_series_equal(bm, expected)
+
+    def test_invalid_benchmark_raises(self):
+        strat = SimpleTestStrategy(["A"])
+        with self.assertRaises(InvalidBenchmarkError):
+            self.bt.run_backtest(strat, benchmark="NONEXISTENT")
+class TestBacktesterWithCalendar(unittest.TestCase):
+    def setUp(self):
+        # Build 2020-01-13 to 2020-01-18 price data for 'X'
+        dates = pd.date_range("2020-01-13", "2020-01-18", freq="D")
+        df = pd.DataFrame({
+            "open":   range(len(dates)),
+            "high":   range(len(dates)),
+            "low":    range(len(dates)),
+            "close":  range(len(dates)),
+            "volume": [1.0] * len(dates)
+        }, index=dates)
+
+        # Use mock loader instead of SimpleDateLoader
+        self.loader = MockMarketDataLoader({"X": df})
+        self.bt = Backtester(
+            market_data_loader=self.loader,
+            calendar=FakeCalendar()
+        )
+        # Use TestStrategy instead of ZeroStrategy
+        self.strategy = SimpleTestStrategy(["X"], [])
+
+        # Precompute expected calendar timestamps
+        sel = [d for d in dates if d.day % 2 == 1]
+        self.calendar_ts = pd.DatetimeIndex(
+            [pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in sel]
+        )
+
+    def test_calendar_overrides_data_dates(self):
+        res = self.bt.run_backtest(self.strategy, shift_signals=False)
+        pd.testing.assert_index_equal(res["signals_df"].index, self.calendar_ts)
+
+    def test_start_end_filters_with_calendar(self):
+        # Start‐date only
+        start = pd.Timestamp("2020-01-13 16:00")
+        res = self.bt.run_backtest(self.strategy, start_date=start)
+        expected_after_start = pd.DatetimeIndex([
+            pd.Timestamp("2020-01-13 16:00"),
+            pd.Timestamp("2020-01-15 16:00"),
+            pd.Timestamp("2020-01-17 16:00"),
+        ])
+        pd.testing.assert_index_equal(res["signals_df"].index, expected_after_start)
+
+        # End‐date only
+        end = pd.Timestamp("2020-01-17 16:00")
+        res = self.bt.run_backtest(self.strategy, shift_signals=False, end_date=end)
+        expected_before_end = pd.DatetimeIndex([
+            pd.Timestamp("2020-01-13 16:00"),
+            pd.Timestamp("2020-01-15 16:00"),
+            pd.Timestamp("2020-01-17 16:00"),
+        ])
+        pd.testing.assert_index_equal(res["signals_df"].index, expected_before_end)
+
+    def test_invalid_date_range_raises(self):
+        with self.assertRaises(ValueError):
+            self.bt.run_backtest(
+                self.strategy,
+                shift_signals=False,
+                start_date="2020-01-10",
+                end_date="2020-01-01"
+            )
+
+    def test_non_overlapping_date_range_raises(self):
+        with self.assertRaises(ValueError):
+            self.bt.run_backtest(
+                self.strategy,
+                shift_signals=False,
+                start_date="2030-01-01",
+                end_date="2030-01-05"
+            )
+
+    def test_require_all_history_with_calendar(self):
+        res1 = self.bt.run_backtest(self.strategy, require_all_history=False)
+        res2 = self.bt.run_backtest(self.strategy, require_all_history=True)
+        pd.testing.assert_index_equal(
+            res1["signals_df"].index,
+            res2["signals_df"].index
+        )
+
+    def test_benchmark_equal_weight_with_calendar(self):
+        res = self.bt.run_backtest(self.strategy)
+        pd.testing.assert_series_equal(
+            res["benchmark_returns"],
+            res["strategy_returns"]
+        )
+
+    def test_invalid_benchmark_raises(self):
+        with self.assertRaises(InvalidBenchmarkError):
+            self.bt.run_backtest(self.strategy, benchmark="NONEXISTENT")
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+if __name__ == "__main__":
     unittest.main()

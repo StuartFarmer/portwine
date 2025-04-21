@@ -111,6 +111,7 @@ class Backtester:
         start_date=None,
         end_date=None,
         require_all_history: bool = False,
+        require_all_tickers: bool = False,
         verbose: bool = False
     ) -> Optional[Dict[str, pd.DataFrame]]:
         # 1) normalize date filters
@@ -129,8 +130,53 @@ class Backtester:
 
         # 4) load regular data
         reg_data = self.market_data_loader.fetch_data(reg_tkrs)
-        if not reg_tkrs or len(reg_data) < len(reg_tkrs):
-            return None
+        # identify any tickers for which we got no data
+        missing = [t for t in reg_tkrs if t not in reg_data]
+        if missing:
+            msg = (
+                f"Market data loader returned data for {len(reg_data)}/"
+                f"{len(reg_tkrs)} requested tickers. Missing: {missing}"
+            )
+            if require_all_tickers:
+                raise ValueError(msg)
+            else:
+                import warnings
+                warnings.warn(msg)
+        # only keep tickers that have data
+        reg_tkrs = [t for t in reg_tkrs if t in reg_data]
+
+        # 5) build trading dates
+        if self.calendar is not None:
+            # data span
+            first_dt = min(df.index.min() for df in reg_data.values())
+            last_dt  = max(df.index.max() for df in reg_data.values())
+
+            # schedule uses dates only
+            sched = self.calendar.schedule(
+                start_date=first_dt.date(),
+                end_date=last_dt.date()
+            )
+            closes = sched["market_close"]
+
+            # drop tz if present
+            if getattr(getattr(closes, "dt", None), "tz", None) is not None:
+                closes = closes.dt.tz_convert(None)
+
+            # restrict to actual data
+            closes = closes[(closes >= first_dt) & (closes <= last_dt)]
+
+            # require history
+            if require_all_history and reg_tkrs:
+                common = max(df.index.min() for df in reg_data.values())
+                closes = closes[closes >= common]
+
+            # apply start/end (full timestamp)
+            if sd is not None:
+                closes = closes[closes >= sd]
+            if ed is not None:
+                closes = closes[closes <= ed]
+
+            all_ts = list(closes)
 
         # 5) build trading dates
         if self.calendar is not None:
