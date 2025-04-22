@@ -365,8 +365,10 @@ class ExecutionBase(abc.ABC):
         latest_data = self.fetch_latest_data(dt.timestamp())
         # Get target weights from strategy
         target_weights = self.strategy.step(dt, latest_data)
+        print(f'target weights: {target_weights}')
         # Get current positions and portfolio value
         current_positions, portfolio_value = self._get_current_positions()
+        print(f'current positions: {current_positions}')
         # Extract prices from fetched data
         prices = {
             symbol: bar['close']
@@ -376,11 +378,15 @@ class ExecutionBase(abc.ABC):
         target_positions = self._calculate_target_positions(
             target_weights, portfolio_value, prices
         )
+
+        print(f'target positions: {target_positions}')
         _ = self._calculate_current_weights(
             list(current_positions.items()), portfolio_value, prices
         )
         # Determine orders and execute them
         orders = self._target_positions_to_orders(target_positions, current_positions)
+
+        print(f'orders: {orders}')
         return self._execute_orders(orders)
 
     def run(self, schedule: Iterator[int]) -> None:
@@ -394,10 +400,12 @@ class ExecutionBase(abc.ABC):
         The loop terminates when the iterator is exhausted (StopIteration).
         """
         for timestamp_ms in schedule:
+            print(f'next timestamp_ms: {timestamp_ms}')
             # compute time until next scheduled timestamp
             now_ms = int(time.time() * 1000)
             wait_ms = timestamp_ms - now_ms
             if wait_ms > 0:
                 time.sleep(wait_ms / 1000)
             # execute step at or after scheduled time
+            print(f'executing step at {timestamp_ms}')
             self.step(timestamp_ms)

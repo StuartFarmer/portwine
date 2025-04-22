@@ -119,21 +119,21 @@ class BootstrapAnalyzer(Analyzer):
 
         x_axis = np.arange(n_days)
         # Mean lines
-        mean_strat = eqs_s.mean(axis=0)
         mean_bench = eqs_b.mean(axis=0)
-        ax_eq.plot(x_axis, mean_strat, color='blue', linewidth=1, label="Strategy")
+        mean_strat = eqs_s.mean(axis=0)
         ax_eq.plot(x_axis, mean_bench, color='orange', linewidth=1, label="Benchmark")
+        ax_eq.plot(x_axis, mean_strat, color='blue', linewidth=1, label="Strategy")
 
         ########################################
         # TOP-LEFT => eq paths
         ########################################
-        
+
         # Plot each path in low alpha
         for i in range(eqs_s.shape[0]):
-            ax_eq.plot(x_axis, eqs_s[i], color='blue', alpha=alpha_paths, linewidth=0.5)
-            
-        for i in range(eqs_s.shape[0]):
             ax_eq.plot(x_axis, eqs_b[i], color='orange', alpha=alpha_paths, linewidth=0.5)
+
+        for i in range(eqs_s.shape[0]):
+            ax_eq.plot(x_axis, eqs_s[i], color='blue', alpha=alpha_paths, linewidth=0.5)
 
 
         ax_eq.set_title("Bootstrap eq Paths + Means (Aligned)")

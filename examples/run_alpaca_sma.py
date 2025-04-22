@@ -60,10 +60,10 @@ def main():
 
     # Schedule execution at market close for today on NYSE
     print("Scheduling execution at market close for today...")
-    schedule = daily_schedule(before_close_minutes=0, calendar_name="NYSE")
+    schedule = daily_schedule(after_open_minutes=0, before_close_minutes=0, interval_seconds=60, calendar_name="NYSE")
     executor.run(schedule)
     print("Scheduled execution finished.")
 
 
 if __name__ == "__main__":
-    main() 
+    main()

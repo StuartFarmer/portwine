@@ -37,14 +37,25 @@ def daily_schedule(
             "Must specify at least one of after_open_minutes or before_close_minutes"
         )
 
+    # Determine if we should start from the current timestamp (not just the date)
+    use_now = start_date is None
     calendar = mcal.get_calendar(calendar_name)
-    # Default to today if no dates provided
+    # Default to today if no dates provided (date-only part)
     if start_date is None:
         start_date = datetime.now().date().isoformat()
     if end_date is None:
         end_date = start_date
 
     schedule_df = calendar.schedule(start_date=start_date, end_date=end_date)
+    # If we want to start from the precise current time, capture now in schedule tz
+    if use_now:
+        idx = schedule_df.index
+        tz = idx.tz if hasattr(idx, 'tz') else None
+        now_dt = datetime.now(tz) if tz else datetime.now()
+        now_ms = int(now_dt.timestamp() * 1000)
+    else:
+        now_ms = None
+
     # Iterate each trading day and generate schedule
     for _, row in schedule_df.iterrows():
         market_open = row['market_open']
@@ -56,20 +67,26 @@ def daily_schedule(
                 raise ValueError(
                     "Cannot specify interval_seconds on a close-only schedule"
                 )
-            ts_close = market_close - timedelta(minutes=before_close_minutes)
-            yield int(ts_close.timestamp() * 1000)
+            ts = market_close - timedelta(minutes=before_close_minutes)
+            ms = int(ts.timestamp() * 1000)
+            if now_ms is None or ms >= now_ms:
+                yield ms
             continue
         # on-open only
         if before_close_minutes is None:
-            ts_open = market_open + timedelta(minutes=after_open_minutes)
+            ts_start = market_open + timedelta(minutes=after_open_minutes)
             if interval_seconds is None:
-                yield int(ts_open.timestamp() * 1000)
+                ms = int(ts_start.timestamp() * 1000)
+                if now_ms is None or ms >= now_ms:
+                    yield ms
             else:
-                # generate from ts_open to market_close by interval_seconds
+                # generate from ts_start to market_close by interval_seconds
                 delta = timedelta(seconds=interval_seconds)
-                t = ts_open
+                t = ts_start
                 while t <= market_close:
-                    yield int(t.timestamp() * 1000)
+                    ms = int(t.timestamp() * 1000)
+                    if now_ms is None or ms >= now_ms:
+                        yield ms
                     t += delta
             continue
         # both open and close with optional interval
@@ -78,17 +95,23 @@ def daily_schedule(
         end_dt = market_close - timedelta(minutes=before_close_minutes)
         # no interval: just yield start and end when interval_seconds is None
         if interval_seconds is None:
-            yield int(start_dt.timestamp() * 1000)
-            yield int(end_dt.timestamp() * 1000)
+            for dt in (start_dt, end_dt):
+                ms = int(dt.timestamp() * 1000)
+                if now_ms is None or ms >= now_ms:
+                    yield ms
         else:
             # generate points from start to end every interval_seconds
             delta = timedelta(seconds=interval_seconds)
             t = start_dt
-            last_ts = None
+            last_dt = None
             while t <= end_dt:
-                yield int(t.timestamp() * 1000)
-                last_ts = t
+                ms = int(t.timestamp() * 1000)
+                if now_ms is None or ms >= now_ms:
+                    yield ms
+                    last_dt = t
                 t += delta
             # if inclusive and end_dt was not hit exactly, include it
-            if inclusive and last_ts is not None and last_ts < end_dt:
-                yield int(end_dt.timestamp() * 1000) 
+            if inclusive and last_dt is not None and last_dt < end_dt:
+                ms = int(end_dt.timestamp() * 1000)
+                if now_ms is None or ms >= now_ms:
+                    yield ms 
