@@ -17,6 +17,7 @@ DEFAULT_SHOCK_PERIODS = {
     "2022 Rate Hike Selloff": ("2022-01-03", "2022-06-16")
 }
 
+
 class ShockAnalyzer(Analyzer):
     """
     Dynamically lays out the figure so we don't have large empty spaces
@@ -87,13 +88,23 @@ class ShockAnalyzer(Analyzer):
             start_dt = pd.to_datetime(start_str)
             end_dt = pd.to_datetime(end_str)
 
-            # Must have full coverage in strategy
-            if s_idx.min() > start_dt or s_idx.max() < end_dt:
+            # MODIFIED: Find overlapping data rather than requiring full coverage
+            actual_start = max(s_idx.min(), start_dt)
+            actual_end = min(s_idx.max(), end_dt)
+
+            # Check if we have at least some data in this period
+            if actual_end < actual_start or actual_start > end_dt or actual_end < start_dt:
+                # No overlap with the data we have
                 continue
 
-            s_sub = strat_eq.loc[(strat_eq.index >= start_dt) & (strat_eq.index <= end_dt)]
+            # Get the data slice for this (possibly partial) crisis period
+            s_sub = strat_eq.loc[(strat_eq.index >= actual_start) & (strat_eq.index <= actual_end)]
             if len(s_sub) < 2:
                 continue
+
+            # Add flag to indicate if this is a partial period
+            is_partial = (actual_start > start_dt) or (actual_end < end_dt)
+            partial_label = " (Partial)" if is_partial else ""
 
             sub_dd = self._compute_drawdown(s_sub)
             sub_ret = (s_sub.iloc[-1] / s_sub.iloc[0]) - 1.0
@@ -103,23 +114,30 @@ class ShockAnalyzer(Analyzer):
             bm_ret, bm_mdd_val = np.nan, np.nan
             b_sub = None
             if benchmark_data:
-                if b_idx.min() <= start_dt and b_idx.max() >= end_dt:
+                bm_start = max(b_idx.min(), start_dt)
+                bm_end = min(b_idx.max(), end_dt)
+
+                if bm_end >= bm_start:  # If there's some overlap
                     b_eq_full = benchmark_data['equity_curve']
-                    b_sub = b_eq_full.loc[(b_eq_full.index >= start_dt) & (b_eq_full.index <= end_dt)]
+                    b_sub = b_eq_full.loc[(b_eq_full.index >= bm_start) & (b_eq_full.index <= bm_end)]
                     if len(b_sub) > 1:
                         bm_dd_sub = self._compute_drawdown(b_sub)
                         bm_mdd_val = bm_dd_sub.min()
                         bm_ret = (b_sub.iloc[-1] / b_sub.iloc[0]) - 1.0
 
-            period_slices[pname] = {'s_sub': s_sub, 'b_sub': b_sub}
+            display_name = pname + partial_label
+            period_slices[display_name] = {'s_sub': s_sub, 'b_sub': b_sub}
             stress_records.append({
-                'Period': pname,
-                'Start': start_dt,
-                'End': end_dt,
+                'Period': display_name,
+                'Start': actual_start,
+                'End': actual_end,
                 'Strategy_TotalRet': sub_ret,
                 'Strategy_MaxDD': sub_mdd,
                 'Benchmark_TotalRet': bm_ret,
-                'Benchmark_MaxDD': bm_mdd_val
+                'Benchmark_MaxDD': bm_mdd_val,
+                'IsPartial': is_partial,
+                'OriginalStart': start_dt,
+                'OriginalEnd': end_dt
             })
 
         if not stress_records:
@@ -149,8 +167,8 @@ class ShockAnalyzer(Analyzer):
         strat_eq = strat['equity_curve']
         strat_dd = strat['drawdown_series'] * 100.0
         has_bm = (bench is not None)
-        bm_eq = bench['equity_curve']*1 if has_bm else None
-        bm_dd = (bench['drawdown_series']*100.0) if has_bm else None
+        bm_eq = bench['equity_curve'] * 1 if has_bm else None
+        bm_dd = (bench['drawdown_series'] * 100.0) if has_bm else None
 
         # Which events remain
         events_list = list(period_slices.items())  # [(name, {s_sub, b_sub}), ...]
@@ -175,7 +193,7 @@ class ShockAnalyzer(Analyzer):
             total_rows += 1
 
         # Create figure
-        fig = plt.figure(figsize=(14, 4*(total_rows)), constrained_layout=True)
+        fig = plt.figure(figsize=(14, 4 * (total_rows)), constrained_layout=True)
         gs = GridSpec(nrows=total_rows, ncols=2, figure=fig)
         cmap = colormaps.get_cmap("tab10")
 
@@ -192,12 +210,52 @@ class ShockAnalyzer(Analyzer):
         if stress_df is not None:
             for i, pname in enumerate(stress_df.index):
                 row_data = stress_df.loc[pname]
-                start_dt = row_data['Start']
-                end_dt = row_data['End']
+
+                # MODIFIED: Instead of stacking, use conditional approach
                 color = cmap(i % 10)
-                ax_eq.axvspan(start_dt, end_dt, color=color, alpha=0.1, label=pname)
-            # you might want a single legend entry per event, but now we have duplicates
-            ax_eq.legend(loc='best')
+
+                if 'OriginalStart' in row_data and 'OriginalEnd' in row_data and pd.notnull(row_data['OriginalStart']):
+                    start_dt = row_data['OriginalStart']
+                    end_dt = row_data['OriginalEnd']
+                    actual_start = row_data['Start']
+                    actual_end = row_data['End']
+
+                    # For partial periods, don't stack spans
+                    if row_data.get('IsPartial', False):
+                        # Add light shading only for parts we don't have data for
+                        if start_dt < actual_start:
+                            ax_eq.axvspan(start_dt, actual_start, color=color, alpha=0.05)
+                        if actual_end < end_dt:
+                            ax_eq.axvspan(actual_end, end_dt, color=color, alpha=0.05)
+
+                        # Add normal shading only for the part we have data for
+                        ax_eq.axvspan(actual_start, actual_end, color=color, alpha=0.1)
+                    else:
+                        # For complete periods, just add normal shading
+                        ax_eq.axvspan(start_dt, end_dt, color=color, alpha=0.1)
+                else:
+                    # Fallback to actual dates if original not available
+                    start_dt = row_data['Start']
+                    end_dt = row_data['End']
+                    ax_eq.axvspan(start_dt, end_dt, color=color, alpha=0.1)
+
+            # Add legend entries for each unique event
+            handles, labels = ax_eq.get_legend_handles_labels()
+            event_handles = []
+            event_labels = []
+
+            for i, pname in enumerate(stress_df.index):
+                color = cmap(i % 10)
+                # Remove " (Partial)" from legend
+                clean_name = pname.replace(" (Partial)", "")
+
+                # Use consistent alpha for legend that matches what's shown for complete periods
+                event_handles.append(plt.Rectangle((0, 0), 1, 1, fc=color, alpha=0.1))
+                event_labels.append(clean_name)
+
+            all_handles = handles + event_handles
+            all_labels = labels + event_labels
+            ax_eq.legend(all_handles, all_labels, loc='best')
 
         # Row 1: dd
         ax_dd = fig.add_subplot(gs[1, :])
@@ -211,10 +269,34 @@ class ShockAnalyzer(Analyzer):
         if stress_df is not None:
             for i, pname in enumerate(stress_df.index):
                 row_data = stress_df.loc[pname]
-                start_dt = row_data['Start']
-                end_dt = row_data['End']
+
+                # MODIFIED: Instead of stacking, use conditional approach
                 color = cmap(i % 10)
-                ax_dd.axvspan(start_dt, end_dt, color=color, alpha=0.1)
+
+                if 'OriginalStart' in row_data and 'OriginalEnd' in row_data and pd.notnull(row_data['OriginalStart']):
+                    start_dt = row_data['OriginalStart']
+                    end_dt = row_data['OriginalEnd']
+                    actual_start = row_data['Start']
+                    actual_end = row_data['End']
+
+                    # For partial periods, don't stack spans
+                    if row_data.get('IsPartial', False):
+                        # Add light shading only for parts we don't have data for
+                        if start_dt < actual_start:
+                            ax_dd.axvspan(start_dt, actual_start, color=color, alpha=0.05)
+                        if actual_end < end_dt:
+                            ax_dd.axvspan(actual_end, end_dt, color=color, alpha=0.05)
+
+                        # Add normal shading only for the part we have data for
+                        ax_dd.axvspan(actual_start, actual_end, color=color, alpha=0.1)
+                    else:
+                        # For complete periods, just add normal shading
+                        ax_dd.axvspan(start_dt, end_dt, color=color, alpha=0.1)
+                else:
+                    # Fallback to actual dates if original not available
+                    start_dt = row_data['Start']
+                    end_dt = row_data['End']
+                    ax_dd.axvspan(start_dt, end_dt, color=color, alpha=0.1)
 
         # Subplots for each event
         for i, (pname, subdict) in enumerate(events_list):
@@ -296,10 +378,10 @@ class ShockAnalyzer(Analyzer):
             if has_bm:
                 col_idx = len(headers) - 1
                 for i, row_vals in enumerate(table_data):
-                    cell = tbl[(i+1, col_idx)]
+                    cell = tbl[(i + 1, col_idx)]
                     raw_str = row_vals[col_idx].strip('%')
                     try:
-                        val = float(raw_str)/100
+                        val = float(raw_str) / 100
                         if val > 0:
                             cell.set_facecolor('#d8f3dc')
                         elif val < 0:
@@ -309,9 +391,9 @@ class ShockAnalyzer(Analyzer):
 
         plt.show()
 
-    #-------------------------
+    # -------------------------
     # Helper
-    #-------------------------
+    # -------------------------
     def _compute_drawdown(self, equity_series):
         roll_max = equity_series.cummax()
         return (equity_series - roll_max) / roll_max
