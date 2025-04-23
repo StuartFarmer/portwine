@@ -533,6 +533,7 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
         strat = SimpleTestStrategy(["A"])
         with self.assertRaises(InvalidBenchmarkError):
             self.bt.run_backtest(strat, benchmark="NONEXISTENT")
+
 class TestBacktesterWithCalendar(unittest.TestCase):
     def setUp(self):
         # Build 2020-01-13 to 2020-01-18 price data for 'X'

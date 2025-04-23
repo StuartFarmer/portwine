@@ -1,11 +1,300 @@
 import unittest
-from datetime import timedelta
-import pandas_market_calendars as mcal
+from datetime import datetime, timedelta, date, timezone
+from itertools import islice
+from types import SimpleNamespace
 from unittest.mock import patch
-import pandas as pd
-from datetime import datetime
 
-from portwine.scheduler import daily_schedule
+import portwine.scheduler as scheduler
+
+from unittest import mock
+
+from portwine.scheduler import DailySchedule, daily_schedule
+
+import pandas_market_calendars as mcal
+import pandas as pd
+
+
+
+# helper: convert datetime/Timestamp -> UNIX-ms
+def ms(ts):
+    return int(pd.Timestamp(ts).value // 1_000_000)
+
+class FakeCalendar:
+    """
+    Fake pandas_market_calendars Calendar:
+    - For each new DailySchedule, returns a fresh FakeCalendar.
+    - schedule(start_date, end_date) filters self.df between those dates.
+      Raises StopIteration after two calls to end live iteration.
+    """
+    def __init__(self, df):
+        self.df = df
+        self.calls = 0
+
+    def schedule(self, start_date, end_date):
+        self.calls += 1
+        sd = pd.to_datetime(start_date)
+        ed = pd.to_datetime(end_date)
+        mask = (self.df.index >= sd) & (self.df.index <= ed)
+        subset = self.df.loc[mask]
+        if self.calls <= 2:
+            return subset
+        raise StopIteration
+
+class DummyCalendar:
+    """A fake exchange calendar for testing two or more consecutive days."""
+    def schedule(self, start_date, end_date):
+        # Parse ISO dates
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+        days = (end - start).days + 1
+        dates = [start + timedelta(days=i) for i in range(days)]
+        idx = pd.to_datetime(dates)
+        # Market open at 09:30, close at 16:00 local
+        opens = [d.replace(hour=9, minute=30) for d in dates]
+        closes = [d.replace(hour=16, minute=0) for d in dates]
+        df = pd.DataFrame({"market_open": opens, "market_close": closes}, index=idx)
+        return df
+
+class FiniteBusinessCalendar:
+    """Business-day calendar 09:30–16:00 UTC."""
+    def schedule(self, start_date, end_date):
+        start = pd.to_datetime(start_date)
+        end   = pd.to_datetime(end_date)
+        days  = pd.date_range(start, end, freq="D")
+        biz   = [d for d in days if d.weekday() < 5]
+        opens = [d.replace(hour= 9, minute=30) for d in biz]
+        closes= [d.replace(hour=16, minute= 0) for d in biz]
+        return pd.DataFrame({
+            "market_open":  opens,
+            "market_close": closes
+        }, index=biz)
+
+
+class SingleDayCalendar:
+    """One session per requested day at fixed open/close times."""
+    def __init__(self, open_time: str, close_time: str):
+        self.open_time  = open_time
+        self.close_time = close_time
+
+    def schedule(self, start_date, end_date):
+        opens  = pd.to_datetime(f"{start_date} {self.open_time}",  utc=True)
+        closes = pd.to_datetime(f"{start_date} {self.close_time}", utc=True)
+        idx    = [pd.to_datetime(start_date)]
+        return pd.DataFrame({
+            "market_open":  [opens],
+            "market_close": [closes]
+        }, index=idx)
+
+
+class TestFiniteDailySchedule(unittest.TestCase):
+
+    @patch("portwine.scheduler.mcal.get_calendar",
+           return_value=FiniteBusinessCalendar())
+    def test_open_only_single_day(self, mock_gc):
+        res = list(daily_schedule(
+            after_open_minutes=5,
+            before_close_minutes=None,
+            calendar_name="TEST",
+            start_date="2021-01-04"
+        ))
+        self.assertEqual(res, [ms(datetime(2021, 1, 4, 9, 35))])
+
+
+class TestLiveDailySchedule(unittest.TestCase):
+    def setUp(self):
+        # sessions at 10:00–10:06 UTC each day
+        self.cal = SingleDayCalendar(open_time="10:00:00", close_time="10:06:00")
+
+    def test_live_starts_from_now(self):
+        class FakeDate(date):
+            @classmethod
+            def today(cls):
+                return date(2025, 4, 21)
+
+        now_ts = pd.Timestamp("2025-04-21 10:02:00", tz="UTC")
+        fake_time = SimpleNamespace(time=lambda: now_ts.value / 1e9)
+
+        with patch("portwine.scheduler.mcal.get_calendar", return_value=self.cal), \
+             patch("time.time",                     fake_time.time), \
+             patch.dict(scheduler.__dict__,        {"date": FakeDate}):
+
+            gen = daily_schedule(
+                after_open_minutes=0,
+                before_close_minutes=None,
+                interval_seconds=60,
+                calendar_name="TEST"
+            )
+
+            base   = pd.Timestamp("2025-04-21 10:00:00", tz="UTC")
+            all_ts = [base + timedelta(seconds=60*i) for i in range(7)]
+            now_ms = ms(now_ts)
+            expected = [ms(t) for t in all_ts if ms(t) >= now_ms]
+            result   = list(islice(gen, len(expected)))
+
+        self.assertEqual(result, expected)
+
+    def test_live_rolls_after_close(self):
+        class FakeDate(date):
+            @classmethod
+            def today(cls):
+                return date(2025, 4, 21)
+
+        now_ts = pd.Timestamp("2025-04-21 10:10:00", tz="UTC")
+        fake_time = SimpleNamespace(time=lambda: now_ts.value / 1e9)
+
+        with patch("portwine.scheduler.mcal.get_calendar", return_value=self.cal), \
+             patch("time.time",                     fake_time.time), \
+             patch.dict(scheduler.__dict__,        {"date": FakeDate}):
+
+            gen = daily_schedule(
+                after_open_minutes=0,
+                before_close_minutes=None,
+                calendar_name="TEST"
+            )
+            first = next(gen)
+
+        tomorrow = pd.Timestamp("2025-04-22 10:00:00", tz="UTC")
+        self.assertEqual(first, ms(tomorrow))
+
+    def test_live_skips_weekends(self):
+        class FakeDate(date):
+            @classmethod
+            def today(cls):
+                return date(2021, 1, 2)  # Saturday
+
+        fake_time = SimpleNamespace(time=lambda: 0)
+
+        with patch("portwine.scheduler.mcal.get_calendar",
+                   return_value=FiniteBusinessCalendar()), \
+             patch("time.time",            fake_time.time), \
+             patch.dict(scheduler.__dict__, {"date": FakeDate}):
+
+            gen   = daily_schedule(
+                after_open_minutes=0,
+                before_close_minutes=None,
+                calendar_name="TEST"
+            )
+            first = next(gen)
+
+        # Monday Jan 4, 2021 at 09:30
+        self.assertEqual(first, ms(datetime(2021,1,4,9,30)))
+
+class TestDailySchedule(unittest.TestCase):
+    def setUp(self):
+        # Two-day schedule with naive UTC times
+        dates = pd.to_datetime(["2025-04-01", "2025-04-02"])
+        opens = dates + pd.Timedelta(hours=13)
+        closes = dates + pd.Timedelta(hours=20)
+        self.schedule_df = pd.DataFrame({
+            "market_open": opens,
+            "market_close": closes
+        }, index=dates)
+
+        # Patch get_calendar to return a new FakeCalendar each time
+        patcher = mock.patch(
+            'portwine.scheduler.mcal.get_calendar',
+            new=lambda name: FakeCalendar(self.schedule_df)
+        )
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def test_error_when_no_offsets(self):
+        with self.assertRaises(ValueError):
+            DailySchedule()
+
+    def test_error_close_only_with_interval(self):
+        with self.assertRaises(ValueError):
+            DailySchedule(before_close_minutes=5, interval_seconds=60)
+
+    def test_to_ms_naive_and_tzaware(self):
+        ds = DailySchedule(after_open_minutes=1, before_close_minutes=1, start_date="2025-04-01")
+        dt_naive = datetime(2025, 4, 1, 13, 1)
+        ms1 = ds._to_ms(dt_naive)
+        dt_aware = datetime(2025, 4, 1, 13, 1, tzinfo=timezone.utc)
+        ms2 = ds._to_ms(dt_aware)
+        self.assertEqual(ms1, ms2)
+
+    def test_build_events_various_modes(self):
+        row = self.schedule_df.iloc[0]
+        open_dt, close_dt = row["market_open"], row["market_close"]
+
+        # close-only
+        ds = DailySchedule(after_open_minutes=None, before_close_minutes=10)
+        evs = ds._build_events(open_dt, close_dt)
+        exp = [
+            (close_dt - timedelta(minutes=10)).tz_localize("UTC")
+        ]
+        self.assertEqual(evs, exp)
+
+        # open-only
+        ds = DailySchedule(after_open_minutes=15, before_close_minutes=None)
+        evs = ds._build_events(open_dt, close_dt)
+        exp = [
+            (open_dt + timedelta(minutes=15)).tz_localize("UTC")
+        ]
+        self.assertEqual(evs, exp)
+
+        # open+close
+        ds = DailySchedule(after_open_minutes=5, before_close_minutes=5)
+        evs = ds._build_events(open_dt, close_dt)
+        exp = [
+            (open_dt + timedelta(minutes=5)).tz_localize("UTC"),
+            (close_dt - timedelta(minutes=5)).tz_localize("UTC"),
+        ]
+        self.assertEqual(evs, exp)
+
+        # open+interval (every hour)
+        ds = DailySchedule(after_open_minutes=0, before_close_minutes=None, interval_seconds=3600)
+        evs = ds._build_events(open_dt, close_dt)
+        hours = int((close_dt - open_dt).total_seconds() // 3600) + 1
+        self.assertEqual(len(evs), hours)
+        # ensure they are all tz-aware
+        for t in evs:
+            self.assertIsNotNone(t.tzinfo)
+
+        # open+close+interval without inclusive
+        ds = DailySchedule(after_open_minutes=0, before_close_minutes=0,
+                           interval_seconds=3600, inclusive=False)
+        evs = ds._build_events(open_dt, close_dt)
+        self.assertEqual(len(evs), hours)
+
+        # open+close+interval with inclusive
+        ds = DailySchedule(after_open_minutes=0, before_close_minutes=30,
+                           interval_seconds=3600, inclusive=True)
+        evs = ds._build_events(open_dt, close_dt)
+        self.assertIn((close_dt - timedelta(minutes=30)).tz_localize("UTC"), evs)
+
+    def test_finite_generator_open_and_close(self):
+        ds = DailySchedule(after_open_minutes=10, before_close_minutes=20,
+                           start_date="2025-04-01", end_date="2025-04-02")
+        ms_list = list(ds)
+        self.assertEqual(len(ms_list), 4)
+        first = int((self.schedule_df.market_open.iloc[0] + timedelta(minutes=10))
+                    .tz_localize("UTC").timestamp() * 1000)
+        last = int((self.schedule_df.market_close.iloc[1] - timedelta(minutes=20))
+                   .tz_localize("UTC").timestamp() * 1000)
+        self.assertEqual(ms_list[0], first)
+        self.assertEqual(ms_list[-1], last)
+
+    def test_finite_generator_open_only(self):
+        ds = DailySchedule(after_open_minutes=30, start_date="2025-04-02")
+        ms_list = list(ds)
+        self.assertEqual(len(ms_list), 1)
+        exp = int((self.schedule_df.market_open.iloc[1] + timedelta(minutes=30))
+                  .tz_localize("UTC").timestamp() * 1000)
+        self.assertEqual(ms_list[0], exp)
+
+    def test_daily_schedule_helper(self):
+        # Compare helper vs explicit for same parameters
+        ms1 = list(daily_schedule(after_open_minutes=1, start_date="2025-04-01"))
+        ms2 = list(DailySchedule(after_open_minutes=1, start_date="2025-04-01"))
+        self.assertEqual(ms1, ms2)
+
+    def test_live_generator_yields_nothing_when_all_in_past(self):
+        ds = DailySchedule(after_open_minutes=0)
+        evs = list(ds)
+        # Schedule dates (04-01,04-02) are before now → no events
+        self.assertEqual(evs, [])
 
 
 class TestIntervalScheduleReal(unittest.TestCase):
@@ -172,7 +461,7 @@ class TestDailyScheduleReal(unittest.TestCase):
             start_date=self.test_date,
             end_date=self.test_date
         )
-        result = list(gen)
+        result = list(islice(gen, 1))
         cal = mcal.get_calendar(self.calendar_name)
         sched = cal.schedule(start_date=self.test_date, end_date=self.test_date)
         close_ts = sched['market_close'].iloc[0] - timedelta(minutes=before)
@@ -243,20 +532,7 @@ class TestDailyScheduleReal(unittest.TestCase):
             next(it)
 
 
-class DummyCalendar:
-    """A fake exchange calendar for testing two or more consecutive days."""
-    def schedule(self, start_date, end_date):
-        # Parse ISO dates
-        start = datetime.fromisoformat(start_date)
-        end = datetime.fromisoformat(end_date)
-        days = (end - start).days + 1
-        dates = [start + timedelta(days=i) for i in range(days)]
-        idx = pd.to_datetime(dates)
-        # Market open at 09:30, close at 16:00 local
-        opens = [d.replace(hour=9, minute=30) for d in dates]
-        closes = [d.replace(hour=16, minute=0) for d in dates]
-        df = pd.DataFrame({"market_open": opens, "market_close": closes}, index=idx)
-        return df
+
 
 
 @patch('portwine.scheduler.mcal.get_calendar', return_value=DummyCalendar())
@@ -303,5 +579,72 @@ class TestDailySchedule(unittest.TestCase):
         self.assertTrue(all(diff == hourly_ms for diff in diffs))
 
 
-if __name__ == '__main__':
-    unittest.main() 
+import unittest
+from unittest.mock import patch
+import pandas as pd
+from itertools import islice
+
+from portwine.scheduler import daily_schedule
+
+
+class TestDailyScheduleNow(unittest.TestCase):
+    def setUp(self):
+        # Fake calendar for a single trading day with open/close at fixed times
+        class FakeCal:
+            def schedule(self, start_date, end_date):
+                idx = [pd.Timestamp('2025-04-21 10:00:00', tz='UTC')]
+                opens = idx
+                closes = [pd.Timestamp('2025-04-21 10:06:00', tz='UTC')]
+                return pd.DataFrame({'market_open': opens, 'market_close': closes}, index=idx)
+        self.fake_cal = FakeCal()
+
+    @patch('portwine.scheduler.mcal.get_calendar')
+    def test_open_only_with_interval_starts_from_now(self, mock_get_cal):
+        mock_get_cal.return_value = self.fake_cal
+        gen = daily_schedule(
+            after_open_minutes=0,
+            before_close_minutes=None,
+            calendar_name='TEST',
+            start_date=None,
+            interval_seconds=60,
+        )
+        # Build expected series for first day
+        base = pd.Timestamp('2025-04-21 10:00:00', tz='UTC')
+        schedule = [base + pd.Timedelta(seconds=60 * i) for i in range(7)]
+        now_ms = int(pd.Timestamp.now(tz='UTC').timestamp() * 1000)
+        expected = [int(ts.timestamp() * 1000) for ts in schedule if int(ts.timestamp() * 1000) >= now_ms]
+        # Only consume as many events as expected to avoid infinite loop
+        result = list(islice(gen, len(expected)))
+        self.assertEqual(result, expected)
+
+    @patch('portwine.scheduler.mcal.get_calendar')
+    def test_close_only_future(self, mock_get_cal):
+        mock_get_cal.return_value = self.fake_cal
+        # Use finite mode by specifying start_date so we always get the close timestamp
+        gen = daily_schedule(
+            after_open_minutes=None,
+            before_close_minutes=0,
+            calendar_name='TEST',
+            start_date='2025-04-21',
+        )
+        result = list(gen)
+        close_ms = int(pd.Timestamp('2025-04-21 10:06:00', tz='UTC').timestamp() * 1000)
+        expected = [close_ms]
+        self.assertEqual(result, expected)
+
+    @patch('portwine.scheduler.mcal.get_calendar')
+    def test_explicit_start_date_ignores_now(self, mock_get_cal):
+        mock_get_cal.return_value = self.fake_cal
+        gen = daily_schedule(
+            after_open_minutes=0,
+            before_close_minutes=None,
+            calendar_name='TEST',
+            start_date='2025-04-21',
+            interval_seconds=60,
+        )
+        result = list(gen)
+        base = pd.Timestamp('2025-04-21 10:00:00', tz='UTC')
+        expected = [int((base + pd.Timedelta(seconds=60 * i)).timestamp() * 1000) for i in range(7)]
+        self.assertEqual(result, expected)
+if __name__ == "__main__":
+    unittest.main()

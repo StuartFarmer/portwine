@@ -415,17 +415,27 @@ class ExecutionBase(abc.ABC):
 
         The loop terminates when the iterator is exhausted (StopIteration).
         """
+        # allow for missing timezone (e.g. in FakeExec)
+        tz = getattr(self, 'timezone', None)
         for timestamp_ms in schedule:
             # Display next execution time
-            schedule_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=self.timezone)
-            self.logger.info(f"Next scheduled execution at {schedule_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            now = datetime.now(tz=self.timezone)
-            wait = (schedule_dt - now).total_seconds()
+            schedule_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=tz)
+            self.logger.info(
+                f"Next scheduled execution at {schedule_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+            )
+            # compute wait using time.time() so it matches patched time in tests
+            target_s = timestamp_ms / 1000.0
+            now_s = time.time()
+            wait = target_s - now_s
             if wait > 0:
-                for _ in track(range(int(wait)), description="Waiting..."):
+                # sleep 1 second at a time
+                for _ in range(int(wait)):
                     time.sleep(1)
-                # handle any remainder
+                # remainder
                 rem = wait - int(wait)
                 if rem > 0:
                     time.sleep(rem)
+            self.logger.info(
+                f"Executing step for {schedule_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+            )
             self.step(timestamp_ms)

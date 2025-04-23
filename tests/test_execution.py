@@ -1055,8 +1055,13 @@ class TestExecuteOrders(unittest.TestCase):
 class FakeExec(ExecutionBase):
     """Override step for testing run()."""
     def __init__(self):
-        # Do not call super().__init__; run() only uses step()
+        # Do not call super().__init__; run() only uses step(), but we need timezone and logger
         self.calls = []
+        # Provide a dummy logger
+        import logging
+        self.logger = logging.getLogger('FakeExec')
+        # Provide a timezone (None => naive timestamps)
+        self.timezone = None
 
     def step(self, timestamp_ms=None):
         # Record invocation
@@ -1097,7 +1102,8 @@ class TestExecutionRun(unittest.TestCase):
         # Check that sleep was called with the correct durations
         # Durations in seconds: (timestamp - now_ms) / 1000 => [0.1, 0.2, 0.3]
         calls = [call.args[0] for call in mock_sleep.call_args_list]
-        self.assertEqual(calls, [i / 1000.0 for i in intervals])
+        for i in range(len(intervals)):
+            self.assertAlmostEqual(calls[i], intervals[i] / 1000.0)
 
 
 if __name__ == '__main__':
