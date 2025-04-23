@@ -125,7 +125,7 @@ class MonteCarloAnalyzer(Analyzer):
             # Return daily as is
             return daily
 
-    def plot(self, results, title="Monte Carlo Simulations (Log Scale)"):
+    def plot(self, results, title="Monte Carlo Simulations (Log Scale)", figsize=(15, 10)):
         """
         Plots all visualizations on a single figure with 5 subplots:
         - Main plot: Simulated equity paths in black with very low alpha,
@@ -158,7 +158,7 @@ class MonteCarloAnalyzer(Analyzer):
             return
 
         # Create a single figure with GridSpec for layout control
-        fig = plt.figure(figsize=(15, 10))
+        fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(3, 4)  # 3 rows, 4 columns grid
 
         # Main equity curve plot takes up the top 2 rows

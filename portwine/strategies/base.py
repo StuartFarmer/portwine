@@ -16,8 +16,10 @@ class StrategyBase:
         ----------
         tickers : list
             List of primary ticker symbols that the strategy will manage.
+            Duplicates will be removed, preserving the original order.
         """
-        self.tickers = tickers
+        # remove duplicates but keep order
+        self.tickers = list(dict.fromkeys(tickers))
 
     def step(self, current_date, daily_data):
         """

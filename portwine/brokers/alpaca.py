@@ -16,13 +16,32 @@ from portwine.brokers.base import (
 
 def _parse_datetime(dt_str: str) -> datetime:
     """
-    Parse an ISO‑8601 timestamp from Alpaca, handling the trailing 'Z'.
+    Parse an ISO‑8601 timestamp from Alpaca, handling the trailing 'Z' and trimming fractional seconds to microseconds.
     """
     if dt_str is None:
         return None
-    # Alpaca returns times like "2021-04-14T09:30:00Z"
     if dt_str.endswith("Z"):
         dt_str = dt_str[:-1] + "+00:00"
+    # Trim fractional seconds to microsecond precision
+    t_idx = dt_str.find("T")
+    plus_idx = dt_str.rfind("+")
+    minus_idx = dt_str.rfind("-")
+    idx = None
+    if plus_idx > t_idx:
+        idx = plus_idx
+    elif minus_idx > t_idx:
+        idx = minus_idx
+    if idx is not None:
+        dt_main = dt_str[:idx]
+        tz = dt_str[idx:]
+    else:
+        dt_main = dt_str
+        tz = ""
+    if "." in dt_main:
+        date_part, frac = dt_main.split(".", 1)
+        frac = frac[:6]
+        dt_main = f"{date_part}.{frac}"
+    dt_str = dt_main + tz
     return datetime.fromisoformat(dt_str)
 
 
