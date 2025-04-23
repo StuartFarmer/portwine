@@ -6,7 +6,9 @@ import cvxpy as cp
 import numpy as np
 import pandas as pd
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from tqdm import tqdm
+from rich.progress import track
+import logging as _logging
+from portwine.logging import Logger
 
 import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
@@ -29,7 +31,7 @@ def benchmark_markowitz(
 ) -> pd.Series:
     tickers = ret_df.columns
     n = len(tickers)
-    iterator = tqdm(ret_df.index, desc="Markowitz") if verbose else ret_df.index
+    iterator = track(ret_df.index, description="Markowitz") if verbose else ret_df.index
     w_rows: List[np.ndarray] = []
     for ts in iterator:
         win = ret_df.loc[:ts].tail(lookback)
@@ -74,7 +76,9 @@ class Backtester:
         self,
         market_data_loader: MarketDataLoader,
         alternative_data_loader=None,
-        calendar: Optional[Union[str, mcal.ExchangeCalendar]] = None
+        calendar: Optional[Union[str, mcal.ExchangeCalendar]] = None,
+        logger: Optional[_logging.Logger] = None,  # pre-configured logger or default
+        log: bool = False,  # enable backtester logging if True
     ):
         self.market_data_loader      = market_data_loader
         self.alternative_data_loader = alternative_data_loader
@@ -82,6 +86,13 @@ class Backtester:
             self.calendar = mcal.get_calendar(calendar)
         else:
             self.calendar = calendar
+        # --- configure logging for backtester ---
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = Logger.create(__name__, level=_logging.INFO)
+            # enable or disable logging based on simple flag
+            self.logger.disabled = not log
 
     def _split_tickers(self, tickers: List[str]) -> Tuple[List[str], List[str]]:
         reg, alt = [], []
@@ -114,6 +125,12 @@ class Backtester:
         require_all_tickers: bool = False,
         verbose: bool = False
     ) -> Optional[Dict[str, pd.DataFrame]]:
+        # adjust logging level based on verbosity
+        self.logger.setLevel(_logging.DEBUG if verbose else _logging.INFO)
+        self.logger.info(
+            "Starting backtest: tickers=%s, start_date=%s, end_date=%s",
+            strategy.tickers, start_date, end_date,
+        )
         # 1) normalize date filters
         sd = pd.Timestamp(start_date) if start_date is not None else None
         ed = pd.Timestamp(end_date)   if end_date   is not None else None
@@ -122,6 +139,9 @@ class Backtester:
 
         # 2) split tickers
         reg_tkrs, alt_tkrs = self._split_tickers(strategy.tickers)
+        self.logger.debug(
+            "Split tickers: %d regular, %d alternative", len(reg_tkrs), len(alt_tkrs)
+        )
 
         # 3) classify benchmark
         bm_type = self.get_benchmark_type(benchmark)
@@ -130,6 +150,9 @@ class Backtester:
 
         # 4) load regular data
         reg_data = self.market_data_loader.fetch_data(reg_tkrs)
+        self.logger.debug(
+            "Fetched market data for %d tickers", len(reg_data)
+        )
         # identify any tickers for which we got no data
         missing = [t for t in reg_tkrs if t not in reg_data]
         if missing:
@@ -138,10 +161,10 @@ class Backtester:
                 f"{len(reg_tkrs)} requested tickers. Missing: {missing}"
             )
             if require_all_tickers:
+                self.logger.error(msg)
                 raise ValueError(msg)
             else:
-                import warnings
-                warnings.warn(msg)
+                self.logger.warning(msg)
         # only keep tickers that have data
         reg_tkrs = [t for t in reg_tkrs if t in reg_data]
 
@@ -251,7 +274,10 @@ class Backtester:
 
         # 7) main loop: signals
         sig_rows = []
-        iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
+        self.logger.debug(
+            "Processing %d backtest steps", len(all_ts)
+        )
+        iterator = track(all_ts, description="Backtest") if verbose else all_ts
         for ts in iterator:
             if hasattr(self.market_data_loader, "next"):
                 bar = self.market_data_loader.next(reg_tkrs, ts)
@@ -300,6 +326,10 @@ class Backtester:
                 raw_rets = ret_df.loc[ts].to_dict()
                 self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 
+        # log completion
+        self.logger.info(
+            "Backtest complete: processed %d timestamps", len(all_ts)
+        )
         return {
             "signals_df":        sig_reg,
             "tickers_returns":   ret_df,
