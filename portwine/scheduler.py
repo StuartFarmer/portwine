@@ -2,7 +2,6 @@ import pandas_market_calendars as mcal
 from datetime import datetime, timedelta
 from typing import Iterator, Optional
 
-
 def daily_schedule(
     after_open_minutes: Optional[int] = None,
     before_close_minutes: Optional[int] = None,

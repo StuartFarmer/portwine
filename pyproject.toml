@@ -6,7 +6,7 @@ authors = ["Stuart Farmer <stuart@lamden.io>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "3.10.15"
 pandas = "^2.2.3"
 matplotlib = "^3.10.1"
 scipy = "^1.15.2"
