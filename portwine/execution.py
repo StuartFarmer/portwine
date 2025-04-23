@@ -17,10 +17,8 @@ from datetime import datetime
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.brokers.base import BrokerBase, Order
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
+from portwine.logging import Logger, log_position_table, log_weight_table, log_order_table
+from rich.progress import track
 
 class ExecutionError(Exception):
     """Base exception for execution-related errors."""
@@ -94,8 +92,9 @@ class ExecutionBase(abc.ABC):
         self.timezone = timezone if timezone is not None else datetime.now().astimezone().tzinfo
         # Initialize ticker list from strategy
         self.tickers = strategy.tickers
-        
-        logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
+        # Set up a per-instance rich-enabled logger
+        self.logger = Logger.create(self.__class__.__name__, level=logging.INFO)
+        self.logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
     
     @staticmethod
     def _split_tickers(tickers: List[str]) -> Tuple[List[str], List[str]]:
@@ -131,6 +130,8 @@ class ExecutionBase(abc.ABC):
         DataFetchError
             If data cannot be fetched
         """
+        self.logger.debug(f"Fetching data for tickers: {self.tickers}")
+
         try:
             # Convert UNIX timestamp to timezone-aware datetime, default to now
             if timestamp is None:
@@ -149,11 +150,14 @@ class ExecutionBase(abc.ABC):
                 alt_data = self.alternative_data_loader.next(alt_tkrs, loader_dt)
                 # Merge alternative entries into result
                 data.update(alt_data)
-            
+
+            self.logger.debug(f"Fetched data keys: {list(data.keys())}")
+
             return data
         except Exception as e:
-            logger.exception(f"Error fetching latest data: {e}")
+            self.logger.exception(f"Error fetching latest data: {e}")
             raise DataFetchError(f"Failed to fetch latest data: {e}")
+        
     
     def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
         """
@@ -192,6 +196,7 @@ class ExecutionBase(abc.ABC):
         current_positions = {symbol: position.quantity for symbol, position in positions.items()}
         portfolio_value = account.equity
         
+        self.logger.debug(f"Current positions: {current_positions}, portfolio value: {portfolio_value:.2f}")
         return current_positions, portfolio_value
 
     def _calculate_target_positions(
@@ -234,6 +239,7 @@ class ExecutionBase(abc.ABC):
             else:
                 qty = math.floor(raw_qty)
             target_positions[symbol] = qty
+            
         return target_positions
 
     def _calculate_current_weights(
@@ -311,6 +317,8 @@ class ExecutionBase(abc.ABC):
                 last_updated_at=0,
             )
             orders.append(order)
+
+        log_order_table(self.logger, orders)
         return orders
 
     def _execute_orders(self, orders: List[Order]) -> List[Order]:
@@ -340,6 +348,8 @@ class ExecutionBase(abc.ABC):
             updated.quantity = order.quantity
             updated.side = order.side
             executed_orders.append(updated)
+            
+        self.logger.info(f"Executed {len(executed_orders)} orders")
         return executed_orders
     
     def step(self, timestamp_ms: Optional[int] = None) -> List[Order]:
@@ -359,35 +369,41 @@ class ExecutionBase(abc.ABC):
 
         # Check if market is open
         if not self.broker.market_is_open(dt):
+            self.logger.info(f"Market closed at {dt.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             return []
+        # Log execution start
+        local_dt = dt.astimezone()
+        self.logger.info(f"Executing step at {local_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
         # Fetch latest market data
         latest_data = self.fetch_latest_data(dt.timestamp())
+        
         # Get target weights from strategy
         target_weights = self.strategy.step(dt, latest_data)
-        print(f'target weights: {target_weights}')
+        self.logger.debug(f"Target weights: {target_weights}")
+
         # Get current positions and portfolio value
         current_positions, portfolio_value = self._get_current_positions()
-        print(f'current positions: {current_positions}')
-        # Extract prices from fetched data
-        prices = {
-            symbol: bar['close']
-            for symbol, bar in latest_data.items() if bar and 'close' in bar
-        }
+        
+        # Extract prices
+        prices = {symbol: bar['close'] for symbol, bar in latest_data.items() if bar and 'close' in bar}
+        self.logger.debug(f"Prices: {prices}")
+
         # Compute target positions and optionally current weights
-        target_positions = self._calculate_target_positions(
-            target_weights, portfolio_value, prices
-        )
-
-        print(f'target positions: {target_positions}')
-        _ = self._calculate_current_weights(
-            list(current_positions.items()), portfolio_value, prices
-        )
-        # Determine orders and execute them
+        target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices)
+        current_weights = self._calculate_current_weights(list(current_positions.items()), portfolio_value, prices)
+        # Render position changes table
+        log_position_table(self.logger, current_positions, target_positions)
+        
+        # Render weight changes table
+        log_weight_table(self.logger, current_weights, target_weights)
+        
+        # Build and render orders table
         orders = self._target_positions_to_orders(target_positions, current_positions)
-
-        print(f'orders: {orders}')
-        return self._execute_orders(orders)
+        
+        # Execute orders and log
+        executed = self._execute_orders(orders)
+        return executed
 
     def run(self, schedule: Iterator[int]) -> None:
         """
@@ -400,12 +416,16 @@ class ExecutionBase(abc.ABC):
         The loop terminates when the iterator is exhausted (StopIteration).
         """
         for timestamp_ms in schedule:
-            print(f'next timestamp_ms: {timestamp_ms}')
-            # compute time until next scheduled timestamp
-            now_ms = int(time.time() * 1000)
-            wait_ms = timestamp_ms - now_ms
-            if wait_ms > 0:
-                time.sleep(wait_ms / 1000)
-            # execute step at or after scheduled time
-            print(f'executing step at {timestamp_ms}')
+            # Display next execution time
+            schedule_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=self.timezone)
+            self.logger.info(f"Next scheduled execution at {schedule_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            now = datetime.now(tz=self.timezone)
+            wait = (schedule_dt - now).total_seconds()
+            if wait > 0:
+                for _ in track(range(int(wait)), description="Waiting..."):
+                    time.sleep(1)
+                # handle any remainder
+                rem = wait - int(wait)
+                if rem > 0:
+                    time.sleep(rem)
             self.step(timestamp_ms)
