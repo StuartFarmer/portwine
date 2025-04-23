@@ -1,6 +1,9 @@
 import unittest
 from datetime import timedelta
 import pandas_market_calendars as mcal
+from unittest.mock import patch
+import pandas as pd
+from datetime import datetime
 
 from portwine.scheduler import daily_schedule
 
@@ -240,8 +243,65 @@ class TestDailyScheduleReal(unittest.TestCase):
             next(it)
 
 
-if __name__ == '__main__':
-    unittest.main()
+class DummyCalendar:
+    """A fake exchange calendar for testing two or more consecutive days."""
+    def schedule(self, start_date, end_date):
+        # Parse ISO dates
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+        days = (end - start).days + 1
+        dates = [start + timedelta(days=i) for i in range(days)]
+        idx = pd.to_datetime(dates)
+        # Market open at 09:30, close at 16:00 local
+        opens = [d.replace(hour=9, minute=30) for d in dates]
+        closes = [d.replace(hour=16, minute=0) for d in dates]
+        df = pd.DataFrame({"market_open": opens, "market_close": closes}, index=idx)
+        return df
+
+
+@patch('portwine.scheduler.mcal.get_calendar', return_value=DummyCalendar())
+class TestDailySchedule(unittest.TestCase):
+    def test_no_interval_multiple_days(self, mock_gc):
+        """When no interval, schedule yields exactly one timestamp per day."""
+        # 3-day schedule
+        schedule = list(
+            daily_schedule(
+                after_open_minutes=0,
+                before_close_minutes=None,
+                calendar_name='TEST',
+                start_date='2021-01-01',
+                end_date='2021-01-03',
+            )
+        )
+        # Expect 3 timestamps (one per day)
+        self.assertEqual(len(schedule), 3)
+        # Each successive timestamp is 24h apart
+        diffs = [schedule[i+1] - schedule[i] for i in range(2)]
+        ms_per_day = 24 * 60 * 60 * 1000
+        self.assertTrue(all(diff == ms_per_day for diff in diffs))
+
+    def test_interval_multiple_days(self, mock_gc):
+        """When interval_SECONDS, schedule yields multiple per day, and rolls over."""
+        # Hourly interval, 2-day schedule
+        schedule = list(
+            daily_schedule(
+                after_open_minutes=0,
+                before_close_minutes=None,
+                interval_seconds=3600,
+                calendar_name='TEST',
+                start_date='2021-01-01',
+                end_date='2021-01-02',
+            )
+        )
+        # On each day: open at 09:30, then every hour until <=16:00
+        # That yields at times: 09:30,10:30,11:30,12:30,13:30,14:30,15:30 => 7 per day
+        self.assertEqual(len(schedule), 7 * 2)
+        # Check first-day spacing is exactly 1h
+        first_day = schedule[:7]
+        hourly_ms = 3600 * 1000
+        diffs = [first_day[i+1] - first_day[i] for i in range(6)]
+        self.assertTrue(all(diff == hourly_ms for diff in diffs))
+
 
 if __name__ == '__main__':
     unittest.main() 
