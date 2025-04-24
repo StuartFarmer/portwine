@@ -31,6 +31,7 @@ class BrokerAccountStrategy(StrategyBase):
 
         # Target 1% of equity in AAPL
         target_value = 0.01 * equity
+        print(f'Current equity: {equity}, target value: {target_value}, price: {price}')
         shares = target_value / price if price > 0 else 0.0
         return {"AAPL": shares}
 
@@ -67,6 +68,7 @@ def main():
     print("Scheduling daily run at 1 minute after open")
     schedule = daily_schedule(
         after_open_minutes=1,
+        interval_seconds=60,
         calendar_name="NYSE"
     )
     executor.run(schedule)

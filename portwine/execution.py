@@ -18,7 +18,7 @@ from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.brokers.base import BrokerBase, Order
 from portwine.logging import Logger, log_position_table, log_weight_table, log_order_table
-from rich.progress import track
+from rich.progress import track, Progress, SpinnerColumn, TimeElapsedColumn, TextColumn
 
 class ExecutionError(Exception):
     """Base exception for execution-related errors."""
@@ -94,7 +94,7 @@ class ExecutionBase(abc.ABC):
         self.tickers = strategy.tickers
         # Set up a per-instance rich-enabled logger
         self.logger = Logger.create(self.__class__.__name__, level=logging.INFO)
-        self.logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
+        self.logger.info(f"Initialized {self.strategy.__class__.__name__} with {len(self.tickers)} tickers")
     
     @staticmethod
     def _split_tickers(tickers: List[str]) -> Tuple[List[str], List[str]]:
@@ -428,11 +428,18 @@ class ExecutionBase(abc.ABC):
             now_s = time.time()
             wait = target_s - now_s
             if wait > 0:
-                # sleep 1 second at a time
-                for _ in range(int(wait)):
-                    time.sleep(1)
-                # remainder
-                rem = wait - int(wait)
+                total_seconds = int(wait)
+                progress = Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                )
+                with progress:
+                    task = progress.add_task("Waiting for next execution", total=total_seconds)
+                    for _ in range(total_seconds):
+                        time.sleep(1)
+                        progress.advance(task)
+                rem = wait - total_seconds
                 if rem > 0:
                     time.sleep(rem)
             self.logger.info(

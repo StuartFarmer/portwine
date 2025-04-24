@@ -48,16 +48,6 @@ def main():
     # Create execution engine
     executor = ExecutionBase(strategy, market_data_loader, broker)
 
-    # Run a single step
-    print("Executing a single step at", datetime.now())
-    orders = executor.step()
-    if orders:
-        print("Executed orders:")
-        for order in orders:
-            print(order)
-    else:
-        print("No orders executed.")
-
     # Schedule execution at market close for today on NYSE
     print("Scheduling execution at market close for today...")
     schedule = daily_schedule(after_open_minutes=0, before_close_minutes=0, interval_seconds=60, calendar_name="NYSE")
