@@ -24,3 +24,7 @@ htmlcov/
 # Temporary files
 *.swp
 .DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
