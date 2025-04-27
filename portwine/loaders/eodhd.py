@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from typing import Dict, List
 from portwine.loaders.base import MarketDataLoader
 
 
@@ -48,3 +49,40 @@ class EODHDMarketDataLoader(MarketDataLoader):
         df.sort_index(inplace=True)
 
         return df
+
+    def next(self, tickers: List[str], timestamp: pd.Timestamp) -> Dict[str, Dict]:
+        """
+        Get data for tickers at or immediately before timestamp.
+
+        Parameters
+        ----------
+        tickers : List[str]
+            List of ticker symbols
+        timestamp : pd.Timestamp
+            Timestamp to get data for
+
+        Returns
+        -------
+        Dict[str, dict]
+            Dictionary mapping tickers to bar data
+        """
+        result = {}
+        for ticker in tickers:
+            # Get data from cache or load it
+            df = self.fetch_data([ticker]).get(ticker)
+            if df is not None:
+                # Find the bar at or before the timestamp
+                bar = self._get_bar_at_or_before(df, timestamp)
+                if bar is not None:
+                    result[ticker] = {
+                        "open": float(bar["open"]),
+                        "high": float(bar["high"]),
+                        "low": float(bar["low"]),
+                        "close": float(bar["close"]),
+                        "volume": float(bar["volume"]),
+                    }
+                else:
+                    result[ticker] = None
+            else:
+                result[ticker] = None
+        return result
