@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional, Dict, Any
+import warnings
 
 import pandas as pd
 
@@ -20,7 +21,6 @@ class DataSource(ABC):
         """
         self.name = name
 
-    @abstractmethod
     def download_historical(
         self,
         ticker: str,
@@ -40,27 +40,68 @@ class DataSource(ABC):
         Returns:
             DataFrame with OHLCV data or None if download fails
         """
+        # Validate date range
+        if not self._validate_date_range(start_date, end_date):
+            return None
+
+        # Fetch raw data from the concrete implementation
+        df = self._fetch_historical(ticker, start_date, end_date, store)
+        if df is None or df.empty:
+            return None
+
+        # Filter by date range if provided
+        if start_date is not None:
+            df = df[df.index >= start_date]
+        if end_date is not None:
+            df = df[df.index <= end_date]
+
+        return df if not df.empty else None
+
+    @abstractmethod
+    def _fetch_historical(
+        self,
+        ticker: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        store: bool = True
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch raw historical data for a ticker.
+        This method should be implemented by concrete classes to handle the actual data fetching.
+        The implementation may use the start_date and end_date parameters to optimize data fetching,
+        but should still return all available data if these parameters are None.
+
+        Args:
+            ticker: The ticker symbol to fetch
+            start_date: Optional start date. If None, fetch as far back as possible
+            end_date: Optional end date. If None, fetch up to now
+            store: If True, store the downloaded data
+
+        Returns:
+            DataFrame with OHLCV data or None if fetch fails
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def get(self, ticker: str, timestamp: datetime) -> Optional[Dict[str, float]]:
+    def get_latest(self, ticker: str) -> Optional[Dict[str, Any]]:
         """
-        Get data for a specific ticker and timestamp.
+        Get the latest available data for a ticker.
+        This is used for live data and returns a single row of OHLCV data with a timestamp.
 
         Args:
             ticker: The ticker symbol
-            timestamp: The timestamp to get data for
 
         Returns:
-            Dictionary with OHLCV data or None if not available
+            Dictionary with OHLCV data and timestamp, or None if not available.
+            The dictionary should have keys: 'timestamp', 'open', 'high', 'low', 'close', 'volume'
         """
         raise NotImplementedError
 
-    @abstractmethod
     def sync(self, ticker: str) -> bool:
         """
         Synchronize data for a ticker with the source.
-        This should download any missing data and update existing data.
+        This method is deprecated and will be removed in a future version.
+        Data synchronization should be handled by a separate object.
 
         Args:
             ticker: The ticker symbol to synchronize
@@ -68,7 +109,13 @@ class DataSource(ABC):
         Returns:
             True if sync was successful, False otherwise
         """
-        raise NotImplementedError
+        warnings.warn(
+            "The sync method is deprecated and will be removed in a future version. "
+            "Data synchronization should be handled by a separate object.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return True
 
     def _validate_timestamp(self, timestamp: datetime) -> bool:
         """
