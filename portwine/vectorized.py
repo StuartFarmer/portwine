@@ -91,60 +91,6 @@ class VectorizedBacktester:
     def __init__(self, market_data_loader=None):
         self.market_data_loader = market_data_loader
 
-    # def run_backtest(self, strategy, benchmark="equal_weight",
-    #                  start_date=None, end_date=None,
-    #                  shift_signals=True, verbose=False):
-    #     if not isinstance(strategy, VectorizedStrategyBase):
-    #         raise TypeError("Strategy must be a VectorizedStrategyBase")
-    #
-    #     # 1) load prices (float dtype)
-    #     price_df = create_price_dataframe(
-    #         self.market_data_loader,
-    #         tickers=strategy.tickers,
-    #         start_date=start_date,
-    #         end_date=end_date
-    #     )
-    #
-    #     # 2) compute weights in one shot
-    #     if verbose:
-    #         print("Computing strategy weights…")
-    #     weights_df = strategy.batch(price_df)
-    #
-    #     # 3) align dates
-    #     common = price_df.index.intersection(weights_df.index)
-    #     price_df = price_df.loc[common]
-    #     weights_df = weights_df.loc[common]
-    #
-    #     # 4) shift if needed (all float ops → no warning)
-    #     if shift_signals:
-    #         weights_df = weights_df.shift(1).fillna(0)
-    #
-    #     # 5) compute returns
-    #     returns_df = price_df.pct_change(fill_method=None).fillna(0)
-    #
-    #     # 6) portfolio P&L
-    #     strat_rets = (returns_df * weights_df).sum(axis=1)
-    #
-    #     # 7) benchmark
-    #     bm_rets = None
-    #     if benchmark is not None:
-    #         if isinstance(benchmark, str) and benchmark in STANDARD_BENCHMARKS:
-    #             bm_rets = STANDARD_BENCHMARKS[benchmark](returns_df)
-    #         elif isinstance(benchmark, str) and self.market_data_loader:
-    #             raw = self.market_data_loader.fetch_data([benchmark])
-    #             series = raw.get(benchmark)
-    #             if series is not None:
-    #                 bm = series['close'].reindex(common).ffill()
-    #                 bm_rets = bm.pct_change(fill_method=None).fillna(0)
-    #         elif callable(benchmark):
-    #             bm_rets = benchmark(returns_df)
-    #
-    #     return {
-    #         'signals_df': weights_df,
-    #         'tickers_returns': returns_df,
-    #         'strategy_returns': strat_rets,
-    #         'benchmark_returns': bm_rets,
-    #     }
 
     def run_backtest(
         self,
@@ -199,25 +145,26 @@ class VectorizedBacktester:
         # 7) strategy P&L
         strategy_rets = (returns_df * weights_df).sum(axis=1)
 
-        # 8) benchmark returns
-        bm_rets = None
+        # 8) benchmark
+        benchmark_rets = None
         if benchmark is not None:
             if isinstance(benchmark, str) and benchmark in STANDARD_BENCHMARKS:
-                bm_rets = STANDARD_BENCHMARKS[benchmark](returns_df)
+                benchmark_rets = STANDARD_BENCHMARKS[benchmark](returns_df)
             elif isinstance(benchmark, str) and self.market_data_loader:
                 raw = self.market_data_loader.fetch_data([benchmark])
                 series = raw.get(benchmark)
                 if series is not None:
-                    bm_series = series["close"].reindex(common_idx).ffill()
-                    bm_rets = bm_series.pct_change(fill_method=None).fillna(0.0)
+                    bm = series['close'].reindex(common_idx).ffill()
+                    benchmark_rets = bm.pct_change(fill_method=None).fillna(0)
+                    benchmark_rets.name = None  # Reset the name
             elif callable(benchmark):
-                bm_rets = benchmark(returns_df)
+                benchmark_rets = benchmark(returns_df)
 
         return {
-            "signals_df": weights_df,
-            "tickers_returns": returns_df,
-            "strategy_returns": strategy_rets,
-            "benchmark_returns": bm_rets,
+            'signals_df': weights_df,
+            'tickers_returns': returns_df,
+            'strategy_returns': strategy_rets,
+            'benchmark_returns': benchmark_rets,
         }
 
 

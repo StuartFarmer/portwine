@@ -23,6 +23,7 @@ class Logger:
         rotate: bool = True,
         max_bytes: int = 10 * 1024 * 1024,
         backup_count: int = 5,
+        propagate: bool = False,
     ):
         """
         Initialize and configure the logger.
@@ -33,12 +34,13 @@ class Logger:
         :param rotate: Whether to use a rotating file handler.
         :param max_bytes: Maximum size of a log file before rotation (in bytes).
         :param backup_count: Number of rotated backup files to keep.
+        :param propagate: Whether to propagate logs to parent loggers (default False).
         """
         # Create or get the logger
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
-        # Prevent logs from propagating to the root logger twice
-        self.logger.propagate = False
+        # Allow control over log propagation
+        self.logger.propagate = propagate
 
         # Console handler with Rich
         console_handler = RichHandler(
@@ -86,12 +88,12 @@ class Logger:
         rotate: bool = True,
         max_bytes: int = 10 * 1024 * 1024,
         backup_count: int = 5,
+        propagate: bool = False,
     ) -> logging.Logger:
         """
         Convenience method to configure and return a logger in one step.
         """
-        return cls(name, level, log_file, rotate, max_bytes, backup_count).get() 
-    
+        return cls(name, level, log_file, rotate, max_bytes, backup_count, propagate).get()
 
 # Top-level rich-logging helpers
 def log_position_table(logger: logging.Logger, current_positions: Dict[str, float], target_positions: Dict[str, float]) -> None:

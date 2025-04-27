@@ -59,6 +59,7 @@ class ExecutionBase(abc.ABC):
         alternative_data_loader: Optional[MarketDataLoader] = None,
         min_change_pct: float = 0.01,
         min_order_value: float = 1.0,
+        fractional: bool = False,
         timezone: Optional[datetime.tzinfo] = None,
     ):
         """
@@ -87,7 +88,7 @@ class ExecutionBase(abc.ABC):
         self.alternative_data_loader = alternative_data_loader
         self.min_change_pct = min_change_pct
         self.min_order_value = min_order_value
-        
+        self.fractional = fractional
         # Store timezone (tzinfo); default to system local timezone
         self.timezone = timezone if timezone is not None else datetime.now().astimezone().tzinfo
         # Initialize ticker list from strategy
@@ -204,7 +205,7 @@ class ExecutionBase(abc.ABC):
         target_weights: Dict[str, float],
         portfolio_value: float,
         prices: Dict[str, float],
-        fractional: bool = True,
+        fractional: bool = False,
     ) -> Dict[str, float]:
         """
         Convert target weights to absolute position sizes.
@@ -390,7 +391,7 @@ class ExecutionBase(abc.ABC):
         self.logger.debug(f"Prices: {prices}")
 
         # Compute target positions and optionally current weights
-        target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices)
+        target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices, self.fractional)
         current_weights = self._calculate_current_weights(list(current_positions.items()), portfolio_value, prices)
         # Render position changes table
         log_position_table(self.logger, current_positions, target_positions)

@@ -107,7 +107,7 @@ class TestLogger(unittest.TestCase):
         Verify that logging respects the logger's level (INFO should suppress DEBUG).
         """
         name = "test_levels"
-        logger = Logger.create(name, level=logging.INFO)
+        logger = Logger.create(name, level=logging.INFO, propagate=True)
 
         # Capture logs emitted through the logger itself
         with self.assertLogs(name, level="INFO") as cm:
