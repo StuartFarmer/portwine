@@ -4,7 +4,7 @@ from typing import Optional, Any
 
 import pandas as pd
 
-from portwine.loaders_new.data_source import DataSource
+from portwine.loaders_new.sources.data_source import DataSource
 
 
 class TestDataSource(DataSource):
