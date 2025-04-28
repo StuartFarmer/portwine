@@ -67,7 +67,19 @@ class FlatFileDataLoader(DataLoader):
 
         Returns:
             Path to the parquet file
+
+        Raises:
+            ValueError: If ticker is None or contains invalid characters
+            ValueError: If source contains invalid characters
         """
+        if ticker is None:
+            raise ValueError("Ticker cannot be None")
+
+        # Validate ticker and source names
+        for name, value in [("ticker", ticker), ("source", source or self.market_data.name.lower())]:
+            if any(c in value for c in r'\/:*?"<>|'):
+                raise ValueError(f"{name} contains invalid characters: {value}")
+
         source = source or self.market_data.name.lower()
         
         # Determine if this is a market or alternative data source
