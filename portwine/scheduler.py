@@ -10,8 +10,8 @@ class DailySchedule(Iterator[int]):
     Iterator of UNIX-ms timestamps for market events.
 
     Modes:
-      - Finite: if start_date is set, yields events between start_date and end_date inclusive.
-      - Live: if start_date is None, yields all future events from today onward, indefinitely.
+      - Finite: if end_date is set, yields events between start_date and end_date inclusive.
+      - Live: if end_date is None, yields all future events from start_date (or today) onward, indefinitely.
     """
 
     def __init__(
@@ -37,14 +37,14 @@ class DailySchedule(Iterator[int]):
         self.inclusive = inclusive
         self.calendar = mcal.get_calendar(calendar_name)
         self.start_date = start_date
-        self.end_date = end_date or start_date
+        self.end_date = end_date
         self._gen = None
 
     def __iter__(self):
-        if self.start_date is not None:
+        if self.end_date is not None:
             self._gen = self._finite_generator()
         else:
-            self._gen = self._live_generator()
+            self._gen = self._live_generator(self.start_date)
         return self
 
     def __next__(self) -> int:
@@ -126,32 +126,30 @@ class DailySchedule(Iterator[int]):
             for ev in self._build_events(row["market_open"], row["market_close"]):
                 yield self._to_ms(ev)
 
-    def _live_generator(self):
-        # 1) determine today via date.today()
+    def _live_generator(self, start_date=None):
+        # If start_date is None, use today
+        if start_date is not None:
+            current_date = pd.Timestamp(start_date).date()
+        else:
+            current_date = date.today()
+        # 2) determine tz from calendar
         today_str = date.today().isoformat()
         try:
             today_sched = self.calendar.schedule(start_date=today_str, end_date=today_str)
         except StopIteration:
             return
-
-        # 2) determine tz from calendar
         tz = getattr(today_sched.index, "tz", None)
-
         # 3) current time from time.time()
         now_sec = time.time()
         now_ts = pd.Timestamp(now_sec, unit="s", tz=tz) if tz else pd.Timestamp(now_sec, unit="s")
         now_ms = int(now_ts.timestamp() * 1000)
-
-        # 4) start looping from today
-        current_date = date.today()
-
+        # 4) start looping from current_date
         while True:
             day_str = current_date.isoformat()
             try:
                 day_sched = self.calendar.schedule(start_date=day_str, end_date=day_str)
             except StopIteration:
                 return
-
             if not day_sched.empty:
                 row = day_sched.iloc[0]
                 for ev in self._build_events(row["market_open"], row["market_close"]):
@@ -159,7 +157,6 @@ class DailySchedule(Iterator[int]):
                     if ms >= now_ms:
                         yield ms
                 now_ms = -1
-
             current_date += timedelta(days=1)
 
 
