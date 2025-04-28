@@ -641,4 +641,283 @@ def test_load_ticker_not_found(loader):
     with patch.object(loader, 'fetch_historical_data', return_value=None):
         result = loader.load_ticker('NONEXISTENT')
         assert result is None
-        assert 'NONEXISTENT' not in loader._data_cache 
+        assert 'NONEXISTENT' not in loader._data_cache
+
+
+@freeze_time("2021-01-01 10:30:00", tz_offset=0)
+def test_next_timestamp_none_one_ticker_valid(loader):
+    """Test next with one valid ticker when timestamp is None."""
+    # Mock current time in US/Eastern during trading hours
+    est = pytz.timezone('US/Eastern')
+    now = datetime.now(est).replace(hour=10, minute=30)  # 10:30 AM ET
+    now_ms = int(now.timestamp() * 1000)
+    
+    # Mock response for partial day data
+    mock_response = {
+        "results": [
+            {
+                "t": now_ms - (60 * 1000),  # 1 minute ago
+                "o": 100.0,
+                "h": 105.0,
+                "l": 95.0,
+                "c": 102.0,
+                "v": 1000
+            }
+        ]
+    }
+    
+    with patch('requests.Session.get') as mock_get:
+        mock_get.return_value.json.return_value = mock_response
+        mock_get.return_value.raise_for_status = MagicMock()
+        
+        result = loader.next(["AAPL"], pd.Timestamp.now())
+        
+        assert "AAPL" in result
+        assert result["AAPL"] is not None
+        assert result["AAPL"]["open"] == 100.0
+        assert result["AAPL"]["high"] == 105.0
+        assert result["AAPL"]["low"] == 95.0
+        assert result["AAPL"]["close"] == 102.0
+        assert result["AAPL"]["volume"] == 1000.0
+
+
+@freeze_time("2021-01-01 10:30:00", tz_offset=0)
+def test_next_timestamp_none_two_ticker_valid(loader):
+    """Test next with two valid tickers when timestamp is None."""
+    # Mock current time in US/Eastern during trading hours
+    est = pytz.timezone('US/Eastern')
+    now = datetime.now(est).replace(hour=10, minute=30)  # 10:30 AM ET
+    now_ms = int(now.timestamp() * 1000)
+    
+    # Mock responses for partial day data
+    mock_responses = {
+        "AAPL": {
+            "results": [
+                {
+                    "t": now_ms - (60 * 1000),
+                    "o": 100.0,
+                    "h": 105.0,
+                    "l": 95.0,
+                    "c": 102.0,
+                    "v": 1000
+                }
+            ]
+        },
+        "MSFT": {
+            "results": [
+                {
+                    "t": now_ms - (60 * 1000),
+                    "o": 200.0,
+                    "h": 205.0,
+                    "l": 195.0,
+                    "c": 202.0,
+                    "v": 2000
+                }
+            ]
+        }
+    }
+    
+    with patch('requests.Session.get') as mock_get:
+        def mock_get_side_effect(*args, **kwargs):
+            mock_response = MagicMock()
+            mock_response.json.return_value = mock_responses["AAPL" if "AAPL" in args[0] else "MSFT"]
+            mock_response.raise_for_status = MagicMock()
+            return mock_response
+        
+        mock_get.side_effect = mock_get_side_effect
+        
+        result = loader.next(["AAPL", "MSFT"], pd.Timestamp.now())
+        
+        assert "AAPL" in result
+        assert "MSFT" in result
+        assert result["AAPL"] is not None
+        assert result["MSFT"] is not None
+        assert result["AAPL"]["open"] == 100.0
+        assert result["MSFT"]["open"] == 200.0
+
+
+@freeze_time("2021-01-01 10:30:00", tz_offset=0)
+def test_next_timestamp_none_three_tickers_one_invalid(loader):
+    """Test next with three tickers, one invalid, when timestamp is None."""
+    # Mock current time in US/Eastern during trading hours
+    est = pytz.timezone('US/Eastern')
+    now = datetime.now(est).replace(hour=10, minute=30)  # 10:30 AM ET
+    now_ms = int(now.timestamp() * 1000)
+    
+    # Mock responses for partial day data
+    mock_responses = {
+        "AAPL": {
+            "results": [
+                {
+                    "t": now_ms - (60 * 1000),
+                    "o": 100.0,
+                    "h": 105.0,
+                    "l": 95.0,
+                    "c": 102.0,
+                    "v": 1000
+                }
+            ]
+        },
+        "MSFT": {
+            "results": [
+                {
+                    "t": now_ms - (60 * 1000),
+                    "o": 200.0,
+                    "h": 205.0,
+                    "l": 195.0,
+                    "c": 202.0,
+                    "v": 2000
+                }
+            ]
+        }
+    }
+    
+    with patch('requests.Session.get') as mock_get:
+        def mock_get_side_effect(*args, **kwargs):
+            mock_response = MagicMock()
+            if "AAPL" in args[0]:
+                mock_response.json.return_value = mock_responses["AAPL"]
+            elif "MSFT" in args[0]:
+                mock_response.json.return_value = mock_responses["MSFT"]
+            else:
+                mock_response.json.return_value = {"results": []}
+            mock_response.raise_for_status = MagicMock()
+            return mock_response
+        
+        mock_get.side_effect = mock_get_side_effect
+        
+        result = loader.next(["AAPL", "MSFT", "INVALID"], pd.Timestamp.now())
+        
+        assert "AAPL" in result
+        assert "MSFT" in result
+        assert "INVALID" in result
+        assert result["AAPL"] is not None
+        assert result["MSFT"] is not None
+        assert result["INVALID"] is None
+
+
+@freeze_time("2021-01-01 10:30:00", tz_offset=0)
+def test_next_timestamp_today(loader):
+    """Test next with timestamp set to today."""
+    # Mock current time in US/Eastern during trading hours
+    est = pytz.timezone('US/Eastern')
+    now = datetime.now(est).replace(hour=10, minute=30)  # 10:30 AM ET
+    now_ms = int(now.timestamp() * 1000)
+    
+    # Mock response for partial day data
+    mock_response = {
+        "results": [
+            {
+                "t": now_ms - (60 * 1000),
+                "o": 100.0,
+                "h": 105.0,
+                "l": 95.0,
+                "c": 102.0,
+                "v": 1000
+            }
+        ]
+    }
+    
+    with patch('requests.Session.get') as mock_get:
+        mock_get.return_value.json.return_value = mock_response
+        mock_get.return_value.raise_for_status = MagicMock()
+        
+        result = loader.next(["AAPL"], pd.Timestamp.now())
+        
+        assert "AAPL" in result
+        assert result["AAPL"] is not None
+        assert result["AAPL"]["open"] == 100.0
+
+
+@freeze_time("2021-01-01 10:30:00", tz_offset=0)
+def test_next_timestamp_future(loader):
+    """Test next with timestamp set to future."""
+    # Mock current time in US/Eastern during trading hours
+    est = pytz.timezone('US/Eastern')
+    now = datetime.now(est).replace(hour=10, minute=30)  # 10:30 AM ET
+    now_ms = int(now.timestamp() * 1000)
+    
+    # Create test data for future date
+    df = pd.DataFrame({
+        'open': [100.0],
+        'high': [105.0],
+        'low': [95.0],
+        'close': [102.0],
+        'volume': [1000]
+    }, index=[pd.Timestamp('2021-01-02')])  # Future date
+    
+    # Add to cache
+    loader._data_cache['AAPL'] = df
+    
+    # Test with future timestamp
+    future_timestamp = pd.Timestamp('2021-01-02')
+    result = loader.next(["AAPL"], future_timestamp)
+    
+    assert "AAPL" in result
+    assert result["AAPL"] is not None
+    assert result["AAPL"]["open"] == 100.0
+    assert result["AAPL"]["high"] == 105.0
+    assert result["AAPL"]["low"] == 95.0
+    assert result["AAPL"]["close"] == 102.0
+    assert result["AAPL"]["volume"] == 1000.0
+
+
+def test_next_timestamp_past_one_ticker_valid(loader):
+    """Test next with one valid ticker for past timestamp."""
+    # Create test data
+    df = pd.DataFrame({
+        'open': [100.0],
+        'high': [105.0],
+        'low': [95.0],
+        'close': [102.0],
+        'volume': [1000]
+    }, index=[pd.Timestamp('2021-01-01')])
+    
+    # Add to cache
+    loader._data_cache['AAPL'] = df
+    
+    # Test with past timestamp
+    result = loader.next(["AAPL"], pd.Timestamp('2021-01-01'))
+    
+    assert "AAPL" in result
+    assert result["AAPL"] is not None
+    assert result["AAPL"]["open"] == 100.0
+    assert result["AAPL"]["high"] == 105.0
+    assert result["AAPL"]["low"] == 95.0
+    assert result["AAPL"]["close"] == 102.0
+    assert result["AAPL"]["volume"] == 1000.0
+
+
+def test_next_timestamp_past_one_ticker_last_data_ffill(loader):
+    """Test next with ffill for past timestamp."""
+    # Create test data with two days
+    df = pd.DataFrame({
+        'open': [100.0, 102.0],
+        'high': [105.0, 107.0],
+        'low': [95.0, 97.0],
+        'close': [102.0, 104.0],
+        'volume': [1000, 1100]
+    }, index=pd.date_range('2021-01-01', '2021-01-02'))
+    
+    # Add to cache
+    loader._data_cache['AAPL'] = df
+    
+    # Test with ffill=True
+    result = loader.next(["AAPL"], pd.Timestamp('2021-01-03'), ffill=True)
+    
+    assert "AAPL" in result
+    assert result["AAPL"] is not None
+    assert result["AAPL"]["open"] == 102.0  # Should use last valid data
+    assert result["AAPL"]["high"] == 107.0
+    assert result["AAPL"]["low"] == 97.0
+    assert result["AAPL"]["close"] == 104.0
+    assert result["AAPL"]["volume"] == 1100.0
+
+
+def test_next_timestamp_past_one_ticker_no_data_ffill(loader):
+    """Test next with ffill when no previous data exists."""
+    # Test with ffill=True but no previous data
+    result = loader.next(["AAPL"], pd.Timestamp('2021-01-01'), ffill=True)
+    
+    assert "AAPL" in result
+    assert result["AAPL"] is None  # Should be None as there's no previous data 

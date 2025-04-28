@@ -76,6 +76,9 @@ class PolygonMarketDataLoader(MarketDataLoader):
         # Latest data cache for partial day data
         self._latest_data_cache: Dict[str, Dict] = {}
         self._latest_data_timestamp = None
+        
+        # Cache for last valid data used in ffill
+        self._last_valid_data: Optional[Dict] = None
 
     def _api_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Any:
         """
@@ -433,10 +436,26 @@ class PolygonMarketDataLoader(MarketDataLoader):
         
         return df
 
-    def next(self, tickers: List[str], timestamp: pd.Timestamp) -> Dict[str, Dict]:
+    def next(self, tickers: List[str], timestamp: pd.Timestamp, ffill: bool = False) -> Dict[str, Dict]:
         """
         Get data for tickers at or immediately before timestamp.
         For current day, returns partial day data.
+        
+        Parameters
+        ----------
+        tickers : List[str]
+            List of ticker symbols to get data for
+        timestamp : pd.Timestamp
+            Timestamp to get data for
+        ffill : bool, optional
+            If True, when a ticker has no data, use the last non-None ticker's data.
+            If False, return None for tickers with no data.
+            Default is False.
+            
+        Returns
+        -------
+        Dict[str, Dict]
+            Dictionary mapping ticker symbols to their OHLCV data or None
         """
         result = {}
         
@@ -447,26 +466,37 @@ class PolygonMarketDataLoader(MarketDataLoader):
                 bar_data = self._fetch_partial_day_data(ticker)
                 if bar_data:
                     result[ticker] = bar_data
+                    if ffill:
+                        self._last_valid_data = bar_data
                 else:
-                    result[ticker] = None
+                    if ffill and self._last_valid_data is not None:
+                        result[ticker] = self._last_valid_data
+                    else:
+                        result[ticker] = None
         else:
             # Otherwise use historical data from cache/disk
             for ticker in tickers:
                 df = self.load_ticker(ticker)
-                if df is not None:
-                    bar = self._get_bar_at_or_before(df, timestamp)
-                    if bar is not None:
-                        result[ticker] = {
-                            "open": float(bar["open"]),
-                            "high": float(bar["high"]),
-                            "low": float(bar["low"]),
-                            "close": float(bar["close"]),
-                            "volume": float(bar["volume"]),
-                        }
-                    else:
-                        result[ticker] = None
-                else:
-                    result[ticker] = None
+                if df is None:
+                    result[ticker] = self._last_valid_data if ffill else None
+                    continue
+                    
+                bar = self._get_bar_at_or_before(df, timestamp)
+                if bar is None:
+                    result[ticker] = self._last_valid_data if ffill else None
+                    continue
+                    
+                # We have valid data
+                result[ticker] = {
+                    "open": float(bar["open"]),
+                    "high": float(bar["high"]),
+                    "low": float(bar["low"]),
+                    "close": float(bar["close"]),
+                    "volume": float(bar["volume"]),
+                }
+                
+                if ffill:
+                    self._last_valid_data = result[ticker]
         
         return result
 
