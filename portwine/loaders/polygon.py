@@ -180,6 +180,68 @@ class PolygonMarketDataLoader(MarketDataLoader):
         except Exception as e:
             logger.warning(f"Error saving data for {ticker}: {e}")
 
+    def _validate_and_convert_dates(
+        self,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None
+    ) -> tuple[str, str]:
+        """
+        Validate and convert date inputs to proper format.
+        
+        Parameters
+        ----------
+        from_date : str, optional
+            Start date in YYYY-MM-DD format or millisecond timestamp
+        to_date : str, optional
+            End date in YYYY-MM-DD format or millisecond timestamp
+            
+        Returns
+        -------
+        tuple[str, str]
+            Tuple of (from_date, to_date) in proper format for API
+            
+        Raises
+        ------
+        ValueError
+            If dates are malformed or if to_date is before from_date
+        """
+        # Set default dates if not provided
+        today = datetime.now(pytz.UTC)
+        if from_date is None:
+            from_date = str(int(datetime.timestamp(today - timedelta(days=365 * 2)) * 1000))
+        if to_date is None:
+            to_date = str(int(datetime.timestamp(today) * 1000))
+            
+        # If date is in YYYY-MM-DD format, convert to milliseconds
+        if "-" in str(from_date):
+            try:
+                dt = datetime.strptime(from_date, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=pytz.UTC)  # Make timezone-aware as UTC
+                from_date = str(int(dt.timestamp() * 1000))
+            except ValueError:
+                raise ValueError(f"from_date must be in YYYY-MM-DD format or millisecond timestamp. Got {from_date}")
+                
+        if "-" in str(to_date):
+            try:
+                dt = datetime.strptime(to_date, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=pytz.UTC)  # Make timezone-aware as UTC
+                to_date = str(int(dt.timestamp() * 1000))
+            except ValueError:
+                raise ValueError(f"to_date must be in YYYY-MM-DD format or millisecond timestamp. Got {to_date}")
+        
+        # Validate millisecond timestamps
+        try:
+            from_ms = int(from_date)
+            to_ms = int(to_date)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid millisecond timestamps. Got from_date={from_date}, to_date={to_date}")
+            
+        # Check order
+        if to_ms < from_ms:
+            raise ValueError(f"to_date ({to_date}) must be after from_date ({from_date})")
+            
+        return from_date, to_date
+
     def fetch_historical_data(
         self,
         ticker: str,
@@ -194,9 +256,9 @@ class PolygonMarketDataLoader(MarketDataLoader):
         ticker : str
             The stock ticker symbol to fetch data for
         from_date : str, optional
-            Start date in YYYY-MM-DD format. If None, defaults to 2 years ago.
+            Start date in YYYY-MM-DD format or millisecond timestamp. If None, defaults to 2 years ago.
         to_date : str, optional
-            End date in YYYY-MM-DD format. If None, defaults to today.
+            End date in YYYY-MM-DD format or millisecond timestamp. If None, defaults to today.
             
         Returns
         -------
@@ -210,26 +272,9 @@ class PolygonMarketDataLoader(MarketDataLoader):
             If API key is not provided
         """
         try:
-            # Set default dates if not provided
-            today = datetime.now()
-            if from_date is None:
-                from_date = (today - timedelta(days=365 * 2)).strftime("%Y-%m-%d")
-            if to_date is None:
-                to_date = today.strftime("%Y-%m-%d")
-
-            # Validate date formats and order
-            try:
-                from_date_obj = datetime.strptime(from_date, "%Y-%m-%d")
-                to_date_obj = datetime.strptime(to_date, "%Y-%m-%d")
-            except ValueError as e:
-                logger.error(f"Invalid date format: {str(e)}")
-                raise ValueError(f"Dates must be in YYYY-MM-DD format. Got from_date={from_date}, to_date={to_date}")
-
-            if to_date_obj < from_date_obj:
-                error_msg = f"to_date ({to_date}) must be after from_date ({from_date})"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
-
+            # Validate and convert dates
+            from_date, to_date = self._validate_and_convert_dates(from_date, to_date)
+            
             # Initialize list to store all results
             all_results = []
             
@@ -250,38 +295,38 @@ class PolygonMarketDataLoader(MarketDataLoader):
                 else:
                     break
             
-            if all_results:
-                # Convert to DataFrame
-                df = pd.DataFrame(all_results)
-                
-                # Rename columns to match expected format
-                df = df.rename(columns={
-                    "v": "volume",
-                    "o": "open",
-                    "c": "close",
-                    "h": "high",
-                    "l": "low",
-                    "t": "timestamp"
-                })
-                
-                # Convert timestamp from milliseconds to datetime
-                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-                df.set_index("timestamp", inplace=True)
-                
-                # Sort by timestamp
-                df.sort_index(inplace=True)
-                
-                # Cache the data
-                self._data_cache[ticker] = df
-                
-                # Save to disk
-                self._save_to_disk(ticker, df)
-                
-                logger.info(f"Successfully fetched historical data for {ticker} from {from_date} to {to_date}")
-                return df
-            else:
+            if not all_results:
                 logger.warning(f"No data returned for {ticker} from {from_date} to {to_date}")
                 return None
+                
+            # Convert to DataFrame
+            df = pd.DataFrame(all_results)
+            
+            # Rename columns to match expected format
+            df = df.rename(columns={
+                "v": "volume",
+                "o": "open",
+                "c": "close",
+                "h": "high",
+                "l": "low",
+                "t": "timestamp"
+            })
+            
+            # Convert timestamp from milliseconds to datetime
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            df.set_index("timestamp", inplace=True)
+            
+            # Sort by timestamp
+            df.sort_index(inplace=True)
+            
+            # Cache the data
+            self._data_cache[ticker] = df
+            
+            # Save to disk
+            self._save_to_disk(ticker, df)
+            
+            logger.info(f"Successfully fetched historical data for {ticker} from {from_date} to {to_date}")
+            return df
 
         except ValueError:
             # Re-raise ValueError exceptions (invalid dates)
@@ -292,18 +337,33 @@ class PolygonMarketDataLoader(MarketDataLoader):
             return None
 
     def _fetch_partial_day_data(self, ticker: str) -> Optional[Dict]:
-        """Fetch current day's partial data from Polygon API."""
+        """
+        Fetch current day's partial data from Polygon API.
+        
+        Parameters
+        ----------
+        ticker : str
+            Ticker symbol
+            
+        Returns
+        -------
+        Dict or None
+            Dictionary with OHLCV data if successful, None if error occurs
+        """
         try:
-            # Get today's date in EST
+            # Get current time in US/Eastern
             est = pytz.timezone('US/Eastern')
-            today = datetime.now(est).date()
+            now = datetime.now(est)
+            
+            # Convert to millisecond timestamp
+            now_ms = int(now.timestamp() * 1000)
             
             # Format parameters for API request
             params = {
                 "ticker": ticker,
                 "timespan": "minute",
-                "from": today.strftime("%Y-%m-%d"),
-                "to": today.strftime("%Y-%m-%d"),
+                "from": str(now_ms - (24 * 60 * 60 * 1000)),  # 24 hours ago
+                "to": str(now_ms),
                 "limit": 50000,
                 "adjusted": "true"
             }
@@ -313,15 +373,25 @@ class PolygonMarketDataLoader(MarketDataLoader):
             response = self._api_get(url, params)
             
             if 'results' in response:
+                # Filter bars to only include today's trading hours (9:30 AM - 4:00 PM ET)
+                today_bars = [
+                    bar for bar in response['results']
+                    if est.localize(datetime.fromtimestamp(bar['t'] / 1000)).hour >= 9
+                    and est.localize(datetime.fromtimestamp(bar['t'] / 1000)).hour < 16
+                ]
+                
+                if not today_bars:
+                    return None
+                
                 # Get today's open from first bar
-                first_bar = response['results'][0]
+                first_bar = today_bars[0]
                 today_open = first_bar['o']
                 
                 # Calculate high, low, close from all bars
-                high = max(bar['h'] for bar in response['results'])
-                low = min(bar['l'] for bar in response['results'])
-                close = response['results'][-1]['c']
-                volume = sum(bar['v'] for bar in response['results'])
+                high = max(bar['h'] for bar in today_bars)
+                low = min(bar['l'] for bar in today_bars)
+                close = today_bars[-1]['c']
+                volume = sum(bar['v'] for bar in today_bars)
                 
                 return {
                     "open": float(today_open),

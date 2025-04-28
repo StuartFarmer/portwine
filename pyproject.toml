@@ -21,6 +21,7 @@ django-scheduler = "^0.10.1"
 flask = "^3.1.0"
 rich = "^14.0.0"
 fastparquet = "^2024.2.0"
+freezegun = "^1.5.1"
 
 
 [tool.poetry.group.dev.dependencies]
