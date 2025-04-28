@@ -157,4 +157,72 @@ def test_init_if_no_api_key_warn(caplog):
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(ValueError):
             PolygonMarketDataLoader()
-        assert "Polygon API key not provided" in caplog.text 
+        assert "Polygon API key not provided" in caplog.text
+
+
+def test_get_data_path_valid_ticker(loader):
+    """Test that _get_data_path returns expected path for valid ticker."""
+    path = loader._get_data_path("AAPL")
+    assert path == os.path.join("test_data", "AAPL.parquet")
+
+
+def test_get_data_path_invalid_ticker(loader):
+    """Test that _get_data_path raises error for invalid ticker characters."""
+    with pytest.raises(ValueError):
+        loader._get_data_path("AAPL/INVALID")
+
+
+def test_load_from_disk_ticker_exists(loader, mock_response):
+    """Test that _load_from_disk returns DataFrame when file exists."""
+    # Create test data
+    df = pd.DataFrame(mock_response["results"])
+    df = df.rename(columns={
+        "v": "volume",
+        "o": "open",
+        "c": "close",
+        "h": "high",
+        "l": "low",
+        "t": "timestamp"
+    })
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+    df.set_index("timestamp", inplace=True)
+    
+    # Save to disk
+    data_path = os.path.join("test_data", "AAPL.parquet")
+    os.makedirs("test_data", exist_ok=True)
+    df.to_parquet(data_path)
+    
+    # Test loading
+    loaded_df = loader._load_from_disk("AAPL")
+    assert isinstance(loaded_df, pd.DataFrame)
+    assert len(loaded_df) == 2
+    assert list(loaded_df.columns) == ['open', 'high', 'low', 'close', 'volume']
+    
+    # Clean up
+    os.remove(data_path)
+    os.rmdir("test_data")
+
+
+def test_load_from_disk_data_path_doesnt_exist(loader, caplog):
+    """Test that _load_from_disk logs warning and returns None when file doesn't exist."""
+    result = loader._load_from_disk("NONEXISTENT")
+    assert result is None
+    assert "Error loading data for NONEXISTENT" in caplog.text
+
+
+def test_load_from_disk_data_is_malformed(loader, caplog):
+    """Test that _load_from_disk logs warning and returns None when data is malformed."""
+    # Create malformed parquet file
+    data_path = os.path.join("test_data", "MALFORMED.parquet")
+    os.makedirs("test_data", exist_ok=True)
+    with open(data_path, 'w') as f:
+        f.write("not a parquet file")
+    
+    # Test loading
+    result = loader._load_from_disk("MALFORMED")
+    assert result is None
+    assert "Error loading data for MALFORMED" in caplog.text
+    
+    # Clean up
+    os.remove(data_path)
+    os.rmdir("test_data") 

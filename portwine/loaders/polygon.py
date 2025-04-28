@@ -125,7 +125,17 @@ class PolygonMarketDataLoader(MarketDataLoader):
         -------
         str
             Path to data file
+            
+        Raises
+        ------
+        ValueError
+            If ticker contains invalid characters for a filename
         """
+        # Check for invalid characters in ticker
+        invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+        if any(char in ticker for char in invalid_chars):
+            raise ValueError(f"Ticker {ticker} contains invalid characters for a filename")
+            
         return os.path.join(self.data_dir, f"{ticker}.parquet")
     
     def _load_from_disk(self, ticker: str) -> Optional[pd.DataFrame]:
@@ -148,6 +158,8 @@ class PolygonMarketDataLoader(MarketDataLoader):
                 return pd.read_parquet(data_path)
             except Exception as e:
                 logger.warning(f"Error loading data for {ticker}: {e}")
+        else:
+            logger.warning(f"Error loading data for {ticker}: File not found")
         
         return None
     
