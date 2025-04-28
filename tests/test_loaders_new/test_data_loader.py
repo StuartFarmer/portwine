@@ -5,7 +5,7 @@ import pandas as pd
 import unittest
 
 from portwine.loaders_new.data_loader import DataLoader
-from portwine.loaders_new.sources.data_source import DataSource
+from portwine.sources.base import DataSource
 
 
 class TestDataSource(DataSource):
