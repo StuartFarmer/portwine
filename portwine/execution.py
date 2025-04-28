@@ -13,12 +13,15 @@ from typing import Dict, List, Optional, Tuple, Iterator
 import math
 import time
 from datetime import datetime
+import pandas as pd
+import pandas_market_calendars as mcal
 
 from portwine.loaders.base import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.brokers.base import BrokerBase, Order
 from portwine.logging import Logger, log_position_table, log_weight_table, log_order_table
 from rich.progress import track, Progress, SpinnerColumn, TimeElapsedColumn, TextColumn
+from portwine.scheduler import daily_schedule
 
 class ExecutionError(Exception):
     """Base exception for execution-related errors."""
@@ -406,16 +409,62 @@ class ExecutionBase(abc.ABC):
         executed = self._execute_orders(orders)
         return executed
 
-    def run(self, schedule: Iterator[int]) -> None:
+    def warmup(self, start_date: str, after_open_minutes: int = 0, before_close_minutes: int = 0, interval_seconds: int = None):
         """
-        Continuously execute `step` at each timestamp provided by the schedule iterator,
-        waiting until the scheduled time before running.
-
-        Args:
-            schedule: An iterator yielding UNIX timestamps in milliseconds for when to run each step.
-
-        The loop terminates when the iterator is exhausted (StopIteration).
+        Warm up the strategy by running it over historical data from start_date up to today.
         """
+        tickers = self.tickers
+        calendar_name = "NYSE"
+        now = pd.Timestamp.now(tz=self.timezone)
+        schedule = daily_schedule(
+            after_open_minutes=after_open_minutes,
+            before_close_minutes=before_close_minutes,
+            interval_seconds=interval_seconds,
+            calendar_name=calendar_name,
+            start_date=start_date,
+            end_date=now.strftime("%Y-%m-%d")
+        )
+        steps = 0
+        last_data = {t: None for t in tickers}
+        try:
+            for ts in schedule:
+                dt_aware = pd.to_datetime(ts, unit='ms', utc=True).tz_convert(self.timezone)
+                # Fetch data with ffill
+                daily_data = self.market_data_loader.next(tickers, dt_aware, ffill=True)
+                # Forward-fill missing values
+                for t in tickers:
+                    if daily_data[t] is None and last_data[t] is not None:
+                        daily_data[t] = last_data[t]
+                    elif daily_data[t] is not None:
+                        last_data[t] = daily_data[t]
+                self.strategy.step(dt_aware, daily_data)
+                self.logger.info(f"Warmup step at {dt_aware}: {self.strategy.current_signals}")
+                steps += 1
+                if steps % 100 == 0:
+                    self.logger.info(f"Warm-up progress: {steps} steps...")
+        except StopIteration:
+            self.logger.info(f"Warm-up complete after {steps} steps (schedule exhausted).")
+            return
+        self.logger.info(f"Warm-up complete after {steps} steps (reached now).")
+
+    def run(self, schedule: Iterator[int], warmup_start_date: str = None) -> None:
+        """
+        Optionally run warmup before main execution loop. If warmup_start_date is provided, run warmup from that date.
+        """
+        if warmup_start_date is not None:
+            # Try to extract warmup params from schedule object
+            after_open = getattr(schedule, 'after_open', 0)
+            before_close = getattr(schedule, 'before_close', 0)
+            interval = getattr(schedule, 'interval', None)
+            self.logger.info(
+                f"Running warmup from {warmup_start_date} (after_open={after_open}, before_close={before_close}, interval={interval})"
+            )
+            self.warmup(
+                warmup_start_date,
+                after_open_minutes=after_open,
+                before_close_minutes=before_close,
+                interval_seconds=interval
+            )
         # allow for missing timezone (e.g. in FakeExec)
         tz = getattr(self, 'timezone', None)
         for timestamp_ms in schedule:
