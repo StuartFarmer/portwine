@@ -17,6 +17,11 @@ from portwine.execution import ExecutionBase
 from portwine.loaders.polygon import PolygonMarketDataLoader
 
 
+def prepend(item, iterator):
+    yield item
+    yield from iterator
+
+
 def warmup_strategy(
     strategy,
     loader,
@@ -72,6 +77,7 @@ def warmup_strategy_with_iterator(
     timezone: str = "America/New_York"
 ):
     import pandas as pd
+    import pandas_market_calendars as mcal
     now = pd.Timestamp.now(tz=timezone)
     schedule = daily_schedule(
         after_open_minutes=after_open_minutes,
@@ -80,28 +86,52 @@ def warmup_strategy_with_iterator(
         calendar_name=calendar_name,
         start_date=start_date
     )
+    calendar = mcal.get_calendar(calendar_name)
     steps = 0
+    last_data = {t: None for t in tickers}
     try:
         ts = next(schedule)
-        dt = pd.to_datetime(ts, unit='ms').tz_localize("UTC").tz_convert(timezone).normalize()
-        while dt < now:
-            dt_naive = dt.tz_localize(None)
-            daily_data = loader.next(tickers, dt_naive)
-            strategy.step(dt_naive, daily_data)
-            print(f"Warmup step at {dt_naive}: {strategy.current_signals}")
+        while True:
+            # Convert ts to a timezone-aware datetime using the provided timezone
+            dt_aware = pd.to_datetime(ts, unit='ms', utc=True).tz_convert(timezone)
+            now = pd.Timestamp.now(tz=timezone)
+            if dt_aware >= now:
+                break  # Do not advance the generator, leave ts at the next interval
+            # Check if valid trading datetime
+            sched = calendar.schedule(start_date=dt_aware.strftime("%Y-%m-%d"), end_date=dt_aware.strftime("%Y-%m-%d"))
+            if sched.empty:
+                ts = next(schedule)
+                continue
+            open_time = sched.iloc[0]["market_open"].tz_convert(timezone)
+            close_time = sched.iloc[0]["market_close"].tz_convert(timezone)
+            if not (open_time <= dt_aware <= close_time):
+                ts = next(schedule)
+                continue
+            # Fetch data with ffill
+            daily_data = loader.next(tickers, dt_aware, ffill=True)
+            # Forward-fill missing values
+            for t in tickers:
+                if daily_data[t] is None and last_data[t] is not None:
+                    daily_data[t] = last_data[t]
+                elif daily_data[t] is not None:
+                    last_data[t] = daily_data[t]
+            strategy.step(dt_aware, daily_data)
+            print(f"Warmup step at {dt_aware}: {strategy.current_signals}")
             steps += 1
             if steps % 100 == 0:
                 print(f"Warm-up progress: {steps} steps...")
             ts = next(schedule)
-            dt = pd.to_datetime(ts, unit='ms').tz_localize("UTC").tz_convert(timezone).normalize()
     except StopIteration:
         print(f"Warm-up complete after {steps} steps (schedule exhausted).")
         return schedule
     print(f"Warm-up complete after {steps} steps (reached now).")
-    return schedule
+    return prepend(ts, schedule)
 
 
 def main():
+    # Set timezone for the entire script
+    timezone = "America/New_York"
+
     # Set up tickers and strategy parameters
     tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META"]
     short_window = 20
@@ -116,10 +146,11 @@ def main():
         position_size=position_size
     )
 
-    # Initialize market data loader (Polygon)
-    market_data_loader = PolygonMarketDataLoader(
+    # Initialize market data loader (Polygon) with script timezone
+    loader = PolygonMarketDataLoader(
         api_key=os.getenv("POLYGON_API_KEY"),
-        data_dir="data"
+        data_dir="data",
+        timezone=timezone
     )
 
     # Initialize the broker
@@ -131,23 +162,40 @@ def main():
     )
 
     # Create execution engine
-    executor = ExecutionBase(strategy, market_data_loader, broker)
+    executor = ExecutionBase(strategy, loader, broker)
 
     # --- WARM-UP PERIOD using schedule iterator ---
     import pandas as pd
-    start_lookup = (pd.Timestamp.now(tz="America/New_York") - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+    start_lookup = (pd.Timestamp.now(tz=timezone) - pd.Timedelta(days=4)).strftime("%Y-%m-%d")
     schedule = warmup_strategy_with_iterator(
         strategy,
-        market_data_loader,
+        loader,
         tickers,
         calendar_name="NYSE",
         start_date=start_lookup,
         after_open_minutes=0,
         before_close_minutes=0,
-        interval_seconds=60,
-        timezone="America/New_York"
+        interval_seconds=120,
+        timezone=timezone
     )
     # --- END WARM-UP ---
+
+    # Print the next timestamp in the schedule after warmup
+    try:
+        next_ts = next(schedule)
+        print(f"Next timestamp in schedule after warmup: {pd.to_datetime(next_ts, unit='ms', utc=True).tz_convert(timezone)}")
+        # Print the next 5 timestamps after warmup
+        print("Next 5 timestamps after warmup:")
+        print(pd.to_datetime(next_ts, unit='ms', utc=True).tz_convert(timezone))
+        for _ in range(4):
+            ts = next(schedule)
+            print(pd.to_datetime(ts, unit='ms', utc=True).tz_convert(timezone))
+    except StopIteration:
+        print("Schedule exhausted after warmup.")
+        return
+
+    # Rewind the generator by one since we advanced it for printing
+    schedule = prepend(next_ts, schedule)
 
     executor.run(schedule)
     print("Scheduled execution finished.")

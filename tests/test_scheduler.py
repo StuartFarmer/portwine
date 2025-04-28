@@ -13,6 +13,8 @@ from portwine.scheduler import DailySchedule, daily_schedule
 import pandas_market_calendars as mcal
 import pandas as pd
 
+import pytest
+
 
 
 # helper: convert datetime/Timestamp -> UNIX-ms
@@ -649,5 +651,47 @@ class TestDailyScheduleNow(unittest.TestCase):
         base = pd.Timestamp('2025-04-21 10:00:00', tz='UTC')
         expected = [int((base + pd.Timedelta(seconds=60 * i)).timestamp() * 1000) for i in range(7)]
         self.assertEqual(result, expected)
+
+class TestScheduleHandoff(unittest.TestCase):
+    def setUp(self):
+        # Calendar with three consecutive days
+        self.dates = pd.to_datetime(["2025-04-25", "2025-04-26", "2025-04-28"])  # skip weekend
+        opens = self.dates + pd.Timedelta(hours=9, minutes=30)
+        closes = self.dates + pd.Timedelta(hours=16)
+        self.schedule_df = pd.DataFrame({
+            "market_open": opens,
+            "market_close": closes
+        }, index=self.dates)
+        patcher = mock.patch(
+            'portwine.scheduler.mcal.get_calendar',
+            new=lambda name: FakeCalendar(self.schedule_df)
+        )
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    @pytest.mark.xfail(reason="Sanity check: this test is expected to fail on purpose.")
+    def test_schedule_handoff_yields_old_timestamps(self):
+        # Simulate warmup up to 2025-04-28 09:48 UTC
+        warmup_cutoff = pd.Timestamp("2025-04-28 09:48:00", tz="UTC")
+        gen = daily_schedule(
+            after_open_minutes=0,
+            before_close_minutes=None,
+            calendar_name="TEST",
+            start_date="2025-04-25",
+            interval_seconds=120
+        )
+        # Advance generator up to warmup_cutoff
+        last_dt = None
+        for ts in gen:
+            dt = pd.to_datetime(ts, unit='ms', utc=True)
+            if dt >= warmup_cutoff:
+                break
+            last_dt = dt
+        # Now, continue iterating and collect the next 5 timestamps
+        next_ts = [pd.to_datetime(next(gen), unit='ms', utc=True) for _ in range(5)]
+        # Assert that some of the next timestamps are from before warmup_cutoff (i.e., from previous days)
+        self.assertTrue(any(dt < warmup_cutoff for dt in next_ts),
+                        f"Expected at least one timestamp before warmup_cutoff, got: {next_ts}")
+
 if __name__ == "__main__":
     unittest.main()

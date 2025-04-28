@@ -36,12 +36,15 @@ class PolygonMarketDataLoader(MarketDataLoader):
         Polygon API key. If not provided, attempts to read from POLYGON_API_KEY env var.
     data_dir : str
         Directory where historical data files are stored.
+    timezone : str
+        Timezone for the data. Default is "America/New_York".
     """
     
     def __init__(
         self,
         api_key: Optional[str] = None,
         data_dir: str = "data",
+        timezone: str = "America/New_York"
     ):
         """Initialize Polygon market data loader."""
         super().__init__()
@@ -51,9 +54,7 @@ class PolygonMarketDataLoader(MarketDataLoader):
         if not self.api_key:
             logger.warning("Polygon API key not provided. Will raise error if fetching historical data.")
             raise ValueError(
-                "Polygon API key not provided. "
-                "Either pass as parameter or set POLYGON_API_KEY environment variable."
-            )
+                "Polygon API key must be provided either as argument or POLYGON_API_KEY env var.")
         
         # Base URL for API requests
         self.base_url = POLYGON_BASE_URL
@@ -79,6 +80,9 @@ class PolygonMarketDataLoader(MarketDataLoader):
         
         # Cache for last valid data used in ffill
         self._last_valid_data: Optional[Dict] = None
+        
+        # Timezone
+        self.timezone = timezone
 
     def _api_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Any:
         """
@@ -316,7 +320,7 @@ class PolygonMarketDataLoader(MarketDataLoader):
             })
             
             # Convert timestamp from milliseconds to datetime
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert(self.timezone)
             df.set_index("timestamp", inplace=True)
             
             # Sort by timestamp
@@ -342,60 +346,34 @@ class PolygonMarketDataLoader(MarketDataLoader):
     def _fetch_partial_day_data(self, ticker: str) -> Optional[Dict]:
         """
         Fetch current day's partial data from Polygon API.
-        
-        Parameters
-        ----------
-        ticker : str
-            Ticker symbol
-            
-        Returns
-        -------
-        Dict or None
-            Dictionary with OHLCV data if successful, None if error occurs
         """
         try:
-            # Get current time in US/Eastern
             est = pytz.timezone('US/Eastern')
             now = datetime.now(est)
-            
-            # Convert to millisecond timestamp
             now_ms = int(now.timestamp() * 1000)
-            
-            # Format parameters for API request
+            from_ms = now_ms - (24 * 60 * 60 * 1000)  # 24 hours ago
+            # Use path parameters for from and to
+            url = f"{self.base_url}/v2/aggs/ticker/{ticker}/range/1/minute/{from_ms}/{now_ms}"
             params = {
-                "ticker": ticker,
-                "timespan": "minute",
-                "from": str(now_ms - (24 * 60 * 60 * 1000)),  # 24 hours ago
-                "to": str(now_ms),
-                "limit": 50000,
-                "adjusted": "true"
+                "adjusted": "true",
+                "sort": "asc",
+                "limit": 50000
             }
-            
-            # Make API request for today's minute bars
-            url = f"{self.base_url}/v2/aggs/ticker/{ticker}/range/1/minute"
             response = self._api_get(url, params)
-            
             if 'results' in response:
-                # Filter bars to only include today's trading hours (9:30 AM - 4:00 PM ET)
                 today_bars = [
                     bar for bar in response['results']
                     if est.localize(datetime.fromtimestamp(bar['t'] / 1000)).hour >= 9
                     and est.localize(datetime.fromtimestamp(bar['t'] / 1000)).hour < 16
                 ]
-                
                 if not today_bars:
                     return None
-                
-                # Get today's open from first bar
                 first_bar = today_bars[0]
                 today_open = first_bar['o']
-                
-                # Calculate high, low, close from all bars
                 high = max(bar['h'] for bar in today_bars)
                 low = min(bar['l'] for bar in today_bars)
                 close = today_bars[-1]['c']
                 volume = sum(bar['v'] for bar in today_bars)
-                
                 return {
                     "open": float(today_open),
                     "high": float(high),
@@ -403,10 +381,11 @@ class PolygonMarketDataLoader(MarketDataLoader):
                     "close": float(close),
                     "volume": float(volume)
                 }
-        
         except Exception as e:
             logger.error(f"Error fetching partial day data for {ticker}: {e}")
-        
+            if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 404:
+                return None
+            return None
         return None
 
     def load_ticker(self, ticker: str) -> Optional[pd.DataFrame]:
@@ -426,14 +405,17 @@ class PolygonMarketDataLoader(MarketDataLoader):
         """
         # Check in-memory cache first
         if ticker in self._data_cache:
-            return self._data_cache[ticker]
-        
-        # If not in memory, try loading from disk
-        df = self._load_from_disk(ticker)
+            df = self._data_cache[ticker]
+        else:
+            df = self._load_from_disk(ticker)
+            if df is not None:
+                self._data_cache[ticker] = df
         if df is not None:
-            # Update in-memory cache
-            self._data_cache[ticker] = df
-        
+            # Ensure index is timezone-aware and matches self.timezone
+            if df.index.tz is None:
+                df.index = df.index.tz_localize(self.timezone)
+            elif str(df.index.tz) != str(pytz.timezone(self.timezone)):
+                df.index = df.index.tz_convert(self.timezone)
         return df
 
     def next(self, tickers: List[str], timestamp: pd.Timestamp, ffill: bool = False) -> Dict[str, Dict]:
@@ -458,9 +440,11 @@ class PolygonMarketDataLoader(MarketDataLoader):
             Dictionary mapping ticker symbols to their OHLCV data or None
         """
         result = {}
-        
-        # If timestamp is today, get partial day data
-        now = pd.Timestamp.now()
+        now = pd.Timestamp.now(tz=self.timezone)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.tz_localize(self.timezone)
+        else:
+            timestamp = timestamp.tz_convert(self.timezone)
         if timestamp.date() == now.date():
             for ticker in tickers:
                 bar_data = self._fetch_partial_day_data(ticker)
@@ -474,19 +458,20 @@ class PolygonMarketDataLoader(MarketDataLoader):
                     else:
                         result[ticker] = None
         else:
-            # Otherwise use historical data from cache/disk
             for ticker in tickers:
                 df = self.load_ticker(ticker)
                 if df is None:
                     result[ticker] = self._last_valid_data if ffill else None
                     continue
-                    
+                # Ensure timestamp and index are tz-aware and match
+                if df.index.tz is None:
+                    df.index = df.index.tz_localize(self.timezone)
+                elif str(df.index.tz) != str(pytz.timezone(self.timezone)):
+                    df.index = df.index.tz_convert(self.timezone)
                 bar = self._get_bar_at_or_before(df, timestamp)
                 if bar is None:
                     result[ticker] = self._last_valid_data if ffill else None
                     continue
-                    
-                # We have valid data
                 result[ticker] = {
                     "open": float(bar["open"]),
                     "high": float(bar["high"]),
@@ -494,10 +479,8 @@ class PolygonMarketDataLoader(MarketDataLoader):
                     "close": float(bar["close"]),
                     "volume": float(bar["volume"]),
                 }
-                
                 if ffill:
                     self._last_valid_data = result[ticker]
-        
         return result
 
     def __del__(self):
