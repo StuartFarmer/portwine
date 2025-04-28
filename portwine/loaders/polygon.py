@@ -230,16 +230,29 @@ class PolygonMarketDataLoader(MarketDataLoader):
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            # Construct API endpoint
+            # Initialize list to store all results
+            all_results = []
+            
+            # Construct initial API endpoint
             endpoint = f"{self.base_url}/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}"
             
-            # Make API request
-            response_data = self._api_get(endpoint, params={"adjusted": "true", "sort": "asc"})
-
-            # Process response
-            if response_data and response_data.get("results"):
+            # Fetch data with pagination
+            while endpoint:
+                # Make API request
+                response_data = self._api_get(endpoint, params={"adjusted": "true", "sort": "asc"})
+                
+                # Process response
+                if response_data and response_data.get("results"):
+                    all_results.extend(response_data["results"])
+                    
+                    # Get next URL for pagination
+                    endpoint = response_data.get("next_url")
+                else:
+                    break
+            
+            if all_results:
                 # Convert to DataFrame
-                df = pd.DataFrame(response_data["results"])
+                df = pd.DataFrame(all_results)
                 
                 # Rename columns to match expected format
                 df = df.rename(columns={

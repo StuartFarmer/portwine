@@ -225,4 +225,111 @@ def test_load_from_disk_data_is_malformed(loader, caplog):
     
     # Clean up
     os.remove(data_path)
-    os.rmdir("test_data") 
+    os.rmdir("test_data")
+
+
+def test_save_to_disk_invalid_ticker(loader):
+    """Test that _save_to_disk raises error for invalid ticker characters."""
+    df = pd.DataFrame({'test': [1, 2, 3]})
+    with pytest.raises(ValueError):
+        loader._save_to_disk("INVALID/TICKER", df)
+
+
+def test_save_to_disk_valid_dataframe(loader):
+    """Test that _save_to_disk correctly saves and can be loaded back."""
+    # Create test data
+    df = pd.DataFrame({
+        'open': [100.0, 102.0],
+        'high': [105.0, 107.0],
+        'low': [95.0, 97.0],
+        'close': [102.0, 104.0],
+        'volume': [1000, 1100]
+    }, index=pd.date_range('2021-01-01', '2021-01-02'))
+    
+    # Save to disk
+    loader._save_to_disk("AAPL", df)
+    
+    # Verify file exists
+    data_path = os.path.join("test_data", "AAPL.parquet")
+    assert os.path.exists(data_path)
+    
+    # Load and verify data
+    loaded_df = pd.read_parquet(data_path)
+    
+    # Reset index names to None for comparison
+    df.index.name = None
+    loaded_df.index.name = None
+    
+    # Compare data values only, ignoring index type
+    pd.testing.assert_frame_equal(
+        df.reset_index(drop=True),
+        loaded_df.reset_index(drop=True)
+    )
+    
+    # Clean up
+    os.remove(data_path)
+    os.rmdir("test_data")
+
+
+def test_fetch_historical_data_pagination(loader):
+    """Test that fetch_historical_data handles pagination correctly."""
+    # Mock responses for pagination
+    first_response = {
+        "results": [
+            {
+                "t": 1609459200000,  # 2021-01-01
+                "o": 100.0,
+                "h": 105.0,
+                "l": 95.0,
+                "c": 102.0,
+                "v": 1000
+            }
+        ],
+        "next_url": "https://api.polygon.io/v2/aggs/ticker/AAPL/range/1/day/2021-01-01/2021-01-02?cursor=next"
+    }
+    
+    second_response = {
+        "results": [
+            {
+                "t": 1609545600000,  # 2021-01-02
+                "o": 102.0,
+                "h": 107.0,
+                "l": 97.0,
+                "c": 104.0,
+                "v": 1100
+            }
+        ]
+    }
+    
+    with patch('requests.Session.get') as mock_get:
+        # Set up mock to return different responses
+        mock_get.side_effect = [
+            MagicMock(
+                json=lambda: first_response,
+                raise_for_status=MagicMock()
+            ),
+            MagicMock(
+                json=lambda: second_response,
+                raise_for_status=MagicMock()
+            )
+        ]
+        
+        # Fetch data
+        df = loader.fetch_historical_data("AAPL", from_date="2021-01-01", to_date="2021-01-02")
+        
+        # Verify data
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 2
+        assert list(df.columns) == ['open', 'high', 'low', 'close', 'volume']
+        
+        # Verify cache
+        assert "AAPL" in loader._data_cache
+        assert isinstance(loader._data_cache["AAPL"], pd.DataFrame)
+        
+        # Verify disk storage
+        data_path = os.path.join("test_data", "AAPL.parquet")
+        assert os.path.exists(data_path)
+        
+        # Clean up
+        os.remove(data_path)
+        os.rmdir("test_data") 
