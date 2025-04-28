@@ -95,7 +95,8 @@ class TestFiniteDailySchedule(unittest.TestCase):
             after_open_minutes=5,
             before_close_minutes=None,
             calendar_name="TEST",
-            start_date="2021-01-04"
+            start_date="2021-01-04",
+            end_date="2021-01-04"
         ))
         self.assertEqual(res, [ms(datetime(2021, 1, 4, 9, 35))])
 
@@ -286,8 +287,8 @@ class TestDailySchedule(unittest.TestCase):
 
     def test_daily_schedule_helper(self):
         # Compare helper vs explicit for same parameters
-        ms1 = list(daily_schedule(after_open_minutes=1, start_date="2025-04-01"))
-        ms2 = list(DailySchedule(after_open_minutes=1, start_date="2025-04-01"))
+        ms1 = list(daily_schedule(after_open_minutes=1, start_date="2025-04-01", end_date="2025-04-01"))
+        ms2 = list(DailySchedule(after_open_minutes=1, start_date="2025-04-01", end_date="2025-04-01"))
         self.assertEqual(ms1, ms2)
 
     def test_live_generator_yields_nothing_when_all_in_past(self):
@@ -620,12 +621,13 @@ class TestDailyScheduleNow(unittest.TestCase):
     @patch('portwine.scheduler.mcal.get_calendar')
     def test_close_only_future(self, mock_get_cal):
         mock_get_cal.return_value = self.fake_cal
-        # Use finite mode by specifying start_date so we always get the close timestamp
+        # Use finite mode by specifying start_date and end_date so we always get the close timestamp
         gen = daily_schedule(
             after_open_minutes=None,
             before_close_minutes=0,
             calendar_name='TEST',
             start_date='2025-04-21',
+            end_date='2025-04-21',
         )
         result = list(gen)
         close_ms = int(pd.Timestamp('2025-04-21 10:06:00', tz='UTC').timestamp() * 1000)
@@ -640,6 +642,7 @@ class TestDailyScheduleNow(unittest.TestCase):
             before_close_minutes=None,
             calendar_name='TEST',
             start_date='2025-04-21',
+            end_date='2025-04-21',
             interval_seconds=60,
         )
         result = list(gen)
