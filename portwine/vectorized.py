@@ -8,6 +8,28 @@ from tqdm import tqdm
 from portwine.strategies import StrategyBase
 from portwine.backtester import Backtester, STANDARD_BENCHMARKS
 from typing import Dict, List, Optional, Tuple, Set, Union
+import numba as nb
+
+@nb.njit(parallel=True, fastmath=True)
+def calculate_returns(price_array):
+    """Calculate returns with Numba acceleration."""
+    n_rows, n_cols = price_array.shape
+    returns = np.zeros((n_rows-1, n_cols), dtype=np.float32)
+    for i in range(1, n_rows):
+        for j in range(n_cols):
+            returns[i-1, j] = price_array[i, j] / price_array[i-1, j] - 1.0
+    return returns
+
+@nb.njit(parallel=True, fastmath=True)
+def apply_weights(returns, weights):
+    """Calculate weighted returns with Numba acceleration."""
+    n_rows, n_cols = returns.shape
+    result = np.zeros(n_rows)
+    for i in range(n_rows):
+        for j in range(n_cols):
+            result[i] += returns[i, j] * weights[i, j]
+    return result
+
 
 def create_price_dataframe(market_data_loader, tickers, start_date=None, end_date=None):
     """
@@ -40,12 +62,20 @@ def create_price_dataframe(market_data_loader, tickers, start_date=None, end_dat
     all_dates = sorted(all_dates)
 
     # 3) apply optional date filters
+    all_dates_array = np.array(all_dates)
+
+    mask = np.ones(len(all_dates_array), dtype=bool)  # Start with all True
+
     if start_date:
-        sd = pd.to_datetime(start_date)
-        all_dates = [d for d in all_dates if d >= sd]
+        sd = pd.to_datetime(start_date).to_numpy()
+        mask &= (all_dates_array >= sd)
+        
     if end_date:
-        ed = pd.to_datetime(end_date)
-        all_dates = [d for d in all_dates if d <= ed]
+        ed = pd.to_datetime(end_date).to_numpy()
+        mask &= (all_dates_array <= ed)
+
+    # Apply the combined mask
+    all_dates = all_dates_array[mask].tolist()
 
     # 4) build empty float DataFrame
     df_prices = pd.DataFrame(index=all_dates, columns=tickers, dtype=float)
@@ -172,42 +202,81 @@ class VectorizedBacktester:
 def benchmark_equal_weight(returns_df: pd.DataFrame) -> pd.Series:
     return returns_df.mean(axis=1)
 
-def load_price_matrix(
-    loader,
-    tickers: List[str],
-    start_date: str,
-    end_date: str
-) -> Tuple[np.ndarray, np.ndarray, List[pd.Timestamp], pd.DataFrame]:
-    """
-    Fetches each ticker's 'close' series, aligns on a union of dates,
-    forward‐fills, and returns:
-      • price_matrix    : ndarray [n_dates × n_tickers]
-      • returns_matrix  : ndarray [(n_dates−1) × n_tickers]
-      • dates_ret       : list of pd.Timestamp of length n_dates−1
-      • price_df        : DataFrame with dates and tickers for reference
-    """
-    # fetch raw DataFrames
-    data = loader.fetch_data(tickers)
-    # collect all dates
-    all_dates = sorted({d for df in data.values() if df is not None for d in df.index})
-    # slice and index
-    sd = pd.to_datetime(start_date)
-    ed = pd.to_datetime(end_date)
-    all_dates = [d for d in all_dates if sd <= d <= ed]
-    # build price matrix
-    price_df = pd.DataFrame(index=all_dates, columns=tickers, dtype=float)
-    for t in tickers:
-        df = data.get(t)
-        if df is None: 
-            continue
-        s = df["close"].reindex(all_dates).ffill()
-        price_df[t] = s
-    price_matrix = price_df.values  # shape (n_dates, n_tickers)
-    # compute returns
-    returns_matrix = np.diff(price_matrix, axis=0) / price_matrix[:-1]
-    dates_ret = all_dates[1:]
-    return price_matrix, returns_matrix, dates_ret, price_df
 
+def load_price_matrix(loader, tickers, start_date=None, end_date=None):
+    """
+    Optimized price matrix loader that minimizes pandas-numpy conversions.
+    """
+    # 1) Fetch raw data
+    data_dict = loader.fetch_data(tickers)
+    
+    # 2) Collect all dates directly as numpy array
+    all_dates_set = set()
+    for df in data_dict.values():
+        if df is not None and not df.empty:
+            all_dates_set.update(df.index.values)
+    
+    all_dates_array = np.array(sorted(all_dates_set))
+    
+    # 3) Apply date filters in numpy
+    mask = np.ones(len(all_dates_array), dtype=bool)
+    if start_date:
+        sd = pd.to_datetime(start_date)
+        if len(all_dates_array) > 0:
+            mask &= (all_dates_array >= sd)
+    if end_date:
+        ed = pd.to_datetime(end_date)
+        if len(all_dates_array) > 0:
+            mask &= (all_dates_array <= ed)
+    
+    all_dates_array = all_dates_array[mask]
+    
+    # Create a date-to-index mapping for fast lookups
+    date_to_idx = {d: i for i, d in enumerate(all_dates_array)}
+    
+    # 4) Pre-allocate price matrix directly
+    n_dates = len(all_dates_array)
+    n_tickers = len(tickers)
+    price_matrix = np.full((n_dates, n_tickers), np.nan, dtype=np.float32)
+    
+    # 5) Fill matrix directly without pandas intermediates
+    for t_idx, ticker in enumerate(tickers):
+        df = data_dict.get(ticker)
+        if df is not None and not df.empty:
+            # Get close prices as numpy array
+            prices = df['close'].values
+            
+            # Get dates as numpy array
+            dates = df.index.values
+            
+            # For each date in this ticker's data, find its position in our matrix
+            for date_idx, date in enumerate(dates):
+                if date in date_to_idx:
+                    price_matrix[date_to_idx[date], t_idx] = prices[date_idx]
+    
+    # 6) Forward fill using numpy operations
+    for col in range(n_tickers):
+        mask = np.isnan(price_matrix[:, col])
+        # Find first valid index
+        valid_indices = np.where(~mask)[0]
+        if len(valid_indices) > 0:
+            # Forward fill
+            for i in range(valid_indices[0], n_dates):
+                if mask[i]:
+                    # Find the last valid value
+                    last_valid = np.where(~mask[:i])[0]
+                    if len(last_valid) > 0:
+                        price_matrix[i, col] = price_matrix[last_valid[-1], col]
+    
+    # 7) Compute returns directly in numpy
+    returns_matrix = np.zeros_like(price_matrix[1:])
+    returns_matrix = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
+    
+    # 8) Create a minimal pandas DataFrame only for reference
+    # This is just for API compatibility and doesn't get used in computations
+    price_df = pd.DataFrame(price_matrix, index=all_dates_array, columns=tickers)
+    
+    return price_matrix, returns_matrix, all_dates_array[1:], price_df
 
 class NumPyVectorizedStrategyBase(StrategyBase):
     """
@@ -262,39 +331,26 @@ class NumpyVectorizedBacktester:
     """
     def __init__(self, loader, universe_tickers: List[str], start_date: str, end_date: str):
         """
-        Initialize backtester with price and returns matrices for all tickers in the universe.
-        
-        Parameters:
-        -----------
-        loader : MarketDataLoader
-            Data loader that implements fetch_data(tickers)
-        universe_tickers : List[str]
-            List of all ticker symbols in the universe
-        start_date : str
-            Start date in string format
-        end_date : str
-            End date in string format
+        Initialize with minimal pandas-numpy conversions.
         """
         price_matrix, returns_matrix, dates_ret, price_df = load_price_matrix(
             loader, universe_tickers, start_date, end_date
         )
         
-        # Store as instance variables
+        # Store everything as numpy arrays
         self.price_matrix = price_matrix
         self.returns_matrix = returns_matrix
-        self.dates = dates_ret  # Already correct length for returns
+        self.dates_array = dates_ret  # store as numpy array
         
-        # Create date lookup for efficient indexing
-        self.date_to_i = {d: i for i, d in enumerate(self.dates)}
-        
-        # Store ticker information
+        # Create mappings for lookups
         self.universe_tickers = universe_tickers
-        self.ticker_to_i = {ticker: i for i, ticker in enumerate(universe_tickers)}
+        self.ticker_to_idx = {ticker: i for i, ticker in enumerate(universe_tickers)}
         
-        # Store DataFrame for reference
-        self.price_df = price_df
+        # Keep minimal pandas objects
+        self.date_to_i = None  # Don't create this dictionary unless needed
+        self.price_df = None   # Don't store pandas objects
         
-        # Keep reference to loader
+        # Keep reference to loader for benchmark calculations
         self.loader = loader
 
     def get_indices_for_tickers(self, tickers: List[str]) -> List[int]:
@@ -311,192 +367,137 @@ class NumpyVectorizedBacktester:
         List[int]
             List of column indices
         """
-        return [self.ticker_to_i.get(ticker) for ticker in tickers 
-                if ticker in self.ticker_to_i]
+        return [self.ticker_to_idx.get(ticker) for ticker in tickers 
+                if ticker in self.ticker_to_idx]
 
-    def run_backtest(
-        self,
-        strategy: NumPyVectorizedStrategyBase,
-        benchmark: Union[str, np.ndarray, List[str]] = "equal_weight",
-        shift_signals: bool = True,
-        verbose: bool = False
-    ) -> Dict[str, pd.Series]:
+    def run_backtest(self, strategy, benchmark="equal_weight", shift_signals=True, verbose=False):
         """
-        Run a vectorized backtest using NumPy arrays for maximum performance.
-        
-        Parameters:
-        -----------
-        strategy : NumPyVectorizedStrategyBase
-            Strategy that implements the batch method
-        benchmark : str or np.ndarray or List[str]
-            Benchmark type ("equal_weight"), weights array, or list of tickers for equal weight
-        shift_signals : bool
-            Whether to shift signals by one day
-        verbose : bool
-            Whether to print progress information
-            
-        Returns:
-        --------
-        Dict[str, pd.Series]
-            Dictionary with strategy returns, benchmark returns, etc.
+        Run backtest with minimal pandas-numpy conversions.
         """
-        # Get column indices for strategy tickers
-        strategy_indices = self.get_indices_for_tickers(strategy.tickers)
+        # Get strategy info
+        strategy_indices = np.array([
+            self.ticker_to_idx.get(t, -1) for t in strategy.tickers
+        ])
+        strategy_indices = strategy_indices[strategy_indices >= 0]
         
-        if not strategy_indices:
+        if len(strategy_indices) == 0:
             raise ValueError(f"None of the strategy tickers {strategy.tickers} are in the universe")
-            
-        if verbose:
-            print(f"Computing strategy weights for {len(strategy_indices)} tickers...")
-            
-        # Get weight matrix from strategy (only for relevant columns)
-        # Extract submatrix for just the strategy's tickers
+        
+        # Extract price submatrix - avoid pandas operations
         strategy_price_matrix = self.price_matrix[:, strategy_indices]
         
-        # Call batch with the relevant price data and column indices
-        # The strategy should return weights for dates[1:] directly
+        # Get weights - working entirely in numpy
+        if verbose:
+            print(f"Computing weights for {len(strategy_indices)} tickers...")
+        
+        # Get strategy weights as numpy array
         weights_matrix = strategy.batch(
             strategy_price_matrix, 
-            self.dates, 
+            self.dates_array, 
             strategy_indices
         )
         
-        # Check that weights shape matches expectations for columns
-        if weights_matrix.shape[1] != len(strategy_indices):
-            raise ValueError(
-                f"Strategy returned weights with {weights_matrix.shape[1]} columns, "
-                f"but expected {len(strategy_indices)}"
-            )
-        
-        # No longer check for row count - strategy should return the correct shape
-        
-        # Prepare benchmark weights if needed
+        # Prepare benchmark weights - all in numpy
         benchmark_weights = None
         if isinstance(benchmark, str) and benchmark == "equal_weight":
-            # Equal weight across all strategy tickers
-            benchmark_weights = np.ones(len(strategy_indices)) / len(strategy_indices)
+            benchmark_weights = np.ones(len(strategy_indices), dtype=np.float32) / len(strategy_indices)
         elif isinstance(benchmark, list):
-            # Equal weight for specified benchmark tickers
-            benchmark_indices = self.get_indices_for_tickers(benchmark)
-            if not benchmark_indices:
+            # Convert benchmark tickers to indices
+            benchmark_indices = np.array([
+                self.ticker_to_idx.get(t, -1) for t in benchmark
+            ])
+            benchmark_indices = benchmark_indices[benchmark_indices >= 0]
+            
+            if len(benchmark_indices) == 0:
                 raise ValueError(f"None of the benchmark tickers {benchmark} are in the universe")
-            benchmark_weights = np.zeros(len(strategy_indices))
-            # Need to map from universe indices to strategy indices
-            strategy_idx_set = set(strategy_indices)
-            for idx in benchmark_indices:
-                if idx in strategy_idx_set:
-                    # Find position in strategy_indices list
-                    pos = strategy_indices.index(idx)
-                    benchmark_weights[pos] = 1.0
+            
+            # Create benchmark weights array
+            benchmark_weights = np.zeros(len(strategy_indices), dtype=np.float32)
+            
+            # Map universe indices to strategy indices
+            for b_idx in benchmark_indices:
+                if b_idx in strategy_indices:
+                    s_idx = np.where(strategy_indices == b_idx)[0][0]
+                    benchmark_weights[s_idx] = 1.0
+            
             # Normalize
             if np.sum(benchmark_weights) > 0:
                 benchmark_weights /= np.sum(benchmark_weights)
         elif isinstance(benchmark, np.ndarray):
-            # Direct weight specification
             if len(benchmark) != len(strategy_indices):
                 raise ValueError(
                     f"Benchmark weights has {len(benchmark)} elements, "
                     f"but strategy has {len(strategy_indices)} tickers"
                 )
-            benchmark_weights = benchmark
+            benchmark_weights = benchmark.astype(np.float32)
         
-        # Extract returns just for the strategy's tickers
+        # Extract returns submatrix - avoid pandas operations
         strategy_returns_matrix = self.returns_matrix[:, strategy_indices]
         
-        # Get raw return arrays
-        result_npy = self.run_backtest_npy(
+        # Calculate returns using numpy operations
+        result_dict = self.run_backtest_npy(
             returns_matrix=strategy_returns_matrix,
             weights_matrix=weights_matrix,
             benchmark_weights=benchmark_weights,
             shift_signals=shift_signals
         )
         
-        # Convert to pandas Series for compatibility
-        strategy_returns = pd.Series(
-            result_npy["strategy_returns"],
-            index=self.dates
-        )
-        
-        benchmark_returns = None
-        if "benchmark_returns" in result_npy:
-            benchmark_returns = pd.Series(
-                result_npy["benchmark_returns"],
-                index=self.dates
-            )
-        
-        # Create a DataFrame with the strategy tickers for the signals
+        # Only convert to pandas at the very end
         strategy_ticker_list = [self.universe_tickers[i] for i in strategy_indices]
         
-        # Convert back to pandas DataFrames for output
-        weights_df = pd.DataFrame(
-            weights_matrix,
-            index=self.dates,
-            columns=strategy_ticker_list
-        )
-        
-        returns_df = pd.DataFrame(
-            strategy_returns_matrix,
-            index=self.dates,
-            columns=strategy_ticker_list
-        )
-        
+        # Create minimal pandas output - only at the end
         return {
-            'signals_df': weights_df,
-            'tickers_returns': returns_df,
-            'strategy_returns': strategy_returns,
-            'benchmark_returns': benchmark_returns,
+            'signals_df': pd.DataFrame(
+                weights_matrix, 
+                index=pd.DatetimeIndex(self.dates_array), 
+                columns=strategy_ticker_list
+            ),
+            'tickers_returns': pd.DataFrame(
+                strategy_returns_matrix,
+                index=pd.DatetimeIndex(self.dates_array),
+                columns=strategy_ticker_list
+            ),
+            'strategy_returns': pd.Series(
+                result_dict["strategy_returns"],
+                index=pd.DatetimeIndex(self.dates_array)
+            ),
+            'benchmark_returns': pd.Series(
+                result_dict["benchmark_returns"],
+                index=pd.DatetimeIndex(self.dates_array)
+            ) if result_dict["benchmark_returns"] is not None else None,
         }
     
-    def run_backtest_npy(self,
-                        returns_matrix: np.ndarray,
-                        weights_matrix: np.ndarray,
-                        benchmark_weights: Optional[np.ndarray] = None,
-                        shift_signals: bool = True
-    ) -> Dict[str, np.ndarray]:
+    def run_backtest_npy(self, returns_matrix, weights_matrix, benchmark_weights=None, shift_signals=True):
         """
-        Run backtest with pure NumPy arrays for maximum performance.
-        
-        Parameters:
-        -----------
-        returns_matrix : np.ndarray
-            Returns matrix with shape (n_dates, n_strategy_tickers)
-        weights_matrix : np.ndarray
-            Weight matrix with shape (n_dates+1, n_strategy_tickers) or (n_dates, n_strategy_tickers)
-        benchmark_weights : np.ndarray, optional
-            Benchmark weights (1D array of length n_strategy_tickers)
-        shift_signals : bool
-            Whether to shift signals by one day
-            
-        Returns:
-        --------
-        Dict[str, np.ndarray]
-            Dictionary with numpy arrays of returns
+        Pure numpy implementation of backtest calculations.
         """
-        # Fix for array shape mismatch: ensure weights have correct shape for returns
-        if weights_matrix.shape[0] > returns_matrix.shape[0]:
-            # Trim weights to match returns length if needed
-            weights_matrix = weights_matrix[1:]
-        
+        # Shift signals if needed - all numpy operations
         if shift_signals:
-            W = np.vstack([
-                np.zeros((1, weights_matrix.shape[1]), dtype=float),
-                weights_matrix[:-1]
-            ])
+            W = np.zeros_like(weights_matrix)
+            if weights_matrix.shape[0] > 1:
+                W[1:] = weights_matrix[:-1]
         else:
             W = weights_matrix
-
-        strat_rets = np.sum(W * returns_matrix, axis=1)
+            
+        # Calculate strategy returns - use optimized dot product
+        if W.shape[1] > 0:
+            # Fast multiplication along rows
+            strat_rets = np.sum(returns_matrix * W, axis=1)
+        else:
+            strat_rets = np.zeros(returns_matrix.shape[0], dtype=np.float32)
         
+        # Calculate benchmark returns if needed
         if benchmark_weights is not None:
-            bench_rets = returns_matrix.dot(benchmark_weights)
+            # Use matrix multiplication for benchmark
+            bench_rets = returns_matrix @ benchmark_weights
         else:
             bench_rets = np.zeros_like(strat_rets)
-
+            
         return {
             "strategy_returns": strat_rets,
             "benchmark_returns": bench_rets
         }
-    
+
 class SubsetStrategy(NumPyVectorizedStrategyBase):
     """Strategy that only uses a subset of tickers."""
     def __init__(self, tickers: List[str], weight_type='equal'):

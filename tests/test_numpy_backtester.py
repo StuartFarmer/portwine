@@ -250,7 +250,7 @@ class TestNumpyVectorizedBacktester(unittest.TestCase):
         # Check instance variables
         self.assertEqual(self.backtester.universe_tickers, self.tickers)
         self.assertEqual(self.backtester.loader, self.loader)
-        self.assertEqual(len(self.backtester.dates), len(self.price_df.index) - 1)
+        self.assertEqual(len(self.backtester.dates_array), len(self.price_df.index) - 1)
         self.assertEqual(self.backtester.price_matrix.shape[1], len(self.tickers))
         self.assertEqual(self.backtester.returns_matrix.shape[1], len(self.tickers))
         
@@ -284,7 +284,7 @@ class TestNumpyVectorizedBacktester(unittest.TestCase):
         self.assertIn('benchmark_returns', results)
         
         # Check shapes
-        self.assertEqual(len(results['strategy_returns']), len(self.backtester.dates))
+        self.assertEqual(len(results['strategy_returns']), len(self.backtester.dates_array))
         self.assertEqual(results['signals_df'].shape[1], len(self.tickers))
         
     def test_run_backtest_with_shift_signals(self):
@@ -386,7 +386,7 @@ class TestNumpyVectorizedBacktester(unittest.TestCase):
             
     def test_run_backtest_npy_basic(self):
         """Test basic functionality of run_backtest_npy."""
-        n_dates = len(self.backtester.dates)
+        n_dates = len(self.backtester.dates_array)
         n_tickers = len(self.tickers)
         
         returns_matrix = self.backtester.returns_matrix
@@ -408,7 +408,7 @@ class TestNumpyVectorizedBacktester(unittest.TestCase):
         
     def test_run_backtest_npy_with_shift(self):
         """Test run_backtest_npy with shift_signals=True."""
-        n_dates = len(self.backtester.dates)
+        n_dates = len(self.backtester.dates_array)
         n_tickers = len(self.tickers)
         
         returns_matrix = self.backtester.returns_matrix
@@ -425,7 +425,7 @@ class TestNumpyVectorizedBacktester(unittest.TestCase):
         
     def test_run_backtest_npy_with_benchmark(self):
         """Test run_backtest_npy with benchmark weights."""
-        n_dates = len(self.backtester.dates)
+        n_dates = len(self.backtester.dates_array)
         n_tickers = len(self.tickers)
         
         returns_matrix = self.backtester.returns_matrix
@@ -818,7 +818,7 @@ class TestEdgeCases(unittest.TestCase):
         )
         
         # Verify arrays are empty or very small
-        self.assertTrue(len(backtester.dates) < 3)  # Either empty or very few dates
+        self.assertTrue(len(backtester.dates_array) < 3)  # Either empty or very few dates
 
     def test_end_date_before_start_date(self):
         """Test with end date before start date."""
@@ -828,7 +828,7 @@ class TestEdgeCases(unittest.TestCase):
         )
         
         # Check that there are no usable dates
-        self.assertEqual(len(backtester.dates), 0)
+        self.assertEqual(len(backtester.dates_array), 0)
             
     def test_all_tickers_missing(self):
         """Test with all tickers missing."""
