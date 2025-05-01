@@ -427,7 +427,7 @@ class PolygonMarketDataLoader(MarketDataLoader):
         ----------
         tickers : List[str]
             List of ticker symbols to get data for
-        timestamp : pd.Timestamp
+        timestamp : pd.Timestamp or datetime
             Timestamp to get data for
         ffill : bool, optional
             If True, when a ticker has no data, use the last non-None ticker's data.
@@ -439,12 +439,19 @@ class PolygonMarketDataLoader(MarketDataLoader):
         Dict[str, Dict]
             Dictionary mapping ticker symbols to their OHLCV data or None
         """
-        result = {}
-        now = pd.Timestamp.now(tz=self.timezone)
+        # Convert timestamp to pandas Timestamp if needed
+        if not isinstance(timestamp, pd.Timestamp):
+            timestamp = pd.Timestamp(timestamp)
+            
+        # Ensure timestamp is timezone-aware and in correct timezone
         if timestamp.tzinfo is None:
             timestamp = timestamp.tz_localize(self.timezone)
         else:
             timestamp = timestamp.tz_convert(self.timezone)
+            
+        result = {}
+        now = pd.Timestamp.now(tz=self.timezone)
+        
         if timestamp.date() == now.date():
             for ticker in tickers:
                 bar_data = self._fetch_partial_day_data(ticker)
@@ -463,15 +470,18 @@ class PolygonMarketDataLoader(MarketDataLoader):
                 if df is None:
                     result[ticker] = self._last_valid_data if ffill else None
                     continue
-                # Ensure timestamp and index are tz-aware and match
+                    
+                # Ensure DataFrame index is timezone-aware and matches timestamp timezone
                 if df.index.tz is None:
                     df.index = df.index.tz_localize(self.timezone)
-                elif str(df.index.tz) != str(pytz.timezone(self.timezone)):
+                elif str(df.index.tz) != str(timestamp.tz):
                     df.index = df.index.tz_convert(self.timezone)
+                    
                 bar = self._get_bar_at_or_before(df, timestamp)
                 if bar is None:
                     result[ticker] = self._last_valid_data if ffill else None
                     continue
+                    
                 result[ticker] = {
                     "open": float(bar["open"]),
                     "high": float(bar["high"]),

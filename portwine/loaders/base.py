@@ -1,4 +1,5 @@
 import pandas as pd
+from typing import Optional
 
 class MarketDataLoader:
     """
@@ -41,16 +42,38 @@ class MarketDataLoader:
         all_ts = {ts for df in data.values() for ts in df.index}
         return sorted(all_ts)
 
-    def _get_bar_at_or_before(self, df: pd.DataFrame, ts: pd.Timestamp) -> pd.Series | None:
+    def _get_bar_at_or_before(self, df: pd.DataFrame, ts: pd.Timestamp) -> Optional[pd.Series]:
         """
-        Find the row whose index is <= ts, using searchsorted.
-        Returns the row (a pd.Series) or None if ts is before the first index.
+        Get the bar at or immediately before the given timestamp.
+        
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame with OHLCV data
+        ts : pd.Timestamp
+            Timestamp to get data for
+            
+        Returns
+        -------
+        pd.Series or None
+            Series with OHLCV data if found, None otherwise
         """
+        if df.empty:
+            return None
+            
+        # Ensure both timestamp and index are timezone-aware and match
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(df.index.tz)
+        elif df.index.tz is None:
+            df.index = df.index.tz_localize(ts.tz)
+        elif str(ts.tz) != str(df.index.tz):
+            ts = ts.tz_convert(df.index.tz)
+            
         idx = df.index
         pos = idx.searchsorted(ts, side="right") - 1
-        if pos >= 0:
-            return df.iloc[pos]
-        return None
+        if pos < 0:
+            return None
+        return df.iloc[pos]
 
     def next(self,
              tickers: list[str],

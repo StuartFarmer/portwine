@@ -58,7 +58,7 @@ class EODHDMarketDataLoader(MarketDataLoader):
         ----------
         tickers : List[str]
             List of ticker symbols
-        timestamp : pd.Timestamp
+        timestamp : pd.Timestamp or datetime
             Timestamp to get data for
 
         Returns
@@ -66,6 +66,10 @@ class EODHDMarketDataLoader(MarketDataLoader):
         Dict[str, dict]
             Dictionary mapping tickers to bar data
         """
+        # Convert datetime to pandas Timestamp if needed
+        if not isinstance(timestamp, pd.Timestamp):
+            timestamp = pd.Timestamp(timestamp)
+            
         result = {}
         for ticker in tickers:
             # Get data from cache or load it

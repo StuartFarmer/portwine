@@ -38,3 +38,6 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Private strategies and personal code
+private/

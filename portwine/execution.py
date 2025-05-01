@@ -117,41 +117,33 @@ class ExecutionBase(abc.ABC):
 
     def fetch_latest_data(self, timestamp: Optional[float] = None) -> Dict[str, Optional[Dict[str, float]]]:
         """
-        Fetch latest market data for the tickers in the strategy.
+        Fetch latest data for all tickers at the given timestamp.
         
         Parameters
         ----------
-        timestamp : Optional[float]
-            UNIX timestamp to get data for, or current time if None
+        timestamp : float, optional
+            Unix timestamp in seconds. If None, uses current time.
             
         Returns
         -------
         Dict[str, Optional[Dict[str, float]]]
-            Dictionary of latest bar data for each ticker
-        
-        Raises
-        ------
-        DataFetchError
-            If data cannot be fetched
+            Dictionary mapping tickers to their latest bar data or None
         """
-        self.logger.debug(f"Fetching data for tickers: {self.tickers}")
-
         try:
-            # Convert UNIX timestamp to timezone-aware datetime, default to now
+            # Convert UNIX timestamp to timezone-aware pandas Timestamp
             if timestamp is None:
-                dt = datetime.now(tz=self.timezone)
+                dt = pd.Timestamp.now(tz=self.timezone)
             else:
                 # timestamp is seconds since epoch
-                dt = datetime.fromtimestamp(timestamp, tz=self.timezone)
-            # Strip tzinfo for loader to match tz-naive indices
-            loader_dt = dt.replace(tzinfo=None)
+                dt = pd.Timestamp(timestamp, unit='s', tz=self.timezone)
+            
             # Split tickers into market vs alternative
             reg_tkrs, alt_tkrs = self._split_tickers(self.tickers)
             # Fetch market data only for regular tickers
-            data = self.market_data_loader.next(reg_tkrs, loader_dt)
+            data = self.market_data_loader.next(reg_tkrs, dt)
             # Fetch alternative data only for alternative tickers
             if self.alternative_data_loader is not None and alt_tkrs:
-                alt_data = self.alternative_data_loader.next(alt_tkrs, loader_dt)
+                alt_data = self.alternative_data_loader.next(alt_tkrs, dt)
                 # Merge alternative entries into result
                 data.update(alt_data)
 
@@ -168,14 +160,12 @@ class ExecutionBase(abc.ABC):
         Get current closing prices for the specified symbols by querying only market data.
 
         This method bypasses alternative data and directly uses market_data_loader.next
-        with a timezone-naive datetime matching the execution timezone.
+        with a timezone-aware datetime matching the execution timezone.
         """
         # Build current datetime in execution timezone
         dt = datetime.now(tz=self.timezone)
-        # Align to loader timezone (no-op if same) and strip tzinfo
-        loader_dt = dt.astimezone(self.timezone).replace(tzinfo=None)
         # Fetch only market data for given symbols
-        data = self.market_data_loader.next(symbols, loader_dt)
+        data = self.market_data_loader.next(symbols, dt)
         prices: Dict[str, float] = {}
         for symbol, bar in data.items():
             if bar is None:
@@ -409,20 +399,22 @@ class ExecutionBase(abc.ABC):
         executed = self._execute_orders(orders)
         return executed
 
-    def warmup(self, start_date: str, after_open_minutes: int = 0, before_close_minutes: int = 0, interval_seconds: int = None):
+    def warmup(self, start_date: str, end_date: str = None, after_open_minutes: int = 0, before_close_minutes: int = 0, interval_seconds: int = None):
         """
-        Warm up the strategy by running it over historical data from start_date up to today.
+        Warm up the strategy by running it over historical data from start_date up to end_date.
+        If end_date is None, uses current date.
         """
         tickers = self.tickers
         calendar_name = "NYSE"
-        now = pd.Timestamp.now(tz=self.timezone)
+        if end_date is None:
+            end_date = pd.Timestamp.now(tz=self.timezone).strftime("%Y-%m-%d")
         schedule = daily_schedule(
             after_open_minutes=after_open_minutes,
             before_close_minutes=before_close_minutes,
             interval_seconds=interval_seconds,
             calendar_name=calendar_name,
             start_date=start_date,
-            end_date=now.strftime("%Y-%m-%d")
+            end_date=end_date
         )
         steps = 0
         last_data = {t: None for t in tickers}
@@ -437,8 +429,8 @@ class ExecutionBase(abc.ABC):
                         daily_data[t] = last_data[t]
                     elif daily_data[t] is not None:
                         last_data[t] = daily_data[t]
-                self.strategy.step(dt_aware, daily_data)
-                self.logger.info(f"Warmup step at {dt_aware}: {self.strategy.current_signals}")
+                current_signals = self.strategy.step(dt_aware, daily_data)
+                self.logger.info(f"Warmup step at {dt_aware}: {current_signals}")
                 steps += 1
                 if steps % 100 == 0:
                     self.logger.info(f"Warm-up progress: {steps} steps...")

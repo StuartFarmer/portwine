@@ -83,8 +83,8 @@ class TestExecutionBaseFetchLatestData(unittest.TestCase):
         # next called once with datetime
         self.assertEqual(len(loader.calls), 1)
         self.assertIsInstance(loader.calls[0], datetime)
-        # tzinfo stripped, should be naive datetime
-        self.assertIsNone(loader.calls[0].tzinfo)
+        # Should be timezone-aware datetime
+        self.assertEqual(loader.calls[0].tzinfo, timezone.utc)
 
     def test_with_timestamp_float(self):
         loader = DummyLoader()
@@ -97,11 +97,11 @@ class TestExecutionBaseFetchLatestData(unittest.TestCase):
         )
         ts = 1600000000.0  # UNIX seconds
         data = exec_base.fetch_latest_data(ts)
-        # Should map timestamp to naive datetime matching UNIX seconds
+        # Should map timestamp to timezone-aware datetime matching UNIX seconds
         self.assertEqual(len(loader.calls), 1)
         dt_passed = loader.calls[0]
-        self.assertIsNone(dt_passed.tzinfo)
-        expected_dt = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+        self.assertEqual(dt_passed.tzinfo, timezone.utc)
+        expected_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
         self.assertEqual(dt_passed, expected_dt)
         self.assertEqual(data['T1']['open'], 1.0)
 

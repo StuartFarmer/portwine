@@ -61,7 +61,7 @@ def main():
     )
 
     # Run with warmup_start_date to test executor warmup
-    executor.run(schedule, warmup_start_date=start_lookup)
+    executor.run(schedule, warmup_start_date=start_lookup, warmup_interval_seconds=60*60)
     print("Scheduled execution finished.")
 
 if __name__ == "__main__":
