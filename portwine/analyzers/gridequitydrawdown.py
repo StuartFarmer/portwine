@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from portwine.analyzers.base import Analyzer
 
+
 class GridEquityDrawdownAnalyzer(Analyzer):
     """
     Plots multiple strategy results in a grid layout, where *each cell* of the grid
@@ -80,8 +81,8 @@ class GridEquityDrawdownAnalyzer(Analyzer):
         fig = plt.figure(figsize=(6 * ncols, 4 * nrows))
 
         # Create the top-level GridSpec for the entire figure, with nrows x ncols 'cells'.
-        # We'll set some spacing between cells so they don't overlap.
-        main_gs = fig.add_gridspec(nrows=nrows, ncols=ncols, hspace=0.5, wspace=0.4)
+        # Reduce spacing between cells to avoid excessive padding
+        main_gs = fig.add_gridspec(nrows=nrows, ncols=ncols, hspace=0.3, wspace=0.3)
 
         for i, results in enumerate(results_list):
             # Determine which row & column this basket belongs to in the top-level grid
@@ -93,7 +94,7 @@ class GridEquityDrawdownAnalyzer(Analyzer):
             basket_gs = main_gs[row, col].subgridspec(
                 2, 1,
                 height_ratios=[2, 1],  # top subplot is a bit taller than bottom
-                hspace=0.05            # minimal space between top & bottom inside this basket
+                hspace=0.03  # Reduce space between top & bottom inside this basket
             )
 
             # Create the two subplots for this basket
@@ -101,7 +102,7 @@ class GridEquityDrawdownAnalyzer(Analyzer):
             ax_drawdown = fig.add_subplot(basket_gs[1, 0], sharex=ax_equity)
 
             # ----- Top: Equity Curves -----
-            ax_equity.set_title(titles[i], pad=10)  # Title for the whole basket
+            ax_equity.set_title(titles[i], pad=8)  # Reduce title padding
             strat_equity = (1.0 + results['strategy_returns']).cumprod()
             bench_equity = (1.0 + results['benchmark_returns']).cumprod()
 
@@ -109,16 +110,16 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 strat_equity.index, strat_equity.values,
                 label="Strategy",
                 color='darkblue',
-                linewidth=2
+                linewidth=1.0  # Thinner line
             )
             ax_equity.plot(
                 bench_equity.index, bench_equity.values,
                 label=benchmark_label,
                 color='black',
-                linewidth=1
+                linewidth=0.8  # Even thinner for benchmark
             )
             ax_equity.set_ylabel("Equity")
-            ax_equity.grid(True)
+            ax_equity.grid(True, alpha=0.3)  # Lighter grid
 
             # Fill between strategy & benchmark equity
             ax_equity.fill_between(
@@ -127,7 +128,7 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 bench_equity.values,
                 where=(strat_equity.values >= bench_equity.values),
                 color='green',
-                alpha=0.3,
+                alpha=0.2,  # Lighter fill
                 interpolate=True
             )
             ax_equity.fill_between(
@@ -136,12 +137,12 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 bench_equity.values,
                 where=(strat_equity.values < bench_equity.values),
                 color='red',
-                alpha=0.3,
+                alpha=0.2,  # Lighter fill
                 interpolate=True
             )
 
-            # Smaller legend
-            ax_equity.legend(fontsize=8, loc='best')
+            # Smaller legend with reduced size
+            ax_equity.legend(fontsize=7, loc='best')
 
             # ----- Bottom: Drawdown Curves -----
             strat_dd = self.compute_drawdown(strat_equity) * 100.0
@@ -151,16 +152,16 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 strat_dd.index, strat_dd.values,
                 label="Strategy DD (%)",
                 color='darkblue',
-                linewidth=2
+                linewidth=1.0  # Thinner line
             )
             ax_drawdown.plot(
                 bench_dd.index, bench_dd.values,
                 label=f"{benchmark_label} DD (%)",
                 color='black',
-                linewidth=1
+                linewidth=0.8  # Even thinner for benchmark
             )
             ax_drawdown.set_ylabel("Drawdown (%)")
-            ax_drawdown.grid(True)
+            ax_drawdown.grid(True, alpha=0.3)  # Lighter grid
 
             # Fill between strategy & benchmark drawdown
             ax_drawdown.fill_between(
@@ -169,7 +170,7 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 bench_dd.values,
                 where=(strat_dd.values <= bench_dd.values),
                 color='red',
-                alpha=0.3,
+                alpha=0.2,  # Lighter fill
                 interpolate=True
             )
             ax_drawdown.fill_between(
@@ -178,19 +179,22 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 bench_dd.values,
                 where=(strat_dd.values > bench_dd.values),
                 color='green',
-                alpha=0.3,
+                alpha=0.2,  # Lighter fill
                 interpolate=True
             )
 
-            ax_drawdown.legend(fontsize=8, loc='best')
+            ax_drawdown.legend(fontsize=7, loc='best')
 
             # We only want the x-axis tick labels to appear on the bottom chart
             # (sharex=...) automatically aligns them, so remove from top:
             plt.setp(ax_equity.get_xticklabels(), visible=False)
 
-        # If the last row isn't fully occupied, no need to hide "unused subplots" here,
-        # because we won't create them at all. We only create subgridspec's for actual results.
+            # Make x-axis tick labels smaller
+            ax_drawdown.tick_params(axis='x', labelsize=8)
 
-        # Adjust final layout
-        # plt.tight_layout()
+            # Rotate x-axis tick labels for better readability
+            plt.setp(ax_drawdown.get_xticklabels(), rotation=30, ha='right')
+
+        # Use tight_layout() to optimize the figure layout
+        plt.tight_layout()
         plt.show()

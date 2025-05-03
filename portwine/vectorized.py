@@ -203,21 +203,22 @@ def benchmark_equal_weight(returns_df: pd.DataFrame) -> pd.Series:
     return returns_df.mean(axis=1)
 
 
+
 def load_price_matrix(loader, tickers, start_date=None, end_date=None):
     """
     Optimized price matrix loader that minimizes pandas-numpy conversions.
     """
     # 1) Fetch raw data
     data_dict = loader.fetch_data(tickers)
-    
+
     # 2) Collect all dates directly as numpy array
     all_dates_set = set()
     for df in data_dict.values():
         if df is not None and not df.empty:
             all_dates_set.update(df.index.values)
-    
+
     all_dates_array = np.array(sorted(all_dates_set))
-    
+
     # 3) Apply date filters in numpy
     mask = np.ones(len(all_dates_array), dtype=bool)
     if start_date:
@@ -228,32 +229,32 @@ def load_price_matrix(loader, tickers, start_date=None, end_date=None):
         ed = pd.to_datetime(end_date)
         if len(all_dates_array) > 0:
             mask &= (all_dates_array <= ed)
-    
+
     all_dates_array = all_dates_array[mask]
-    
+
     # Create a date-to-index mapping for fast lookups
     date_to_idx = {d: i for i, d in enumerate(all_dates_array)}
-    
+
     # 4) Pre-allocate price matrix directly
     n_dates = len(all_dates_array)
     n_tickers = len(tickers)
     price_matrix = np.full((n_dates, n_tickers), np.nan, dtype=np.float32)
-    
+
     # 5) Fill matrix directly without pandas intermediates
     for t_idx, ticker in enumerate(tickers):
         df = data_dict.get(ticker)
         if df is not None and not df.empty:
             # Get close prices as numpy array
             prices = df['close'].values
-            
+
             # Get dates as numpy array
             dates = df.index.values
-            
+
             # For each date in this ticker's data, find its position in our matrix
             for date_idx, date in enumerate(dates):
                 if date in date_to_idx:
                     price_matrix[date_to_idx[date], t_idx] = prices[date_idx]
-    
+
     # 6) Forward fill using numpy operations
     for col in range(n_tickers):
         mask = np.isnan(price_matrix[:, col])
@@ -267,17 +268,16 @@ def load_price_matrix(loader, tickers, start_date=None, end_date=None):
                     last_valid = np.where(~mask[:i])[0]
                     if len(last_valid) > 0:
                         price_matrix[i, col] = price_matrix[last_valid[-1], col]
-    
+
     # 7) Compute returns directly in numpy
     returns_matrix = np.zeros_like(price_matrix[1:])
     returns_matrix = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
-    
+
     # 8) Create a minimal pandas DataFrame only for reference
     # This is just for API compatibility and doesn't get used in computations
     price_df = pd.DataFrame(price_matrix, index=all_dates_array, columns=tickers)
-    
-    return price_matrix, returns_matrix, all_dates_array[1:], price_df
 
+    return price_matrix, returns_matrix, all_dates_array[1:], price_df
 class NumPyVectorizedStrategyBase(StrategyBase):
     """
     Base class for vectorized strategies that process the entire dataset at once
@@ -370,7 +370,7 @@ class NumpyVectorizedBacktester:
         return [self.ticker_to_idx.get(ticker) for ticker in tickers 
                 if ticker in self.ticker_to_idx]
 
-    def run_backtest(self, strategy, benchmark="equal_weight", shift_signals=True, verbose=False):
+    def run_backtest(self, strategy, benchmark="equal_weight", shift_signals=True, verbose=False, **kwargs):
         """
         Run backtest with minimal pandas-numpy conversions.
         """
