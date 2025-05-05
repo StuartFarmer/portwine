@@ -110,13 +110,13 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 strat_equity.index, strat_equity.values,
                 label="Strategy",
                 color='darkblue',
-                linewidth=1.0  # Thinner line
+                linewidth=0.5  # Thinner line
             )
             ax_equity.plot(
                 bench_equity.index, bench_equity.values,
                 label=benchmark_label,
                 color='black',
-                linewidth=0.8  # Even thinner for benchmark
+                linewidth=0.5  # Even thinner for benchmark
             )
             ax_equity.set_ylabel("Equity")
             ax_equity.grid(True, alpha=0.3)  # Lighter grid
@@ -152,13 +152,13 @@ class GridEquityDrawdownAnalyzer(Analyzer):
                 strat_dd.index, strat_dd.values,
                 label="Strategy DD (%)",
                 color='darkblue',
-                linewidth=1.0  # Thinner line
+                linewidth=0.5  # Thinner line
             )
             ax_drawdown.plot(
                 bench_dd.index, bench_dd.values,
                 label=f"{benchmark_label} DD (%)",
                 color='black',
-                linewidth=0.8  # Even thinner for benchmark
+                linewidth=0.5  # Even thinner for benchmark
             )
             ax_drawdown.set_ylabel("Drawdown (%)")
             ax_drawdown.grid(True, alpha=0.3)  # Lighter grid
@@ -195,6 +195,4 @@ class GridEquityDrawdownAnalyzer(Analyzer):
             # Rotate x-axis tick labels for better readability
             plt.setp(ax_drawdown.get_xticklabels(), rotation=30, ha='right')
 
-        # Use tight_layout() to optimize the figure layout
-        plt.tight_layout()
         plt.show()
