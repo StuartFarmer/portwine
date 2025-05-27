@@ -4,3 +4,4 @@ private/
 .idea
 poetry.lock
 test_data/
+private/
