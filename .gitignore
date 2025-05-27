@@ -1,6 +1,6 @@
 .ipynb_checkpoints
 dist/
 private/
-.idea
+.idea/
 poetry.lock
 test_data/
