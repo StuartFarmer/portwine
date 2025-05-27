@@ -222,7 +222,7 @@ class TransactionCostAnalyzer(Analyzer):
 
         return analysis
 
-    def plot(self, results, figsize=(15, 20), ann_factor=252):
+    def plot(self, results, figsize=(15, 20), ann_factor=252, save_figure_to=None):
         """
         Create visualizations showing the impact of transaction costs
         with color-coded regions for different cost scenarios.
@@ -235,6 +235,8 @@ class TransactionCostAnalyzer(Analyzer):
             Figure size (default: (15, 20))
         ann_factor : int, optional
             Annualization factor (default: 252 for daily data)
+        save_figure_to : str, optional
+            Filename to save the figure to. If None, the plot is shown instead.
         """
         # Always run analysis on the provided backtester results
         analysis_results = self.analyze(results, ann_factor=ann_factor)
@@ -552,8 +554,12 @@ class TransactionCostAnalyzer(Analyzer):
         filtered_labels = [l for l in labels if not l.startswith(('Optimistic', 'Realistic', 'Conservative'))]
         ax_sharpe_be.legend(filtered_handles, filtered_labels, loc='best', fontsize=9)
 
-        # plt.tight_layout()
-        plt.show()
+        # Save or show the figure
+        if save_figure_to is not None:
+            plt.savefig(save_figure_to, dpi=150, bbox_inches='tight')
+            plt.close()  # Close the figure to free memory
+        else:
+            plt.show()
 
     def plot_breakeven_analysis(self, results, figsize=(15, 8)):
         """

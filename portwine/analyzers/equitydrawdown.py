@@ -46,7 +46,7 @@ class EquityDrawdownAnalyzer(Analyzer):
             'benchmark_stats': benchmark_stats
         }
 
-    def plot(self, results, benchmark_label="Benchmark", log_scale=False):
+    def plot(self, results, benchmark_label="Benchmark", log_scale=False, title=None, save_figure_to=None):
         """
         Plots the strategy equity curve (and benchmark if given) plus drawdowns.
         Also prints summary stats.
@@ -61,17 +61,19 @@ class EquityDrawdownAnalyzer(Analyzer):
             Label for the benchmark in legends.
         log_scale : bool
             If True, plot the equity curves on a logarithmic y-axis.
+        title : str, optional
+            If provided, rendered as the overall figure title.
+        save_figure_to : str, optional
+            Filename to save the figure to. If None, the plot is shown instead.
         """
         fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(10, 8), sharex=True)
 
         strategy_equity_curve = (1.0 + results['strategy_returns']).cumprod()
         benchmark_equity_curve = (1.0 + results['benchmark_returns']).cumprod()
 
-        # Optional log scale for equity
         if log_scale:
             ax1.set_yscale('log')
 
-        # Plot equity curves with original styling
         ax1.plot(
             strategy_equity_curve.index,
             strategy_equity_curve.values,
@@ -94,7 +96,6 @@ class EquityDrawdownAnalyzer(Analyzer):
         ax1.legend(loc='best')
         ax1.grid(True)
 
-        # Fill between strategy and benchmark
         ax1.fill_between(
             strategy_equity_curve.index,
             strategy_equity_curve.values,
@@ -114,7 +115,6 @@ class EquityDrawdownAnalyzer(Analyzer):
             alpha=0.1
         )
 
-        # Plot drawdowns with original styling
         strat_dd = self.compute_drawdown(strategy_equity_curve) * 100.0
         bm_dd = self.compute_drawdown(benchmark_equity_curve) * 100.0
 
@@ -138,7 +138,6 @@ class EquityDrawdownAnalyzer(Analyzer):
         ax2.legend(loc='best')
         ax2.grid(True)
 
-        # Fill between drawdown lines
         ax2.fill_between(
             strat_dd.index,
             strat_dd.values,
@@ -158,8 +157,19 @@ class EquityDrawdownAnalyzer(Analyzer):
             alpha=0.1
         )
 
-        plt.tight_layout()
-        plt.show()
+        # Apply overall title if provided
+        if title:
+            fig.suptitle(title)
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
+        else:
+            fig.tight_layout()
+
+        # Save or show the figure
+        if save_figure_to is not None:
+            plt.savefig(save_figure_to, dpi=150, bbox_inches='tight')
+            plt.close()  # Close the figure to free memory
+        else:
+            plt.show()
 
     def generate_report(self, results, ann_factor=252, benchmark_label="Benchmark"):
         stats = self.analyze(results, ann_factor)
