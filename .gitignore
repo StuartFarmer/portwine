@@ -3,3 +3,4 @@ dist/
 private/
 poetry.lock
 .idea/
+codebase.md

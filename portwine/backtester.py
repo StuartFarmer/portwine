@@ -6,8 +6,8 @@ import cvxpy as cp
 import numpy as np
 import pandas as pd
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from rich.progress import track
 import logging as _logging
+from tqdm import tqdm
 from portwine.logging import Logger
 
 import pandas_market_calendars as mcal
@@ -31,7 +31,7 @@ def benchmark_markowitz(
 ) -> pd.Series:
     tickers = ret_df.columns
     n = len(tickers)
-    iterator = track(ret_df.index, description="Markowitz") if verbose else ret_df.index
+    iterator = tqdm(ret_df.index, desc="Markowitz") if verbose else ret_df.index
     w_rows: List[np.ndarray] = []
     for ts in iterator:
         win = ret_df.loc[:ts].tail(lookback)
@@ -277,7 +277,8 @@ class Backtester:
         self.logger.debug(
             "Processing %d backtest steps", len(all_ts)
         )
-        iterator = track(all_ts, description="Backtest") if verbose else all_ts
+        iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
+
         for ts in iterator:
             if hasattr(self.market_data_loader, "next"):
                 bar = self.market_data_loader.next(reg_tkrs, ts)
