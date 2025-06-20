@@ -17,6 +17,11 @@ fredapi = "^0.5.2"
 pandas-market-calendars = "^5.0.0"
 
 
+[tool.poetry.group.dev.dependencies]
+mkdocs = "^1.6.1"
+mkdocstrings = "^0.29.1"
+mkdocstrings-python = "^1.16.12"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

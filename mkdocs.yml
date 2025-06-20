@@ -1,0 +1,91 @@
+site_name: Portwine Documentation
+site_description: A clean, elegant portfolio backtester
+site_author: Portwine Team
+site_url: https://github.com/StuartFarmer/portwine
+
+repo_name: portwine
+repo_url: https://github.com/StuartFarmer/portwine
+edit_uri: edit/main/docs/
+
+theme:
+  name: readthedocs
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - pymdownx.tabbed
+  - pymdownx.details
+  - pymdownx.emoji
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.saneheaders
+
+plugins:
+  - search
+  - mkdocstrings
+  - mermaid2:
+      arguments:
+        theme: default
+        flowchart:
+          useMaxWidth: false
+          htmlLabels: true
+          curve: basis
+          rankSpacing: 30
+          nodeSpacing: 20
+          width: 800
+          height: 600
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+  - User Guide:
+    - Strategies: user-guide/strategies.md
+    - Backtesting: user-guide/backtesting.md
+    - Data Management: user-guide/data-management.md
+    - Analysis: user-guide/analysis.md
+  # - API Reference:
+  #   - Strategies: api/strategies.md
+  #   - Backtester: api/backtester.md
+  #   - Analyzers: api/analyzers.md
+  #   - Data Loaders: api/data-loaders.md
+  # - Examples:
+  #   - Basic Strategies: examples/basic-strategies.md
+  #   - Advanced Strategies: examples/advanced-strategies.md
+  - Contributing: contributing.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/StuartFarmer/portwine 
