@@ -4,3 +4,10 @@ private/
 .idea/
 poetry.lock
 test_data/
+
+# Python bytecode files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
