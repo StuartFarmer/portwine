@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Portwine Team" /><link rel="canonical" href="https://github.com/StuartFarmer/portwine/contributing/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Contributing - Portwine Documentation</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Contributing";
+        var mkdocs_page_input_path = "contributing.md";
+        var mkdocs_page_url = "/StuartFarmer/portwine/contributing/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Portwine Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Getting Started</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../getting-started/installation/">Installation</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../getting-started/quick-start/">Quick Start</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">User Guide</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../user-guide/strategies/">Strategies</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../user-guide/backtesting/">Backtesting</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../user-guide/data-management/">Data Management</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../user-guide/analysis/">Analysis</a>
+                  </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Contributing</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#prerequisites">Prerequisites</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#setting-up-development-environment">Setting Up Development Environment</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#development-workflow">Development Workflow</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#1-create-a-feature-branch">1. Create a Feature Branch</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#2-make-your-changes">2. Make Your Changes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#3-run-tests">3. Run Tests</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#4-code-quality-checks">4. Code Quality Checks</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#5-commit-your-changes">5. Commit Your Changes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#6-push-and-create-pull-request">6. Push and Create Pull Request</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#code-style">Code Style</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#python-code">Python Code</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example">Example</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#documentation">Documentation</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#testing">Testing</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#writing-tests">Writing Tests</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example-test">Example Test</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#pull-request-guidelines">Pull Request Guidelines</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#before-submitting">Before Submitting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#pull-request-description">Pull Request Description</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example_1">Example</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#issue-reporting">Issue Reporting</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#bug-reports">Bug Reports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#feature-requests">Feature Requests</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#release-process">Release Process</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#versioning">Versioning</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#release-checklist">Release Checklist</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#getting-help">Getting Help</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#code-of-conduct">Code of Conduct</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Portwine Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Contributing</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/StuartFarmer/portwine/edit/main/docs/contributing.md">Edit on portwine</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="contributing-to-portwine">Contributing to Portwine</h1>
+<p>Thank you for your interest in contributing to portwine! This guide will help you get started.</p>
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li>Python 3.8 or higher</li>
+<li>Git</li>
+<li>Poetry (recommended) or pip</li>
+</ul>
+<h3 id="setting-up-development-environment">Setting Up Development Environment</h3>
+<ol>
+<li>
+<p><strong>Fork and clone the repository</strong>
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/yourusername/portwine.git
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>portwine
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Install dependencies</strong>
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Using Poetry (recommended)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>poetry<span class="w"> </span>install
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Or using pip</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements-dev.txt
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Set up pre-commit hooks</strong>
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pre-commit<span class="w"> </span>install
+</code></pre></div></p>
+</li>
+</ol>
+<h2 id="development-workflow">Development Workflow</h2>
+<h3 id="1-create-a-feature-branch">1. Create a Feature Branch</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>feature/your-feature-name
+</code></pre></div>
+<h3 id="2-make-your-changes">2. Make Your Changes</h3>
+<ul>
+<li>Write your code</li>
+<li>Add tests for new functionality</li>
+<li>Update documentation if needed</li>
+<li>Ensure all tests pass</li>
+</ul>
+<h3 id="3-run-tests">3. Run Tests</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Run all tests</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>pytest
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Run with coverage</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>pytest<span class="w"> </span>--cov<span class="o">=</span>portwine
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Run specific test file</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>pytest<span class="w"> </span>tests/test_backtester.py
+</code></pre></div>
+<h3 id="4-code-quality-checks">4. Code Quality Checks</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Run linting</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>flake8<span class="w"> </span>portwine/
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Run type checking</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>mypy<span class="w"> </span>portwine/
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Run formatting</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>black<span class="w"> </span>portwine/
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>isort<span class="w"> </span>portwine/
+</code></pre></div>
+<h3 id="5-commit-your-changes">5. Commit Your Changes</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git<span class="w"> </span>add<span class="w"> </span>.
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat: add new feature description&quot;</span>
+</code></pre></div>
+<h3 id="6-push-and-create-pull-request">6. Push and Create Pull Request</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>feature/your-feature-name
+</code></pre></div>
+<p>Then create a pull request on GitHub.</p>
+<h2 id="code-style">Code Style</h2>
+<h3 id="python-code">Python Code</h3>
+<ul>
+<li>Follow PEP 8 style guidelines</li>
+<li>Use type hints for function parameters and return values</li>
+<li>Write docstrings for all public functions and classes</li>
+<li>Keep functions focused and concise</li>
+</ul>
+<h3 id="example">Example</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">calculate_returns</span><span class="p">(</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">prices</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;simple&quot;</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="sd">    Calculate returns from price data.</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="sd">    ----------</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="sd">    prices : pd.DataFrame</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="sd">        DataFrame with price data</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="sd">    method : str, default &quot;simple&quot;</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="sd">        Return calculation method (&quot;simple&quot; or &quot;log&quot;)</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="sd">    Returns</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="sd">    -------</span>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="sd">    pd.Series</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="sd">        Calculated returns</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;simple&quot;</span><span class="p">:</span>
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>        <span class="k">return</span> <span class="n">prices</span><span class="o">.</span><span class="n">pct_change</span><span class="p">()</span>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;log&quot;</span><span class="p">:</span>
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>        <span class="k">return</span> <span class="n">prices</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">)</span><span class="o">.</span><span class="n">diff</span><span class="p">()</span>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown method: </span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="documentation">Documentation</h3>
+<ul>
+<li>Use clear, concise language</li>
+<li>Include code examples</li>
+<li>Update API documentation when adding new features</li>
+<li>Follow the existing documentation structure</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<h3 id="writing-tests">Writing Tests</h3>
+<ul>
+<li>Write tests for all new functionality</li>
+<li>Use descriptive test names</li>
+<li>Test both success and error cases</li>
+<li>Use fixtures for common test data</li>
+</ul>
+<h3 id="example-test">Example Test</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">portwine</span><span class="w"> </span><span class="kn">import</span> <span class="n">Backtester</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_backtester_initialization</span><span class="p">():</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Test Backtester initialization with valid parameters.&quot;&quot;&quot;</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">data_loader</span> <span class="o">=</span> <span class="n">MockDataLoader</span><span class="p">()</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">backtester</span> <span class="o">=</span> <span class="n">Backtester</span><span class="p">(</span><span class="n">market_data_loader</span><span class="o">=</span><span class="n">data_loader</span><span class="p">)</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="k">assert</span> <span class="n">backtester</span><span class="o">.</span><span class="n">market_data_loader</span> <span class="o">==</span> <span class="n">data_loader</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="k">assert</span> <span class="n">backtester</span><span class="o">.</span><span class="n">calendar</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_backtester_invalid_benchmark</span><span class="p">():</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Test Backtester raises error for invalid benchmark.&quot;&quot;&quot;</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="n">data_loader</span> <span class="o">=</span> <span class="n">MockDataLoader</span><span class="p">()</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="n">backtester</span> <span class="o">=</span> <span class="n">Backtester</span><span class="p">(</span><span class="n">market_data_loader</span><span class="o">=</span><span class="n">data_loader</span><span class="p">)</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">InvalidBenchmarkError</span><span class="p">):</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>        <span class="n">backtester</span><span class="o">.</span><span class="n">run_backtest</span><span class="p">(</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>            <span class="n">strategy</span><span class="o">=</span><span class="n">MockStrategy</span><span class="p">(),</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>            <span class="n">benchmark</span><span class="o">=</span><span class="s2">&quot;invalid_benchmark&quot;</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>        <span class="p">)</span>
+</code></pre></div>
+<h2 id="pull-request-guidelines">Pull Request Guidelines</h2>
+<h3 id="before-submitting">Before Submitting</h3>
+<ol>
+<li><strong>Ensure all tests pass</strong></li>
+<li><strong>Update documentation</strong> if adding new features</li>
+<li><strong>Add tests</strong> for new functionality</li>
+<li><strong>Run code quality checks</strong></li>
+<li><strong>Update CHANGELOG.md</strong> if applicable</li>
+</ol>
+<h3 id="pull-request-description">Pull Request Description</h3>
+<p>Include:</p>
+<ul>
+<li><strong>Summary</strong>: Brief description of changes</li>
+<li><strong>Motivation</strong>: Why this change is needed</li>
+<li><strong>Changes</strong>: Detailed list of changes</li>
+<li><strong>Testing</strong>: How you tested the changes</li>
+<li><strong>Breaking Changes</strong>: Any API changes</li>
+</ul>
+<h3 id="example_1">Example</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="gu">## Summary</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>Add support for custom benchmark functions in Backtester
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="gu">## Motivation</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>Users need more flexibility in benchmark selection beyond built-in options.
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="gu">## Changes</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="k">-</span><span class="w"> </span>Add <span class="sb">`CUSTOM_METHOD`</span> benchmark type
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">-</span><span class="w"> </span>Update <span class="sb">`get_benchmark_type()`</span> to detect callable benchmarks
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="k">-</span><span class="w"> </span>Add validation for custom benchmark functions
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="k">-</span><span class="w"> </span>Update documentation with examples
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="gu">## Testing</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="k">-</span><span class="w"> </span>Added unit tests for custom benchmark detection
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="k">-</span><span class="w"> </span>Tested with sample strategy and custom benchmark function
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="k">-</span><span class="w"> </span>All existing tests pass
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="gu">## Breaking Changes</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>None
+</code></pre></div>
+<h2 id="issue-reporting">Issue Reporting</h2>
+<h3 id="bug-reports">Bug Reports</h3>
+<p>When reporting bugs, include:</p>
+<ul>
+<li><strong>Description</strong>: Clear description of the bug</li>
+<li><strong>Steps to reproduce</strong>: Detailed steps to reproduce the issue</li>
+<li><strong>Expected behavior</strong>: What you expected to happen</li>
+<li><strong>Actual behavior</strong>: What actually happened</li>
+<li><strong>Environment</strong>: Python version, OS, portwine version</li>
+<li><strong>Code example</strong>: Minimal code to reproduce the issue</li>
+</ul>
+<h3 id="feature-requests">Feature Requests</h3>
+<p>When requesting features, include:</p>
+<ul>
+<li><strong>Description</strong>: Clear description of the feature</li>
+<li><strong>Use case</strong>: Why this feature would be useful</li>
+<li><strong>Proposed implementation</strong>: Any ideas for implementation</li>
+<li><strong>Alternatives</strong>: Any existing workarounds</li>
+</ul>
+<h2 id="release-process">Release Process</h2>
+<h3 id="versioning">Versioning</h3>
+<p>We follow <a href="https://semver.org/">Semantic Versioning</a>:</p>
+<ul>
+<li><strong>MAJOR</strong>: Breaking changes</li>
+<li><strong>MINOR</strong>: New features (backward compatible)</li>
+<li><strong>PATCH</strong>: Bug fixes (backward compatible)</li>
+</ul>
+<h3 id="release-checklist">Release Checklist</h3>
+<ol>
+<li>Update version in <code>pyproject.toml</code></li>
+<li>Update <code>CHANGELOG.md</code></li>
+<li>Create release branch</li>
+<li>Run full test suite</li>
+<li>Update documentation</li>
+<li>Create GitHub release</li>
+<li>Publish to PyPI</li>
+</ol>
+<h2 id="getting-help">Getting Help</h2>
+<ul>
+<li><strong>GitHub Issues</strong>: For bug reports and feature requests</li>
+<li><strong>Discussions</strong>: For questions and general discussion</li>
+<li><strong>Documentation</strong>: Check the docs first</li>
+</ul>
+<h2 id="code-of-conduct">Code of Conduct</h2>
+<p>We are committed to providing a welcoming and inclusive environment. Please read our <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> for details.</p>
+<p>Thank you for contributing to portwine! 🍷 </p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../user-guide/analysis/" class="btn btn-neutral float-left" title="Analysis"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/StuartFarmer/portwine" class="fa fa-code-fork" style="color: #fcfcfc"> portwine</a>
+        </span>
+    
+    
+      <span><a href="../user-guide/analysis/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
