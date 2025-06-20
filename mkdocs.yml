@@ -1,10 +1,10 @@
 site_name: Portwine Documentation
 site_description: A clean, elegant portfolio backtester
 site_author: Portwine Team
-site_url: https://github.com/yourusername/portwine
+site_url: https://github.com/StuartFarmer/portwine
 
 repo_name: portwine
-repo_url: https://github.com/yourusername/portwine
+repo_url: https://github.com/StuartFarmer/portwine
 edit_uri: edit/main/docs/
 
 theme:
@@ -32,7 +32,11 @@ theme:
 markdown_extensions:
   - admonition
   - codehilite
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
   - pymdownx.tabbed
   - pymdownx.details
   - pymdownx.emoji
@@ -49,6 +53,17 @@ markdown_extensions:
 plugins:
   - search
   - mkdocstrings
+  - mermaid2:
+      arguments:
+        theme: default
+        flowchart:
+          useMaxWidth: false
+          htmlLabels: true
+          curve: basis
+          rankSpacing: 30
+          nodeSpacing: 20
+          width: 800
+          height: 600
 
 nav:
   - Home: index.md
@@ -60,17 +75,17 @@ nav:
     - Backtesting: user-guide/backtesting.md
     - Data Management: user-guide/data-management.md
     - Analysis: user-guide/analysis.md
-  - API Reference:
-    - Strategies: api/strategies.md
-    - Backtester: api/backtester.md
-    - Analyzers: api/analyzers.md
-    - Data Loaders: api/data-loaders.md
-  - Examples:
-    - Basic Strategies: examples/basic-strategies.md
-    - Advanced Strategies: examples/advanced-strategies.md
+  # - API Reference:
+  #   - Strategies: api/strategies.md
+  #   - Backtester: api/backtester.md
+  #   - Analyzers: api/analyzers.md
+  #   - Data Loaders: api/data-loaders.md
+  # - Examples:
+  #   - Basic Strategies: examples/basic-strategies.md
+  #   - Advanced Strategies: examples/advanced-strategies.md
   - Contributing: contributing.md
 
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yourusername/portwine 
+      link: https://github.com/StuartFarmer/portwine 

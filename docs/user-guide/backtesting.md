@@ -125,7 +125,7 @@ results = backtester.run_backtest(
 # Signals applied same day (not recommended)
 results = backtester.run_backtest(
     strategy=strategy,
-    shift_signals=False
+    shift_signals=False # Will most likely be deprecated in the future, as this is not recommended ever.
 )
 ```
 
@@ -214,31 +214,36 @@ class AltDataStrategy(StrategyBase):
 
 ### Basic Performance Metrics
 
+You can now use the results to calculate any metrics you'd like:
+
 ```python
 import pandas as pd
+import numpy as np
 
 # Calculate cumulative returns
-cumulative_returns = (1 + strategy_returns).cumprod()
-benchmark_cumulative = (1 + benchmark_returns).cumprod()
+cumulative_returns = (1 + results['strategy_returns']).cumprod(axis=0)  # axis=0 for time series
+benchmark_cumulative = (1 + results['benchmark_returns']).cumprod(axis=0)
 
 # Calculate annualized return
-annual_return = strategy_returns.mean() * 252
+annual_return = results['strategy_returns'].mean() * 252
 
 # Calculate volatility
-volatility = strategy_returns.std() * np.sqrt(252)
+volatility = results['strategy_returns'].std() * np.sqrt(252)
 
 # Calculate Sharpe ratio
 risk_free_rate = 0.02  # 2% annual
 sharpe_ratio = (annual_return - risk_free_rate) / volatility
 
 # Calculate maximum drawdown
-cumulative = (1 + strategy_returns).cumprod()
+cumulative = (1 + results['strategy_returns']).cumprod(axis=0)  # axis=0 for time series
 running_max = cumulative.expanding().max()
 drawdown = (cumulative - running_max) / running_max
 max_drawdown = drawdown.min()
 ```
 
 ### Using Built-in Analyzers
+
+However, you'd probably prefer the prebuilt analyzers that offer raw analysis (output as Dataframes in most cases) and visual plotting:
 
 ```python
 from portwine.analyzers import (
@@ -271,19 +276,7 @@ results = backtester.run_backtest(strategy=strategy, shift_signals=True)
 results = backtester.run_backtest(strategy=strategy, shift_signals=False)
 ```
 
-### 2. Validate Your Data
-
-```python
-# Check data availability
-for ticker in strategy.tickers:
-    data = data_loader.fetch_data([ticker])
-    if ticker in data:
-        print(f"{ticker}: {data[ticker].index.min()} to {data[ticker].index.max()}")
-    else:
-        print(f"{ticker}: No data available")
-```
-
-### 3. Use Appropriate Benchmarks
+### 2. Use Appropriate Benchmarks
 
 ```python
 # For equity strategies
@@ -296,58 +289,8 @@ results = backtester.run_backtest(strategy=strategy, benchmark="equal_weight")
 results = backtester.run_backtest(strategy=strategy, benchmark="markowitz")
 ```
 
-### 4. Test Different Time Periods
-
-```python
-# Test on different market regimes
-periods = [
-    ('2020-01-01', '2020-12-31'),  # COVID crash and recovery
-    ('2021-01-01', '2021-12-31'),  # Bull market
-    ('2022-01-01', '2022-12-31'),  # Bear market
-]
-
-for start, end in periods:
-    results = backtester.run_backtest(
-        strategy=strategy,
-        start_date=start,
-        end_date=end
-    )
-    print(f"{start} to {end}: {results['strategy_returns'].mean() * 252:.2%}")
-```
-
-## Common Issues
-
-### Missing Data
-
-```python
-# Handle missing data gracefully in your strategy
-def step(self, current_date, daily_data):
-    allocations = {}
-    for ticker in self.tickers:
-        if ticker in daily_data and daily_data[ticker] is not None:
-            # Process valid data
-            allocations[ticker] = self.calculate_weight(ticker, daily_data[ticker])
-        else:
-            # Handle missing data
-            allocations[ticker] = 0.0
-    return allocations
-```
-
-### Insufficient History
-
-```python
-# Check if you have enough data for your strategy
-def step(self, current_date, daily_data):
-    if len(self.price_history[self.tickers[0]]) < self.lookback_days:
-        # Not enough history yet
-        return {ticker: 0.0 for ticker in self.tickers}
-    
-    # Proceed with strategy logic
-    return self.calculate_allocations(daily_data)
-```
-
 ## Next Steps
 
 - Learn about [performance analysis](analysis.md)
 - Explore [data management](data-management.md)
-- Check out [advanced strategies](examples/advanced-strategies.md) 
+- Check out [advanced strategies](examples/advanced-strategies.md)

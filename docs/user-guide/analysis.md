@@ -4,11 +4,19 @@ Portwine provides comprehensive tools for analyzing strategy performance, from b
 
 ## Built-in Analyzers
 
-Portwine comes with several built-in analyzers that make it easy to understand your strategy's performance:
+Portwine comes with a comprehensive suite of analyzers that make it easy to understand your strategy's performance across different dimensions:
 
 ### Equity Drawdown Analyzer
 
-Analyzes equity curves and drawdowns:
+The foundational analyzer that provides essential performance visualization and metrics. This analyzer creates clear, professional plots showing equity curves and drawdown analysis.
+
+**What it generates:**
+- Equity curve comparison (strategy vs benchmark) with clear visual distinction
+- Drawdown analysis showing peak-to-trough declines
+- Performance metrics table with key statistics
+- Professional formatting with proper legends and grid lines
+
+**Best for:** Initial strategy evaluation, performance overview, and stakeholder presentations.
 
 ```python
 from portwine.analyzers import EquityDrawdownAnalyzer
@@ -20,14 +28,39 @@ analyzer = EquityDrawdownAnalyzer()
 analyzer.plot(results)
 ```
 
-This generates:
-- Equity curve comparison (strategy vs benchmark)
-- Drawdown analysis
-- Performance metrics table
+### Grid Equity Drawdown Analyzer
+
+A powerful multi-strategy comparison tool that displays multiple strategy results in a grid layout. Each grid cell contains both equity curves and drawdown analysis for easy side-by-side comparison.
+
+**What it generates:**
+- Grid layout with customizable columns (default: 2 columns)
+- Each cell shows equity curves and drawdowns for one strategy
+- Color-coded fill areas showing outperformance/underperformance
+- Compact design perfect for comparing multiple strategies or parameter sets
+
+**Best for:** Comparing multiple strategies, parameter optimization results, or basket analysis.
+
+```python
+from portwine.analyzers import GridEquityDrawdownAnalyzer
+
+# Create analyzer
+analyzer = GridEquityDrawdownAnalyzer()
+
+# Plot multiple strategies
+analyzer.plot(results_list, titles, ncols=2)
+```
 
 ### Monte Carlo Analyzer
 
-Performs Monte Carlo simulations to assess strategy robustness:
+Performs Monte Carlo simulations to assess strategy robustness and understand the distribution of possible outcomes. This analyzer helps determine if your strategy's performance is stable or subject to significant randomness.
+
+**What it generates:**
+- Distribution of possible outcomes through random sampling
+- Confidence intervals for key metrics
+- Risk assessment through multiple simulation paths
+- Statistical validation of strategy performance
+
+**Best for:** Risk assessment, strategy validation, and understanding performance uncertainty.
 
 ```python
 from portwine.analyzers import MonteCarloAnalyzer
@@ -39,411 +72,522 @@ analyzer.plot(results, n_simulations=1000)
 
 ### Seasonality Analyzer
 
-Analyzes performance patterns across different time periods:
+Analyzes performance patterns across different time periods to identify seasonal effects, day-of-week patterns, and other temporal dependencies in your strategy.
+
+**What it generates:**
+- Monthly performance heatmaps and bar charts
+- Day-of-week analysis showing intra-week patterns
+- Quarterly and annual seasonal trends
+- Statistical significance testing for seasonal effects
+
+**Best for:** Understanding temporal patterns, optimizing rebalancing schedules, and identifying seasonal opportunities.
 
 ```python
 from portwine.analyzers import SeasonalityAnalyzer
 
 # Analyze seasonal patterns
 analyzer = SeasonalityAnalyzer()
+analyzer.plot(results, period="monthly")
+```
+
+### Correlation Analyzer
+
+Computes and visualizes correlation matrices among the assets in your strategy. This analyzer helps understand the relationships between different positions and identify potential diversification benefits or concentration risks.
+
+**What it generates:**
+- Correlation matrix heatmap with color-coded values
+- Statistical correlation analysis using multiple methods (Pearson, Spearman, Kendall)
+- Asset relationship visualization
+- Diversification assessment
+
+**Best for:** Portfolio construction, risk management, and understanding asset relationships.
+
+```python
+from portwine.analyzers import CorrelationAnalyzer
+
+# Analyze correlations
+analyzer = CorrelationAnalyzer(method='pearson')
 analyzer.plot(results)
 ```
 
-## Basic Performance Metrics
+### Strategy Comparison Analyzer
 
-### Calculating Key Metrics
+A comprehensive tool for comparing two strategies side-by-side with statistical rigor. This analyzer provides detailed statistical tests and rolling analysis to understand the differences between strategies.
+
+**What it generates:**
+- Side-by-side equity curve comparison with fill areas
+- Statistical significance tests (t-tests) between strategies
+- Rolling correlation, alpha, and beta analysis
+- Performance metrics comparison table
+
+**Best for:** Strategy selection, A/B testing, and understanding strategy differences.
+
+```python
+from portwine.analyzers import StrategyComparisonAnalyzer
+
+# Compare strategies
+analyzer = StrategyComparisonAnalyzer()
+analyzer.plot(results, comparison_results, label_main="Strategy A", label_compare="Strategy B")
+```
+
+### Train Test Equity Drawdown Analyzer
+
+Evaluates strategy robustness by splitting data into training and testing periods. This analyzer helps identify overfitting and ensures your strategy generalizes well to unseen data.
+
+**What it generates:**
+- Equity curves with clear train/test split visualization
+- Drawdown analysis for both periods
+- Histogram comparison of train vs test returns
+- Comprehensive metrics table with overfitting ratios
+- Color-coded performance indicators
+
+**Best for:** Model validation, overfitting detection, and ensuring strategy robustness.
+
+```python
+from portwine.analyzers import TrainTestEquityDrawdownAnalyzer
+
+# Analyze train/test performance
+analyzer = TrainTestEquityDrawdownAnalyzer()
+analyzer.plot(results, split=0.7)
+```
+
+### Student's T-Test Analyzer
+
+Provides statistical rigor to your strategy evaluation through formal hypothesis testing. This analyzer determines whether your strategy's performance is statistically significant compared to zero or a benchmark.
+
+**What it generates:**
+- Statistical significance testing vs zero returns
+- Comparison testing vs benchmark returns
+- Return distribution histograms
+- Color-coded significance indicators
+- Plain English interpretation of results
+
+**Best for:** Statistical validation, academic research, and formal strategy evaluation.
+
+```python
+from portwine.analyzers import StudentsTTestAnalyzer
+
+# Perform statistical testing
+analyzer = StudentsTTestAnalyzer()
+analyzer.plot(results, with_equity_curve=True)
+```
+
+### Transaction Cost Analyzer
+
+Models the real-world impact of transaction costs on strategy performance. This analyzer helps understand how different cost levels affect your strategy and identifies the breakeven point for profitability.
+
+**What it generates:**
+- Performance degradation analysis across cost levels
+- Portfolio turnover analysis with rolling metrics
+- Breakeven analysis showing cost tolerance
+- Equity curves for different cost scenarios
+- Comprehensive cost impact report
+
+**Best for:** Real-world implementation planning, cost optimization, and profitability analysis.
+
+```python
+from portwine.analyzers import TransactionCostAnalyzer
+
+# Analyze transaction cost impact
+analyzer = TransactionCostAnalyzer(cost_levels=[0, 0.0005, 0.001, 0.002, 0.005])
+analyzer.plot(results)
+```
+
+### Noise Robustness Analyzer
+
+Tests strategy stability by injecting controlled levels of noise into market data. This analyzer helps determine if your strategy is robust to market noise or if it's overfitted to specific data patterns.
+
+**What it generates:**
+- Performance stability across noise levels
+- Statistical distribution of outcomes
+- Robustness metrics and confidence intervals
+- Noise tolerance assessment
+
+**Best for:** Strategy validation, robustness testing, and overfitting detection.
+
+```python
+from portwine.analyzers import NoiseRobustnessAnalyzer
+
+# Test noise robustness
+analyzer = NoiseRobustnessAnalyzer(base_loader, noise_levels=[0.5, 1.0, 1.5, 2.0])
+analyzer.plot(results)
+```
+
+### Regime Change Analyzer
+
+Analyzes strategy performance across different market regimes (bull, bear, volatile, etc.). This analyzer helps identify how your strategy behaves in different market conditions and potential vulnerabilities.
+
+**What it generates:**
+- Market regime identification and classification
+- Performance metrics for each regime
+- Regime transition analysis
+- Strategy behavior across market conditions
+- Comprehensive regime performance report
+
+**Best for:** Risk management, strategy optimization, and understanding market condition dependencies.
+
+```python
+from portwine.analyzers import RegimeChangeAnalyzer
+
+# Analyze regime performance
+analyzer = RegimeChangeAnalyzer()
+analyzer.plot(results, method='combined')
+```
+
+## Writing Your Own Analyzers
+
+You can also write your own analyzers by following the simple analyzer API. Here's a step-by-step example of creating a custom "Volatility Regime Analyzer" that identifies and analyzes performance in different volatility environments.
+
+### Step 1: Import Required Libraries
 
 ```python
 import pandas as pd
 import numpy as np
-
-def calculate_performance_metrics(strategy_returns, benchmark_returns=None):
-    """Calculate comprehensive performance metrics."""
-    
-    # Basic return metrics
-    total_return = (1 + strategy_returns).prod() - 1
-    annual_return = strategy_returns.mean() * 252
-    volatility = strategy_returns.std() * np.sqrt(252)
-    
-    # Risk metrics
-    downside_returns = strategy_returns[strategy_returns < 0]
-    downside_deviation = downside_returns.std() * np.sqrt(252)
-    
-    # Drawdown analysis
-    cumulative = (1 + strategy_returns).cumprod()
-    running_max = cumulative.expanding().max()
-    drawdown = (cumulative - running_max) / running_max
-    max_drawdown = drawdown.min()
-    
-    # Sharpe ratio (assuming 2% risk-free rate)
-    risk_free_rate = 0.02
-    sharpe_ratio = (annual_return - risk_free_rate) / volatility
-    
-    # Sortino ratio
-    sortino_ratio = (annual_return - risk_free_rate) / downside_deviation
-    
-    # Calmar ratio
-    calmar_ratio = annual_return / abs(max_drawdown) if max_drawdown != 0 else np.inf
-    
-    # Win rate
-    win_rate = (strategy_returns > 0).mean()
-    
-    # Average win/loss
-    wins = strategy_returns[strategy_returns > 0]
-    losses = strategy_returns[strategy_returns < 0]
-    avg_win = wins.mean() if len(wins) > 0 else 0
-    avg_loss = losses.mean() if len(losses) > 0 else 0
-    
-    # Profit factor
-    profit_factor = abs(wins.sum() / losses.sum()) if losses.sum() != 0 else np.inf
-    
-    metrics = {
-        'Total Return': f"{total_return:.2%}",
-        'Annual Return': f"{annual_return:.2%}",
-        'Volatility': f"{volatility:.2%}",
-        'Sharpe Ratio': f"{sharpe_ratio:.2f}",
-        'Sortino Ratio': f"{sortino_ratio:.2f}",
-        'Calmar Ratio': f"{calmar_ratio:.2f}",
-        'Max Drawdown': f"{max_drawdown:.2%}",
-        'Win Rate': f"{win_rate:.2%}",
-        'Avg Win': f"{avg_win:.2%}",
-        'Avg Loss': f"{avg_loss:.2%}",
-        'Profit Factor': f"{profit_factor:.2f}"
-    }
-    
-    return metrics
-
-# Calculate metrics
-metrics = calculate_performance_metrics(results['strategy_returns'])
-for metric, value in metrics.items():
-    print(f"{metric}: {value}")
-```
-
-### Benchmark Comparison
-
-```python
-def compare_to_benchmark(strategy_returns, benchmark_returns):
-    """Compare strategy performance to benchmark."""
-    
-    # Calculate excess returns
-    excess_returns = strategy_returns - benchmark_returns
-    
-    # Information ratio
-    information_ratio = excess_returns.mean() / excess_returns.std() * np.sqrt(252)
-    
-    # Beta calculation
-    covariance = np.cov(strategy_returns, benchmark_returns)[0, 1]
-    benchmark_variance = np.var(benchmark_returns)
-    beta = covariance / benchmark_variance if benchmark_variance != 0 else 0
-    
-    # Alpha calculation (annualized)
-    benchmark_annual_return = benchmark_returns.mean() * 252
-    strategy_annual_return = strategy_returns.mean() * 252
-    alpha = strategy_annual_return - (0.02 + beta * (benchmark_annual_return - 0.02))
-    
-    comparison = {
-        'Information Ratio': f"{information_ratio:.2f}",
-        'Beta': f"{beta:.2f}",
-        'Alpha': f"{alpha:.2%}",
-        'Excess Return': f"{excess_returns.mean() * 252:.2%}"
-    }
-    
-    return comparison
-
-# Compare to benchmark
-comparison = compare_to_benchmark(
-    results['strategy_returns'], 
-    results['benchmark_returns']
-)
-```
-
-## Advanced Analysis
-
-### Rolling Performance
-
-```python
-def rolling_performance_analysis(returns, window=252):
-    """Analyze rolling performance metrics."""
-    
-    # Rolling Sharpe ratio
-    rolling_sharpe = returns.rolling(window).mean() / returns.rolling(window).std() * np.sqrt(252)
-    
-    # Rolling drawdown
-    rolling_cumulative = (1 + returns).rolling(window).apply(lambda x: (1 + x).prod() - 1)
-    rolling_max = rolling_cumulative.expanding().max()
-    rolling_drawdown = (rolling_cumulative - rolling_max) / rolling_max
-    
-    # Rolling volatility
-    rolling_vol = returns.rolling(window).std() * np.sqrt(252)
-    
-    return {
-        'rolling_sharpe': rolling_sharpe,
-        'rolling_drawdown': rolling_drawdown,
-        'rolling_vol': rolling_vol
-    }
-
-# Calculate rolling metrics
-rolling_metrics = rolling_performance_analysis(results['strategy_returns'])
-```
-
-### Regime Analysis
-
-```python
-def regime_analysis(strategy_returns, benchmark_returns):
-    """Analyze performance in different market regimes."""
-    
-    # Define regimes based on benchmark performance
-    benchmark_rolling = benchmark_returns.rolling(60).mean() * 252
-    
-    # Bull market: benchmark > 10% annualized
-    bull_mask = benchmark_rolling > 0.10
-    bull_returns = strategy_returns[bull_mask]
-    
-    # Bear market: benchmark < -10% annualized
-    bear_mask = benchmark_rolling < -0.10
-    bear_returns = strategy_returns[bear_mask]
-    
-    # Sideways market: between -10% and 10%
-    sideways_mask = (benchmark_rolling >= -0.10) & (benchmark_rolling <= 0.10)
-    sideways_returns = strategy_returns[sideways_mask]
-    
-    regimes = {
-        'Bull Market': {
-            'Return': f"{bull_returns.mean() * 252:.2%}",
-            'Volatility': f"{bull_returns.std() * np.sqrt(252):.2%}",
-            'Sharpe': f"{(bull_returns.mean() * 252 - 0.02) / (bull_returns.std() * np.sqrt(252)):.2f}",
-            'Days': len(bull_returns)
-        },
-        'Bear Market': {
-            'Return': f"{bear_returns.mean() * 252:.2%}",
-            'Volatility': f"{bear_returns.std() * np.sqrt(252):.2%}",
-            'Sharpe': f"{(bear_returns.mean() * 252 - 0.02) / (bear_returns.std() * np.sqrt(252)):.2f}",
-            'Days': len(bear_returns)
-        },
-        'Sideways Market': {
-            'Return': f"{sideways_returns.mean() * 252:.2%}",
-            'Volatility': f"{sideways_returns.std() * np.sqrt(252):.2%}",
-            'Sharpe': f"{(sideways_returns.mean() * 252 - 0.02) / (sideways_returns.std() * np.sqrt(252)):.2f}",
-            'Days': len(sideways_returns)
-        }
-    }
-    
-    return regimes
-
-# Analyze performance by regime
-regimes = regime_analysis(results['strategy_returns'], results['benchmark_returns'])
-```
-
-## Visualization
-
-### Custom Plots
-
-```python
 import matplotlib.pyplot as plt
-import seaborn as sns
-
-def plot_performance_summary(results):
-    """Create a comprehensive performance summary plot."""
-    
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    
-    # 1. Equity curves
-    cumulative_strategy = (1 + results['strategy_returns']).cumprod()
-    cumulative_benchmark = (1 + results['benchmark_returns']).cumprod()
-    
-    axes[0, 0].plot(cumulative_strategy.index, cumulative_strategy, label='Strategy')
-    axes[0, 0].plot(cumulative_benchmark.index, cumulative_benchmark, label='Benchmark')
-    axes[0, 0].set_title('Cumulative Returns')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True)
-    
-    # 2. Drawdown
-    running_max = cumulative_strategy.expanding().max()
-    drawdown = (cumulative_strategy - running_max) / running_max
-    
-    axes[0, 1].fill_between(drawdown.index, drawdown, 0, alpha=0.3, color='red')
-    axes[0, 1].set_title('Drawdown')
-    axes[0, 1].grid(True)
-    
-    # 3. Rolling Sharpe ratio
-    rolling_sharpe = results['strategy_returns'].rolling(252).mean() / \
-                     results['strategy_returns'].rolling(252).std() * np.sqrt(252)
-    
-    axes[1, 0].plot(rolling_sharpe.index, rolling_sharpe)
-    axes[1, 0].axhline(y=0, color='black', linestyle='--')
-    axes[1, 0].set_title('Rolling Sharpe Ratio (252-day)')
-    axes[1, 0].grid(True)
-    
-    # 4. Return distribution
-    axes[1, 1].hist(results['strategy_returns'], bins=50, alpha=0.7, label='Strategy')
-    axes[1, 1].hist(results['benchmark_returns'], bins=50, alpha=0.7, label='Benchmark')
-    axes[1, 1].set_title('Return Distribution')
-    axes[1, 1].legend()
-    axes[1, 1].grid(True)
-    
-    plt.tight_layout()
-    plt.show()
-
-# Create performance summary
-plot_performance_summary(results)
+from portwine.analyzers.base import Analyzer
 ```
 
-### Correlation Analysis
+**Explanation:**
+- `pandas` and `numpy` for data manipulation and calculations
+- `matplotlib.pyplot` for creating visualizations
+- `Analyzer` base class from portwine that all analyzers must inherit from
+
+### Step 2: Define Your Analyzer Class
 
 ```python
-def correlation_analysis(results):
-    """Analyze correlations between strategy and benchmark."""
+class VolatilityRegimeAnalyzer(Analyzer):
+    """
+    Custom analyzer that identifies different volatility regimes and analyzes
+    strategy performance in each regime.
     
-    # Calculate rolling correlation
-    rolling_corr = results['strategy_returns'].rolling(60).corr(results['benchmark_returns'])
-    
-    # Plot correlation over time
-    plt.figure(figsize=(12, 6))
-    plt.plot(rolling_corr.index, rolling_corr)
-    plt.axhline(y=0, color='black', linestyle='--')
-    plt.title('Rolling 60-day Correlation with Benchmark')
-    plt.grid(True)
-    plt.show()
-    
-    # Overall correlation
-    overall_corr = results['strategy_returns'].corr(results['benchmark_returns'])
-    print(f"Overall correlation with benchmark: {overall_corr:.3f}")
-
-# Analyze correlations
-correlation_analysis(results)
+    This analyzer helps understand how your strategy performs in:
+    - Low volatility periods (calm markets)
+    - Medium volatility periods (normal markets) 
+    - High volatility periods (stressful markets)
+    """
 ```
 
-## Risk Analysis
+**Explanation:**
+- Inherit from the `Analyzer` base class
+- Add a comprehensive docstring explaining what your analyzer does
+- This makes your analyzer compatible with the portwine framework
 
-### Value at Risk (VaR)
-
-```python
-def calculate_var(returns, confidence_level=0.05):
-    """Calculate Value at Risk."""
-    
-    # Historical VaR
-    var_historical = np.percentile(returns, confidence_level * 100)
-    
-    # Parametric VaR (assuming normal distribution)
-    mean_return = returns.mean()
-    std_return = returns.std()
-    var_parametric = mean_return + std_return * norm.ppf(confidence_level)
-    
-    return {
-        'Historical VaR': f"{var_historical:.2%}",
-        'Parametric VaR': f"{var_parametric:.2%}"
-    }
-
-# Calculate VaR
-var_metrics = calculate_var(results['strategy_returns'])
-```
-
-### Stress Testing
+### Step 3: Initialize Your Analyzer
 
 ```python
-def stress_test(strategy_returns, stress_scenarios):
-    """Perform stress testing on strategy."""
-    
-    results = {}
-    
-    for scenario_name, stress_factor in stress_scenarios.items():
-        # Apply stress factor to returns
-        stressed_returns = strategy_returns * stress_factor
+    def __init__(self, volatility_window=60, regime_thresholds=None):
+        """
+        Initialize the analyzer with customizable parameters.
         
-        # Calculate stressed metrics
-        stressed_total_return = (1 + stressed_returns).prod() - 1
-        stressed_max_drawdown = calculate_max_drawdown(stressed_returns)
+        Parameters
+        ----------
+        volatility_window : int, default 60
+            Rolling window for volatility calculation (in days)
+        regime_thresholds : dict, optional
+            Custom thresholds for regime classification
+        """
+        self.volatility_window = volatility_window
         
-        results[scenario_name] = {
-            'Total Return': f"{stressed_total_return:.2%}",
-            'Max Drawdown': f"{stressed_max_drawdown:.2%}"
+        # Default thresholds (30th and 70th percentiles)
+        self.regime_thresholds = regime_thresholds or {
+            'low': 0.30,    # Below 30th percentile = low volatility
+            'high': 0.70    # Above 70th percentile = high volatility
         }
-    
-    return results
-
-# Define stress scenarios
-stress_scenarios = {
-    'Market Crash (50% decline)': 0.5,
-    'High Volatility (2x)': 2.0,
-    'Low Volatility (0.5x)': 0.5
-}
-
-# Run stress tests
-stress_results = stress_test(results['strategy_returns'], stress_scenarios)
 ```
 
-## Best Practices
+**Explanation:**
+- `__init__` method sets up your analyzer with configurable parameters
+- `volatility_window` determines how many days to use for rolling volatility
+- `regime_thresholds` allows users to customize how regimes are defined
+- Default thresholds use 30th and 70th percentiles for robust regime classification
 
-### 1. Use Multiple Time Periods
+### Step 4: Implement the Analysis Logic
 
 ```python
-# Test on different time periods
-periods = [
-    ('2020-01-01', '2020-12-31'),  # COVID year
-    ('2021-01-01', '2021-12-31'),  # Recovery year
-    ('2022-01-01', '2022-12-31'),  # Bear market year
-]
-
-for start, end in periods:
-    period_results = backtester.run_backtest(
-        strategy=strategy,
-        start_date=start,
-        end_date=end
-    )
-    print(f"\n{start} to {end}:")
-    metrics = calculate_performance_metrics(period_results['strategy_returns'])
-    print(f"Annual Return: {metrics['Annual Return']}")
-    print(f"Sharpe Ratio: {metrics['Sharpe Ratio']}")
+    def identify_volatility_regimes(self, returns):
+        """
+        Identify volatility regimes based on rolling volatility.
+        
+        Parameters
+        ----------
+        returns : pd.Series
+            Daily returns series
+            
+        Returns
+        -------
+        pd.Series
+            Regime labels for each date
+        """
+        # Calculate rolling volatility (annualized)
+        rolling_vol = returns.rolling(window=self.volatility_window).std() * np.sqrt(252)
+        
+        # Calculate percentile thresholds
+        low_threshold = rolling_vol.quantile(self.regime_thresholds['low'])
+        high_threshold = rolling_vol.quantile(self.regime_thresholds['high'])
+        
+        # Classify regimes
+        regimes = pd.Series(index=returns.index, dtype='object')
+        regimes[rolling_vol <= low_threshold] = 'low_vol'
+        regimes[rolling_vol >= high_threshold] = 'high_vol'
+        regimes[(rolling_vol > low_threshold) & (rolling_vol < high_threshold)] = 'medium_vol'
+        
+        return regimes, rolling_vol
 ```
 
-### 2. Validate Results
+**Explanation:**
+- `identify_volatility_regimes` is a helper method that does the core analysis
+- Calculates rolling volatility using the specified window
+- Annualizes volatility by multiplying by √252 (trading days)
+- Uses quantiles to determine regime thresholds dynamically
+- Returns both regime labels and the volatility series for plotting
+
+### Step 5: Calculate Performance Metrics
 
 ```python
-def validate_backtest_results(results):
-    """Validate backtest results for common issues."""
-    
-    issues = []
-    
-    # Check for unrealistic returns
-    if results['strategy_returns'].max() > 0.5:  # 50% daily return
-        issues.append("Unrealistic daily returns detected")
-    
-    # Check for perfect timing
-    if results['strategy_returns'].corr(results['benchmark_returns']) > 0.99:
-        issues.append("Suspiciously high correlation with benchmark")
-    
-    # Check for lookahead bias
-    signals = results['signals_df']
-    if signals.isnull().sum().sum() == 0:
-        issues.append("No missing signals - potential lookahead bias")
-    
-    return issues
-
-# Validate results
-issues = validate_backtest_results(results)
-if issues:
-    print("Validation issues found:")
-    for issue in issues:
-        print(f"  - {issue}")
+    def calculate_regime_metrics(self, returns, regimes, ann_factor=252):
+        """
+        Calculate performance metrics for each volatility regime.
+        
+        Parameters
+        ----------
+        returns : pd.Series
+            Strategy returns
+        regimes : pd.Series
+            Regime labels for each date
+        ann_factor : int, default 252
+            Annualization factor
+            
+        Returns
+        -------
+        dict
+            Performance metrics for each regime
+        """
+        metrics = {}
+        
+        for regime in ['low_vol', 'medium_vol', 'high_vol']:
+            # Filter returns for this regime
+            regime_returns = returns[regimes == regime]
+            
+            if len(regime_returns) == 0:
+                metrics[regime] = None
+                continue
+                
+            # Calculate basic metrics
+            total_return = (1 + regime_returns).prod() - 1
+            annual_return = regime_returns.mean() * ann_factor
+            volatility = regime_returns.std() * np.sqrt(ann_factor)
+            sharpe_ratio = annual_return / volatility if volatility > 0 else 0
+            
+            # Calculate maximum drawdown
+            cumulative = (1 + regime_returns).cumprod()
+            running_max = cumulative.expanding().max()
+            drawdown = (cumulative - running_max) / running_max
+            max_drawdown = drawdown.min()
+            
+            # Calculate win rate
+            win_rate = (regime_returns > 0).mean()
+            
+            metrics[regime] = {
+                'total_return': total_return,
+                'annual_return': annual_return,
+                'volatility': volatility,
+                'sharpe_ratio': sharpe_ratio,
+                'max_drawdown': max_drawdown,
+                'win_rate': win_rate,
+                'days': len(regime_returns)
+            }
+        
+        return metrics
 ```
 
-### 3. Document Assumptions
+**Explanation:**
+- `calculate_regime_metrics` computes performance statistics for each regime
+- Filters returns by regime and calculates comprehensive metrics
+- Handles edge cases (empty regimes) gracefully
+- Returns a structured dictionary with all metrics organized by regime
+
+### Step 6: Implement the Required Plot Method
 
 ```python
-# Document your analysis assumptions
-analysis_assumptions = {
-    'Risk-free rate': '2% annual',
-    'Transaction costs': '0% (frictionless)',
-    'Slippage': '0%',
-    'Rebalancing': 'Daily',
-    'Data source': 'EODHD',
-    'Benchmark': 'SPY'
-}
-
-print("Analysis Assumptions:")
-for assumption, value in analysis_assumptions.items():
-    print(f"  {assumption}: {value}")
+    def plot(self, results, figsize=(15, 10), benchmark_label="Benchmark"):
+        """
+        Create comprehensive visualization of volatility regime analysis.
+        
+        Parameters
+        ----------
+        results : dict
+            Results dictionary from backtester
+        figsize : tuple, default (15, 10)
+            Figure size (width, height)
+        benchmark_label : str, default "Benchmark"
+            Label for benchmark in plots
+        """
+        # Extract data from results
+        strategy_returns = results['strategy_returns']
+        benchmark_returns = results.get('benchmark_returns', pd.Series(dtype=float))
+        
+        # Identify regimes
+        regimes, rolling_vol = self.identify_volatility_regimes(benchmark_returns)
+        
+        # Calculate metrics
+        strategy_metrics = self.calculate_regime_metrics(strategy_returns, regimes)
+        benchmark_metrics = self.calculate_regime_metrics(benchmark_returns, regimes)
+        
+        # Create the visualization
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        fig.suptitle('Volatility Regime Analysis', fontsize=16, fontweight='bold')
+        
+        # Plot 1: Rolling Volatility with Regime Overlay
+        ax1 = axes[0, 0]
+        ax1.plot(rolling_vol.index, rolling_vol.values, color='blue', linewidth=1, label='Rolling Volatility')
+        
+        # Color-code by regime
+        for regime, color in [('low_vol', 'green'), ('medium_vol', 'yellow'), ('high_vol', 'red')]:
+            regime_mask = regimes == regime
+            if regime_mask.any():
+                ax1.scatter(rolling_vol[regime_mask].index, rolling_vol[regime_mask].values, 
+                           c=color, alpha=0.6, s=20, label=f'{regime.replace("_", " ").title()}')
+        
+        ax1.set_title('Rolling Volatility with Regime Classification')
+        ax1.set_ylabel('Annualized Volatility')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # Plot 2: Cumulative Returns by Regime
+        ax2 = axes[0, 1]
+        cumulative_strategy = (1 + strategy_returns).cumprod()
+        
+        for regime, color in [('low_vol', 'green'), ('medium_vol', 'yellow'), ('high_vol', 'red')]:
+            regime_mask = regimes == regime
+            if regime_mask.any():
+                regime_returns = strategy_returns[regime_mask]
+                regime_cumulative = (1 + regime_returns).cumprod()
+                ax2.plot(regime_cumulative.index, regime_cumulative.values, 
+                        color=color, linewidth=2, label=f'{regime.replace("_", " ").title()}')
+        
+        ax2.set_title('Strategy Performance by Volatility Regime')
+        ax2.set_ylabel('Cumulative Return')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # Plot 3: Performance Metrics Comparison
+        ax3 = axes[1, 0]
+        ax3.axis('off')
+        
+        # Create metrics table
+        metrics_data = []
+        for regime in ['low_vol', 'medium_vol', 'high_vol']:
+            if strategy_metrics[regime]:
+                metrics_data.append([
+                    regime.replace('_', ' ').title(),
+                    f"{strategy_metrics[regime]['annual_return']:.2%}",
+                    f"{strategy_metrics[regime]['sharpe_ratio']:.2f}",
+                    f"{strategy_metrics[regime]['max_drawdown']:.2%}",
+                    f"{strategy_metrics[regime]['days']}"
+                ])
+        
+        table = ax3.table(cellText=metrics_data,
+                         colLabels=['Regime', 'Ann. Return', 'Sharpe', 'Max DD', 'Days'],
+                         loc='center',
+                         cellLoc='center')
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.5)
+        ax3.set_title('Strategy Performance by Regime')
+        
+        # Plot 4: Regime Distribution
+        ax4 = axes[1, 1]
+        regime_counts = regimes.value_counts()
+        colors = ['green', 'yellow', 'red']
+        ax4.pie(regime_counts.values, labels=regime_counts.index, autopct='%1.1f%%', colors=colors)
+        ax4.set_title('Distribution of Volatility Regimes')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # Print summary statistics
+        self._print_summary(strategy_metrics, benchmark_metrics)
 ```
+
+**Explanation:**
+- The `plot` method is the main interface that users will call
+- Extracts data from the results dictionary
+- Calls helper methods to perform analysis
+- Creates a comprehensive 2x2 subplot layout
+- Each subplot shows different aspects of the analysis
+- Includes proper labeling, legends, and formatting
+- Calls a helper method to print summary statistics
+
+### Step 7: Add Helper Methods
+
+```python
+    def _print_summary(self, strategy_metrics, benchmark_metrics):
+        """
+        Print a summary of the analysis results.
+        
+        Parameters
+        ----------
+        strategy_metrics : dict
+            Strategy performance metrics by regime
+        benchmark_metrics : dict
+            Benchmark performance metrics by regime
+        """
+        print("\n" + "="*60)
+        print("VOLATILITY REGIME ANALYSIS SUMMARY")
+        print("="*60)
+        
+        for regime in ['low_vol', 'medium_vol', 'high_vol']:
+            if strategy_metrics[regime]:
+                print(f"\n{regime.replace('_', ' ').title()} Regime:")
+                print(f"  Days: {strategy_metrics[regime]['days']}")
+                print(f"  Annual Return: {strategy_metrics[regime]['annual_return']:.2%}")
+                print(f"  Sharpe Ratio: {strategy_metrics[regime]['sharpe_ratio']:.2f}")
+                print(f"  Max Drawdown: {strategy_metrics[regime]['max_drawdown']:.2%}")
+                print(f"  Win Rate: {strategy_metrics[regime]['win_rate']:.2%}")
+        
+        print("\n" + "="*60)
+```
+
+**Explanation:**
+- Helper method to print formatted summary statistics
+- Provides clear, readable output of key findings
+- Uses consistent formatting for professional presentation
+
+### Step 8: Usage Example
+
+```python
+# Create and use your custom analyzer
+from portwine.analyzers import VolatilityRegimeAnalyzer
+
+# Initialize with custom parameters
+analyzer = VolatilityRegimeAnalyzer(
+    volatility_window=90,  # 90-day rolling window
+    regime_thresholds={
+        'low': 0.25,    # Bottom 25% = low volatility
+        'high': 0.75    # Top 25% = high volatility
+    }
+)
+
+# Run the analysis
+analyzer.plot(results, figsize=(16, 12))
+```
+
+**Explanation:**
+- Shows how to instantiate your custom analyzer
+- Demonstrates parameter customization
+- Shows the simple interface for running the analysis
+
+### Key Design Principles
+
+1. **Inherit from Analyzer**: Always inherit from the base `Analyzer` class
+2. **Clear Documentation**: Provide comprehensive docstrings for all methods
+3. **Flexible Parameters**: Allow users to customize key parameters
+4. **Error Handling**: Handle edge cases gracefully (empty data, missing regimes)
+5. **Professional Visualization**: Create clear, informative plots with proper formatting
+6. **Modular Design**: Break complex logic into smaller, focused methods
+7. **Consistent Interface**: Follow the same pattern as built-in analyzers
+
+This example demonstrates how to create a sophisticated custom analyzer that provides valuable insights while maintaining the same professional interface as the built-in analyzers.
 
 ## Next Steps
 

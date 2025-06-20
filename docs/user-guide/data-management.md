@@ -1,23 +1,260 @@
 # Data Management
 
-Portwine provides flexible data management through its data loader system, making it easy to work with various data sources and formats.
+Portwine provides flexible data management through its data loader system, making it easy to work with various data sources and formats. Data loaders are responsible for fetching and providing market data to the backtester.
 
-## Data Loaders
+## Base Market Data Loader
 
-Data loaders are responsible for fetching and providing market data to the backtester. Portwine supports multiple data loader types:
+The `MarketDataLoader` is the foundation of Portwine's data system. It provides a standardized interface for loading and accessing market data, with built-in caching and efficient data retrieval.
+
+### Core Functionality
+
+The base loader provides three main capabilities:
+
+1. **Data Loading**: Fetch and cache market data for multiple tickers
+2. **Date Management**: Build unified trading calendars across multiple assets
+3. **Time-based Access**: Retrieve data at specific timestamps with efficient lookups
+
+### Data Format
+
+All data loaders must return data in a standardized format:
+
+```python
+# DataFrame with required columns and index
+DataFrame:
+    Index: pd.Timestamp (datetime)
+    Columns: ['open', 'high', 'low', 'close', 'volume']
+    
+# Example:
+#            open    high     low   close    volume
+# 2020-01-02  100.0  102.5   99.0   101.2  1000000
+# 2020-01-03  101.2  103.8  100.8   102.9  1200000
+# 2020-01-06  102.9  105.2  102.1   104.5  1100000
+```
+
+### Key Methods
+
+#### `load_ticker(ticker: str) -> pd.DataFrame | None`
+
+**Purpose**: Load data for a single ticker (must be implemented by subclasses)
+
+**Returns**: 
+- `pd.DataFrame` with OHLCV data indexed by timestamp
+- `None` if data is unavailable
+
+**Example Implementation**:
+```python
+def load_ticker(self, ticker: str) -> pd.DataFrame | None:
+    # Load from CSV file
+    file_path = f"data/{ticker}.csv"
+    if not os.path.exists(file_path):
+        return None
+    
+    df = pd.read_csv(file_path, parse_dates=['date'], index_col='date')
+    return df[['open', 'high', 'low', 'close', 'volume']]
+```
+
+---
+
+#### `fetch_data(tickers: list[str]) -> dict[str, pd.DataFrame]`
+
+**Purpose**: Load and cache data for multiple tickers
+
+**Returns**: Dictionary mapping ticker symbols to their DataFrames
+
+**Features**:
+- Automatic caching (data loaded once, reused)
+- Handles missing data gracefully
+- Returns only available tickers
+
+```python
+# Usage
+loader = MyDataLoader()
+data = loader.fetch_data(['AAPL', 'GOOGL', 'MSFT'])
+
+# Returns:
+# {
+#     'AAPL': DataFrame(...),
+#     'GOOGL': DataFrame(...),
+#     'MSFT': DataFrame(...)
+# }
+```
+
+---
+
+#### `get_all_dates(tickers: list[str]) -> list[pd.Timestamp]`
+
+**Purpose**: Build a unified trading calendar across multiple tickers
+
+**Returns**: Sorted list of all unique timestamps
+
+**Use Case**: Creating trading calendars for backtesting
+
+```python
+# Get all trading dates across multiple assets
+dates = loader.get_all_dates(['AAPL', 'GOOGL', 'MSFT'])
+# Returns: [2020-01-02, 2020-01-03, 2020-01-06, ...]
+```
+
+---
+
+#### `next(tickers: list[str], ts: pd.Timestamp) -> dict[str, dict[str, float] | None]`
+
+**Purpose**: Get OHLCV data at or immediately before a specific timestamp
+
+**Returns**: Dictionary with ticker data at the requested time
+
+**Features**:
+- Efficient binary search using `searchsorted`
+- Returns data from the most recent bar before the timestamp
+- Handles missing data with `None` values
+
+```python
+# Get data at specific time
+bar_data = loader.next(['AAPL', 'GOOGL'], pd.Timestamp('2020-01-02 10:30:00'))
+
+# Returns:
+# {
+#     'AAPL': {
+#         'open': 100.0,
+#         'high': 102.5,
+#         'low': 99.0,
+#         'close': 101.2,
+#         'volume': 1000000.0
+#     },
+#     'GOOGL': {
+#         'open': 1500.0,
+#         'high': 1520.0,
+#         'low': 1495.0,
+#         'close': 1510.0,
+#         'volume': 500000.0
+#     }
+# }
+```
+
+---
+
+### Data Caching
+
+The base loader includes automatic caching to improve performance:
+
+```python
+# First call loads from source
+data1 = loader.fetch_data(['AAPL'])  # Loads from file/API
+
+# Subsequent calls use cached data
+data2 = loader.fetch_data(['AAPL'])  # Uses cache, no I/O
+```
+
+### Error Handling
+
+The loader handles missing data gracefully:
+
+```python
+# Missing ticker returns empty dict
+data = loader.fetch_data(['INVALID_TICKER'])
+# Returns: {}
+
+# Missing timestamp returns None
+bar = loader.next(['AAPL'], pd.Timestamp('1900-01-01'))
+# Returns: {'AAPL': None}
+```
+
+### Creating Custom Loaders
+
+To create a custom data loader, inherit from `MarketDataLoader` and implement `load_ticker`:
+
+```python
+from portwine.loaders.base import MarketDataLoader
+import pandas as pd
+
+class MyCustomLoader(MarketDataLoader):
+    def __init__(self, api_key):
+        self.api_key = api_key
+        super().__init__()
+    
+    def load_ticker(self, ticker: str) -> pd.DataFrame | None:
+        # Your custom data loading logic here
+        # Must return DataFrame with ['open', 'high', 'low', 'close', 'volume']
+        # or None if data unavailable
+        pass
+```
+
+### Integration with Backtester
+
+The backtester uses the data loader's methods automatically:
+
+```python
+# Backtester calls these methods internally:
+loader.fetch_data(strategy.tickers)  # Load all required data
+loader.get_all_dates(strategy.tickers)  # Build trading calendar
+loader.next(tickers, current_time)  # Get data for each step
+```
+
+This design provides a clean separation between data management and strategy execution, making it easy to switch data sources or add new ones without changing the backtesting logic.
+
+## Out-of-the-Box Loaders
+
+Portwine comes with several out of the box loaders for loading saved data from different providers. These are not *downloaders*, which actually fetch the data from the source. You will need one of those prior (coming soon...)
 
 ### EODHD Market Data Loader
 
-The most common data loader for historical market data:
+The EODHD loader reads historical market data from CSV files downloaded from EODHD (End of Day Historical Data). It automatically handles price adjustments for splits and dividends.
 
 ```python
-from portwine import EODHDMarketDataLoader
+from portwine.loaders import EODHDMarketDataLoader
 
 # Initialize with your data directory
-data_loader = EODHDMarketDataLoader(data_path='path/to/your/eodhd/data/')
+data_loader = EODHDMarketDataLoader(
+    data_path='path/to/your/eodhd/data/',
+    exchange_code='US'  # Default is 'US'
+)
 
 # Fetch data for specific tickers
 data = data_loader.fetch_data(['AAPL', 'GOOGL', 'MSFT'])
+```
+
+#### File Structure
+
+CSV files must be named as `TICKER.EXCHANGE.csv` and contain these columns:
+
+```
+data_path/
+├── AAPL.US.csv
+├── GOOGL.US.csv
+├── MSFT.US.csv
+└── SPY.US.csv
+```
+
+#### Required CSV Columns
+
+Each CSV file must contain these columns:
+- `date` - Date column (will become the index)
+- `open` - Opening price
+- `high` - High price
+- `low` - Low price
+- `close` - Closing price
+- `adjusted_close` - Split/dividend adjusted closing price
+- `volume` - Trading volume
+
+#### Price Adjustment
+
+The loader automatically adjusts all OHLC prices using the adjusted_close ratio:
+
+```python
+# The loader calculates: adj_ratio = adjusted_close / close
+# Then applies: open = open * adj_ratio, high = high * adj_ratio, etc.
+# Final close = adjusted_close
+```
+
+This ensures all prices are adjusted for stock splits and dividends, making them suitable for backtesting.
+
+#### Example CSV Format
+
+```csv
+date,open,high,low,close,adjusted_close,volume
+2020-01-02,100.0,102.5,99.0,101.2,101.2,1000000
+2020-01-03,101.2,103.8,100.8,102.9,102.9,1200000
+2020-01-06,102.9,105.2,102.1,104.5,104.5,1100000
 ```
 
 ### Polygon Market Data Loader
@@ -25,7 +262,7 @@ data = data_loader.fetch_data(['AAPL', 'GOOGL', 'MSFT'])
 For Polygon.io data:
 
 ```python
-from portwine import PolygonMarketDataLoader
+from portwine.loaders import PolygonMarketDataLoader
 
 data_loader = PolygonMarketDataLoader(data_path='path/to/polygon/data/')
 ```
@@ -56,164 +293,330 @@ data = {
 - **Sorted index**: Dates should be in ascending order
 - **Consistent timezone**: All data should use the same timezone
 
-## Data Directory Structure
-
-### EODHD Format
-
-```
-data_path/
-├── US/
-│   ├── AAPL.csv
-│   ├── GOOGL.csv
-│   ├── MSFT.csv
-│   └── ...
-├── ETF/
-│   ├── SPY.csv
-│   ├── QQQ.csv
-│   └── ...
-└── INDEX/
-    ├── ^GSPC.csv
-    └── ^VIX.csv
-```
-
-### Polygon Format
-
-```
-data_path/
-├── stocks/
-│   ├── AAPL/
-│   │   ├── 2023-01-01.csv
-│   │   ├── 2023-01-02.csv
-│   │   └── ...
-│   └── GOOGL/
-│       ├── 2023-01-01.csv
-│       └── ...
-└── etfs/
-    └── SPY/
-        └── ...
-```
-
-## Working with Data
-
-### Fetching Data
-
-```python
-# Fetch data for multiple tickers
-tickers = ['AAPL', 'GOOGL', 'MSFT', 'AMZN']
-data = data_loader.fetch_data(tickers)
-
-# Check what data is available
-for ticker, df in data.items():
-    print(f"{ticker}: {df.index.min()} to {df.index.max()}")
-```
-
-### Data Validation
-
-```python
-def validate_data(data_dict):
-    """Validate data quality and consistency."""
-    for ticker, df in data_dict.items():
-        # Check for required columns
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
-        missing_cols = set(required_cols) - set(df.columns)
-        if missing_cols:
-            print(f"Warning: {ticker} missing columns: {missing_cols}")
-        
-        # Check for missing values
-        missing_values = df[required_cols].isnull().sum()
-        if missing_values.sum() > 0:
-            print(f"Warning: {ticker} has missing values:\n{missing_values}")
-        
-        # Check date range
-        print(f"{ticker}: {df.index.min()} to {df.index.max()} ({len(df)} days)")
-
-# Validate your data
-validate_data(data)
-```
-
-### Data Preprocessing
-
-```python
-def preprocess_data(df):
-    """Clean and prepare data for backtesting."""
-    # Remove rows with missing values
-    df = df.dropna()
-    
-    # Ensure data types are correct
-    numeric_cols = ['open', 'high', 'low', 'close', 'volume']
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    # Sort by date
-    df = df.sort_index()
-    
-    # Remove duplicates
-    df = df[~df.index.duplicated(keep='first')]
-    
-    return df
-
-# Apply preprocessing to all data
-cleaned_data = {}
-for ticker, df in data.items():
-    cleaned_data[ticker] = preprocess_data(df)
-```
-
 ## Alternative Data
 
-### Custom Data Loaders
+Portwine supports alternative data sources through a specifier system that distinguishes between different types of data. This allows you to combine market data with alternative data sources like sentiment, news, economic indicators, and more.
 
-You can create custom data loaders for alternative data sources:
+### Data Source Specifiers
+
+Data sources are identified using a `SOURCE:TICKER` format, where:
+- `SOURCE` - Identifies the data provider or type
+- `TICKER` - The specific identifier for that data source
+
+```python
+# Market data (no specifier needed)
+market_tickers = ['AAPL', 'GOOGL', 'MSFT']
+
+# Alternative data (with specifier)
+alt_tickers = ['sentiment:AAPL', 'news:GOOGL', 'fred:GDP', 'custom:my_data']
+```
+
+### Built-in Alternative Data Loaders
+
+#### FRED Economic Data
+
+Load economic indicators from the Federal Reserve Economic Data (FRED):
+
+```python
+from portwine.loaders import FREDDataLoader
+
+# Initialize FRED loader
+fred_loader = FREDDataLoader(api_key='your_fred_api_key')
+
+# Fetch economic data
+data = fred_loader.fetch_data(['fred:GDP', 'fred:UNRATE', 'fred:CPIAUCSL'])
+
+# Returns:
+# {
+#     'fred:GDP': DataFrame(...),      # Gross Domestic Product
+#     'fred:UNRATE': DataFrame(...),   # Unemployment Rate
+#     'fred:CPIAUCSL': DataFrame(...)  # Consumer Price Index
+# }
+```
+
+#### Custom Alternative Data
+
+Create your own alternative data loader:
 
 ```python
 from portwine.loaders.base import MarketDataLoader
 
-class CustomDataLoader(MarketDataLoader):
+class SentimentDataLoader(MarketDataLoader):
     def __init__(self, data_path):
         self.data_path = data_path
+        super().__init__()
     
-    def fetch_data(self, tickers):
-        """Fetch data for the given tickers."""
-        data = {}
-        for ticker in tickers:
-            # Your custom data loading logic here
-            file_path = f"{self.data_path}/{ticker}.csv"
-            if os.path.exists(file_path):
-                df = pd.read_csv(file_path, index_col=0, parse_dates=True)
-                data[ticker] = df
-        return data
+    def load_ticker(self, ticker):
+        # Remove 'sentiment:' prefix to get actual ticker
+        base_ticker = ticker.replace('sentiment:', '')
+        file_path = f"{self.data_path}/{base_ticker}_sentiment.csv"
+        
+        if not os.path.exists(file_path):
+            return None
+        
+        df = pd.read_csv(file_path, parse_dates=['date'], index_col='date')
+        # Alternative data can have different columns
+        return df[['sentiment_score', 'volume']]  # Not OHLCV format
 
 # Use your custom loader
-custom_loader = CustomDataLoader('path/to/alternative/data/')
+sentiment_loader = SentimentDataLoader('path/to/sentiment/data/')
 ```
 
-### Alternative Data Integration
+### Combining Market and Alternative Data
+
+The backtester can handle both market data and alternative data simultaneously:
 
 ```python
-# Set up alternative data loader
-alt_loader = CustomDataLoader('path/to/alt/data/')
+from portwine.backtester import Backtester
+from portwine.loaders import EODHDMarketDataLoader
 
-# Create backtester with both market and alternative data
+# Set up market data loader
+market_loader = EODHDMarketDataLoader('path/to/market/data/')
+
+# Set up alternative data loader
+alt_loader = SentimentDataLoader('path/to/sentiment/data/')
+
+# Create backtester with both loaders
 backtester = Backtester(
     market_data_loader=market_loader,
     alternative_data_loader=alt_loader
 )
 
-# Strategy can access alternative data
-class AltDataStrategy(StrategyBase):
+# Strategy can access both types of data
+class HybridStrategy(StrategyBase):
+    def __init__(self, tickers):
+        # Market tickers
+        self.market_tickers = ['AAPL', 'GOOGL']
+        # Alternative data tickers
+        self.alt_tickers = ['sentiment:AAPL', 'sentiment:GOOGL']
+        # Combined list
+        tickers = self.market_tickers + self.alt_tickers
+        super().__init__(tickers)
+    
     def step(self, current_date, daily_data):
-        # Market data
-        aapl_price = daily_data.get('AAPL', {}).get('close')
+        allocations = {}
         
-        # Alternative data
-        sentiment = daily_data.get('alt:sentiment', 0)
+        for ticker in self.market_tickers:
+            if ticker in daily_data and daily_data[ticker]:
+                # Market data has OHLCV format
+                price = daily_data[ticker]['close']
+                sentiment_key = f'sentiment:{ticker}'
+                
+                if sentiment_key in daily_data and daily_data[sentiment_key]:
+                    # Alternative data has custom format
+                    sentiment = daily_data[sentiment_key]['sentiment_score']
+                    
+                    # Use both market price and sentiment
+                    if sentiment > 0.5 and price > 100:
+                        allocations[ticker] = 1.0
+                    else:
+                        allocations[ticker] = 0.0
+                else:
+                    allocations[ticker] = 0.0
         
-        # Use both in your strategy
-        if sentiment > 0.5 and aapl_price:
-            # Bullish sentiment and valid price
-            return {'AAPL': 1.0}
-        else:
-            return {'AAPL': 0.0}
+        return allocations
 ```
+
+### Data Format Differences
+
+#### Market Data Format
+Market data always follows the standard OHLCV format:
+
+```python
+# Market data structure
+{
+    'AAPL': {
+        'open': 100.0,
+        'high': 102.5,
+        'low': 99.0,
+        'close': 101.2,
+        'volume': 1000000.0
+    }
+}
+```
+
+#### Alternative Data Format
+Alternative data can have any structure, but should be consistent:
+
+```python
+# Sentiment data structure
+{
+    'sentiment:AAPL': {
+        'sentiment_score': 0.75,
+        'volume': 5000,
+        'confidence': 0.9
+    }
+}
+
+# Economic data structure
+{
+    'fred:GDP': {
+        'value': 21433.2,
+        'change': 0.5,
+        'units': 'Billions of Dollars'
+    }
+}
+```
+
+### Data Source Management
+
+#### Automatic Source Detection
+
+The backtester automatically detects and routes data to the appropriate loader:
+
+```python
+# The backtester splits tickers based on specifiers
+market_tickers, alt_tickers = backtester._split_tickers(strategy.tickers)
+
+# Market tickers: ['AAPL', 'GOOGL']
+# Alt tickers: ['sentiment:AAPL', 'fred:GDP']
+```
+
+#### Multiple Alternative Data Sources
+
+You can combine multiple alternative data sources:
+
+```python
+from portwine.loaders import FREDDataLoader, SentimentDataLoader, NewsDataLoader, AlternativeDataLoader
+
+# Multiple alternative data loaders
+fred_loader = FREDDataLoader(api_key='your_fred_key')
+sentiment_loader = SentimentDataLoader('path/to/sentiment/')
+news_loader = NewsDataLoader('path/to/news/')
+
+# Initialize the main alternative data loader with all sub-loaders
+alt_loader = AlternativeDataLoader()
+alt_loader.add_loader('fred', fred_loader)
+alt_loader.add_loader('sentiment', sentiment_loader)
+alt_loader.add_loader('news', news_loader)
+
+# Strategy with multiple data sources
+class MultiSourceStrategy(StrategyBase):
+    def __init__(self):
+        self.tickers = [
+            # Market data
+            'AAPL', 'GOOGL',
+            # Economic data
+            'fred:GDP', 'fred:UNRATE',
+            # Sentiment data
+            'sentiment:AAPL', 'sentiment:GOOGL',
+            # News data
+            'news:AAPL', 'news:GOOGL'
+        ]
+        super().__init__(self.tickers)
+    
+    def step(self, current_date, daily_data):
+        # Access different data types
+        aapl_price = daily_data.get('AAPL', {}).get('close')
+        gdp = daily_data.get('fred:GDP', {}).get('value')
+        sentiment = daily_data.get('sentiment:AAPL', {}).get('sentiment_score')
+        news_count = daily_data.get('news:AAPL', {}).get('article_count')
+        
+        # Combine all signals
+        if (aapl_price and gdp and sentiment and news_count):
+            # Your strategy logic here
+            pass
+```
+
+### Best Practices for Alternative Data
+
+#### 1. Consistent Naming
+
+Use consistent specifier prefixes:
+
+```python
+# Good: Consistent naming
+alt_tickers = [
+    'sentiment:AAPL', 'sentiment:GOOGL',
+    'news:AAPL', 'news:GOOGL',
+    'fred:GDP', 'fred:UNRATE'
+]
+
+# Avoid: Inconsistent naming
+alt_tickers = [
+    'sentiment:AAPL', 'news_GOOGL',  # Mixed separators
+    'FRED:GDP', 'fred:UNRATE'        # Mixed case
+]
+```
+
+#### 2. Data Synchronization
+
+Ensure alternative data aligns with market data dates:
+
+```python
+def synchronize_alt_data(market_data, alt_data):
+    """Align alternative data with market data dates."""
+    market_dates = set(market_data['AAPL'].index)
+    
+    for ticker, df in alt_data.items():
+        # Filter to market trading days
+        alt_data[ticker] = df[df.index.isin(market_dates)]
+    
+    return alt_data
+```
+
+#### 3. Missing Data Handling
+
+Handle missing alternative data gracefully:
+
+```python
+def step(self, current_date, daily_data):
+    allocations = {}
+    
+    for ticker in self.market_tickers:
+        # Check if we have both market and alternative data
+        has_market = ticker in daily_data and daily_data[ticker] is not None
+        has_sentiment = f'sentiment:{ticker}' in daily_data and daily_data[f'sentiment:{ticker}'] is not None
+        
+        if has_market and has_sentiment:
+            # Use both data sources
+            price = daily_data[ticker]['close']
+            sentiment = daily_data[f'sentiment:{ticker}']['sentiment_score']
+            allocations[ticker] = self.calculate_weight(price, sentiment)
+        elif has_market:
+            # Fall back to market data only
+            allocations[ticker] = self.calculate_weight_market_only(daily_data[ticker])
+        else:
+            # No data available
+            allocations[ticker] = 0.0
+    
+    return allocations
+```
+
+### Creating Custom Alternative Data Loaders
+
+To create a custom alternative data loader:
+
+```python
+from portwine.loaders.base import MarketDataLoader
+
+class CustomAltDataLoader(MarketDataLoader):
+    def __init__(self, data_path, source_name):
+        self.data_path = data_path
+        self.source_name = source_name  # e.g., 'sentiment', 'news'
+        super().__init__()
+    
+    def load_ticker(self, ticker):
+        # Extract base ticker from specifier
+        if not ticker.startswith(f'{self.source_name}:'):
+            return None
+        
+        base_ticker = ticker.replace(f'{self.source_name}:', '')
+        file_path = f"{self.data_path}/{base_ticker}.csv"
+        
+        if not os.path.exists(file_path):
+            return None
+        
+        df = pd.read_csv(file_path, parse_dates=['date'], index_col='date')
+        # Return whatever columns your alternative data has
+        return df
+
+# Usage
+sentiment_loader = CustomAltDataLoader('path/to/data/', 'sentiment')
+data = sentiment_loader.fetch_data(['sentiment:AAPL', 'sentiment:GOOGL'])
+```
+
+This system provides flexibility to combine any type of alternative data with market data while maintaining clean separation between different data sources.
 
 ## Data Caching
 
