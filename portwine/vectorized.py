@@ -62,16 +62,25 @@ def create_price_dataframe(market_data_loader, tickers, start_date=None, end_dat
     all_dates = sorted(all_dates)
 
     # 3) apply optional date filters
-    all_dates_array = np.array(all_dates)
+    # all_dates_array = np.array(all_dates)
+    all_dates_array = pd.to_datetime(np.array(all_dates))
 
     mask = np.ones(len(all_dates_array), dtype=bool)  # Start with all True
+    
+
+    # if start_date:
+    #     sd = pd.to_datetime(start_date).to_numpy()
+    #     mask &= (all_dates_array >= sd)
+        
+    # if end_date:
+    #     ed = pd.to_datetime(end_date).to_numpy()
+    #     mask &= (all_dates_array <= ed)
 
     if start_date:
-        sd = pd.to_datetime(start_date).to_numpy()
+        sd = pd.to_datetime(start_date)
         mask &= (all_dates_array >= sd)
-        
     if end_date:
-        ed = pd.to_datetime(end_date).to_numpy()
+        ed = pd.to_datetime(end_date)
         mask &= (all_dates_array <= ed)
 
     # Apply the combined mask

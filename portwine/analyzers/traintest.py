@@ -111,6 +111,7 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
     def plot(self, results, split=0.7, benchmark_label="Benchmark"):
         """
         Creates the figure with 3 rows x 2 columns.
+        Now supports 'split' as either a float (fraction) or a date string ('YYYY-MM-DD').
         """
         strategy_returns = results.get("strategy_returns", pd.Series(dtype=float))
         if strategy_returns.empty:
@@ -132,17 +133,44 @@ class TrainTestEquityDrawdownAnalyzer(Analyzer):
             print("Not enough data to plot.")
             return
 
-        split_idx = int(n * split)
-        if split_idx < 1:
-            print("Train set is empty. Increase 'split'.")
+        # Support split as float (fraction) or date string
+        split_idx = None
+        split_date = None
+        if isinstance(split, float):
+            split_idx = int(n * split)
+            if split_idx < 1:
+                print("Train set is empty. Increase 'split'.")
+                return
+            if split_idx >= n:
+                print("Test set is empty. Decrease 'split'.")
+                return
+            train_dates = all_dates[:split_idx]
+            test_dates = all_dates[split_idx:]
+            split_date = train_dates[-1]
+        elif isinstance(split, str):
+            try:
+                split_date = pd.to_datetime(split)
+            except Exception as e:
+                print(f"Invalid split date string: {split}. Error: {e}")
+                return
+            # Find the last date in all_dates that is <= split_date
+            valid_dates = all_dates[all_dates <= split_date]
+            if len(valid_dates) == 0:
+                print(f"Split date {split} is before the start of the data.")
+                return
+            split_idx = len(valid_dates)
+            if split_idx < 1:
+                print("Train set is empty. Increase 'split'.")
+                return
+            if split_idx >= n:
+                print("Test set is empty. Decrease 'split'.")
+                return
+            train_dates = all_dates[:split_idx]
+            test_dates = all_dates[split_idx:]
+            split_date = train_dates[-1]
+        else:
+            print("'split' must be a float (fraction) or a date string (YYYY-MM-DD).")
             return
-        if split_idx >= n:
-            print("Test set is empty. Decrease 'split'.")
-            return
-
-        train_dates = all_dates[:split_idx]
-        test_dates = all_dates[split_idx:]
-        split_date = train_dates[-1]
 
         # Split returns
         strat_train = strategy_returns.loc[train_dates]
