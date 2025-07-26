@@ -1,5 +1,48 @@
 """
 Simple universe management for historical constituents.
+
+This module provides the Universe class for managing dynamic stock universes that change over time,
+such as S&P 500 constituents or Russell indices. The class is designed to be immutable and efficient,
+using binary search for date lookups.
+
+Design Philosophy:
+- Immutable: Once loaded, the universe cannot be modified
+- Efficient: Pre-sorted dates enable O(log n) binary search lookups
+- Simple: Raw file I/O without pandas dependencies
+- Flexible: Handles various date formats and edge cases
+
+File Format:
+The Universe class expects a CSV file with the following format:
+    date,ticker1,ticker2,ticker3,...
+    
+Examples:
+    2020-01-01,AAPL,GOOGL,MSFT
+    2020-02-01,AAPL,GOOGL,MSFT,AMZN
+    2020-03-01,AAPL,MSFT,AMZN,TSLA
+    
+Each row represents the complete universe at that date. The class automatically
+determines additions and removals by comparing consecutive snapshots.
+
+Features:
+- Comments: Lines starting with '#' are ignored
+- Empty lines: Automatically skipped
+- Whitespace: Stripped from tickers
+- Invalid dates: Skipped with warning
+- Duplicate dates: Last entry wins
+- Empty baskets: Return empty list
+
+Usage:
+    universe = Universe("sp500_constituents.csv")
+    
+    # Get constituents at specific date
+    tickers = universe.get_constituents("2020-06-15")
+    
+    # Get all tickers that have ever been in the universe
+    all_tickers = universe.all_tickers
+    
+    # Works with various date formats
+    tickers = universe.get_constituents(datetime(2020, 6, 15))
+    tickers = universe.get_constituents(pd.Timestamp("2020-06-15"))
 """
 
 from typing import List
