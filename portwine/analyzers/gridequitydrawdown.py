@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from portwine.analyzers.base import Analyzer
 
-
 class GridEquityDrawdownAnalyzer(Analyzer):
     """
     Plots multiple strategy results in a grid layout, where *each cell* of the grid

@@ -24,8 +24,10 @@ fastparquet = "^2024.2.0"
 freezegun = "^1.5.1"
 numba = "^0.61.2"
 
-
 [tool.poetry.group.dev.dependencies]
+mkdocs = "^1.6.1"
+mkdocstrings = "^0.29.1"
+mkdocstrings-python = "^1.16.12"
 coverage = "^7.8.0"
 pytest-cov = "^6.1.1"
 
