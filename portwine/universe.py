@@ -2,7 +2,6 @@
 Simple universe management for historical constituents.
 """
 
-import pandas as pd
 from typing import List
 from datetime import date
 
@@ -11,8 +10,8 @@ class Universe:
     """
     Simple universe class for managing historical constituents.
     
-    Loads a CSV file with date and basket columns, then provides
-    efficient lookup of constituents at any given date.
+    Loads a CSV file with format: date,ticker1,ticker2,ticker3,...
+    then provides efficient lookup of constituents at any given date.
     """
     
     def __init__(self, csv_path: str):
@@ -22,17 +21,32 @@ class Universe:
         Parameters
         ----------
         csv_path : str
-            Path to CSV file with columns: date, basket
-            basket should be comma-separated tickers
+            Path to CSV file with format: date,ticker1,ticker2,ticker3,...
         """
-        # Load CSV
-        df = pd.read_csv(csv_path)
-        df['date'] = pd.to_datetime(df['date']).dt.date
-        
-        # Store as dict: date -> list of tickers
+        # Load CSV with raw file I/O
         self.constituents = {}
-        for _, row in df.iterrows():
-            self.constituents[row['date']] = row['basket'].split(',')
+        
+        with open(csv_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):  # Skip empty lines and comments
+                    continue
+                    
+                parts = line.split(',')
+                if len(parts) < 2:
+                    continue
+                    
+                # Parse date
+                date_str = parts[0].strip()
+                try:
+                    year, month, day = map(int, date_str.split('-'))
+                    current_date = date(year, month, day)
+                except ValueError:
+                    continue  # Skip invalid dates
+                
+                # Parse tickers (skip empty ones)
+                tickers = [ticker.strip() for ticker in parts[1:] if ticker.strip()]
+                self.constituents[current_date] = tickers
         
         # Pre-sort dates for binary search
         self.sorted_dates = sorted(self.constituents.keys())
@@ -51,7 +65,11 @@ class Universe:
         List[str]
             List of tickers in the basket at the given date
         """
-        target_date = pd.to_datetime(dt).date()
+        # Convert to date object
+        if hasattr(dt, 'date'):
+            target_date = dt.date()
+        else:
+            target_date = date.fromisoformat(str(dt).split()[0])
         
         # Binary search to find the most recent date <= target_date
         left, right = 0, len(self.sorted_dates) - 1
