@@ -50,6 +50,8 @@ class Universe:
         
         # Pre-sort dates for binary search
         self.sorted_dates = sorted(self.constituents.keys())
+
+        self.all_tickers = self._all_tickers()
     
     def get_constituents(self, dt) -> List[str]:
         """
@@ -87,3 +89,17 @@ class Universe:
             return []
             
         return self.constituents[self.sorted_dates[result]]
+    
+    def _all_tickers(self) -> set:
+        """
+        Get all unique tickers that have ever been in the universe.
+        
+        Returns
+        -------
+        set
+            Set of all ticker symbols
+        """
+        all_tickers = set()
+        for tickers in self.constituents.values():
+            all_tickers.update(tickers)
+        return all_tickers

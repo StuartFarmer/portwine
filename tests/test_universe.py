@@ -244,3 +244,48 @@ class TestUniverse:
         
         assert universe.get_constituents("2020-01-01") == ["AAPL", "GOOGL"]
         assert universe.get_constituents("2020-02-01") == ["MSFT", "AMZN"]
+    
+    def test_all_tickers(self):
+        """Test the all_tickers method."""
+        data = [
+            ["2020-01-01", "AAPL,GOOGL,MSFT"],
+            ["2020-02-01", "AAPL,GOOGL,MSFT,AMZN"],
+            ["2020-03-01", "AAPL,MSFT,AMZN,TSLA"],
+            ["2020-04-01", "MSFT,AMZN,TSLA,NVDA"],
+        ]
+        
+        csv_path = self.create_test_csv(data, "all_tickers.csv")
+        
+        universe = Universe(csv_path)
+        
+        # Should return all unique tickers across all dates
+        all_tickers = universe.all_tickers
+        expected_tickers = {"AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA"}
+        
+        assert all_tickers == expected_tickers
+        
+        # Test with single snapshot
+        data_single = [
+            ["2020-01-01", "AAPL,GOOGL,MSFT"],
+        ]
+        
+        csv_path_single = self.create_test_csv(data_single, "all_tickers_single.csv")
+        
+        universe_single = Universe(csv_path_single)
+        
+        all_tickers_single = universe_single.all_tickers
+        expected_tickers_single = {"AAPL", "GOOGL", "MSFT"}
+        
+        assert all_tickers_single == expected_tickers_single
+        
+        # Test with empty universe
+        data_empty = [
+            ["2020-01-01", ""],
+        ]
+        
+        csv_path_empty = self.create_test_csv(data_empty, "all_tickers_empty.csv")
+        
+        universe_empty = Universe(csv_path_empty)
+        
+        all_tickers_empty = universe_empty.all_tickers
+        assert all_tickers_empty == set()
