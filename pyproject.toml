@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "portwine"
-version = "0.1.2"
-description = ""
+version = "0.1.3"
+description = "A clean, elegant portfolio backtester that simplifies strategy development with online processing and comprehensive analysis tools"
 authors = ["Stuart Farmer <stuart@lamden.io>"]
 readme = "README.md"
 
