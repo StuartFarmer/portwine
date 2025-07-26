@@ -1,4 +1,4 @@
-# tests/test_vectorized.py
+# tests/test_vectorized_misc.py
 
 import unittest
 from datetime import datetime
