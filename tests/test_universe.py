@@ -5,7 +5,7 @@ Tests for the Universe class.
 import pytest
 from datetime import date, datetime
 import os
-from portwine.universe import Universe
+from portwine.universe import Universe, CSVUniverse
 
 
 class TestUniverse:
@@ -43,19 +43,19 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "basic_universe.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Test exact date matches
-        assert universe.get_constituents("2020-01-01") == ["AAPL", "GOOGL", "MSFT"]
-        assert universe.get_constituents("2020-02-01") == ["AAPL", "GOOGL", "MSFT", "AMZN"]
-        assert universe.get_constituents("2020-03-01") == ["AAPL", "MSFT", "AMZN"]
+        assert universe.get_constituents("2020-01-01") == {"AAPL", "GOOGL", "MSFT"}
+        assert universe.get_constituents("2020-02-01") == {"AAPL", "GOOGL", "MSFT", "AMZN"}
+        assert universe.get_constituents("2020-03-01") == {"AAPL", "MSFT", "AMZN"}
         
         # Test dates between snapshots
-        assert universe.get_constituents("2020-01-15") == ["AAPL", "GOOGL", "MSFT"]
-        assert universe.get_constituents("2020-02-15") == ["AAPL", "GOOGL", "MSFT", "AMZN"]
+        assert universe.get_constituents("2020-01-15") == {"AAPL", "GOOGL", "MSFT"}
+        assert universe.get_constituents("2020-02-15") == {"AAPL", "GOOGL", "MSFT", "AMZN"}
         
         # Test dates after last snapshot
-        assert universe.get_constituents("2020-04-01") == ["AAPL", "MSFT", "AMZN"]
+        assert universe.get_constituents("2020-04-01") == {"AAPL", "MSFT", "AMZN"}
     
     def test_before_first_date(self):
         """Test behavior when date is before first snapshot."""
@@ -66,11 +66,11 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "before_first_date.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
-        # Date before first snapshot should return empty list
-        assert universe.get_constituents("2020-01-01") == []
-        assert universe.get_constituents("2019-12-31") == []
+        # Date before first snapshot should return empty set
+        assert universe.get_constituents("2020-01-01") == set()
+        assert universe.get_constituents("2019-12-31") == set()
     
     def test_datetime_objects(self):
         """Test that datetime objects work correctly."""
@@ -81,14 +81,14 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "datetime_objects.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Test with datetime objects
         dt1 = datetime(2020, 1, 15, 10, 30, 0)  # 10:30 AM
         dt2 = datetime(2020, 2, 15, 15, 45, 30)  # 3:45 PM
         
-        assert universe.get_constituents(dt1) == ["AAPL", "GOOGL"]
-        assert universe.get_constituents(dt2) == ["AAPL", "GOOGL", "MSFT"]
+        assert universe.get_constituents(dt1) == {"AAPL", "GOOGL"}
+        assert universe.get_constituents(dt2) == {"AAPL", "GOOGL", "MSFT"}
     
     def test_single_snapshot(self):
         """Test universe with only one snapshot."""
@@ -98,16 +98,16 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "single_snapshot.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Before snapshot
-        assert universe.get_constituents("2019-12-31") == []
+        assert universe.get_constituents("2019-12-31") == set()
         
         # At snapshot
-        assert universe.get_constituents("2020-01-01") == ["AAPL", "GOOGL", "MSFT"]
+        assert universe.get_constituents("2020-01-01") == {"AAPL", "GOOGL", "MSFT"}
         
         # After snapshot
-        assert universe.get_constituents("2020-12-31") == ["AAPL", "GOOGL", "MSFT"]
+        assert universe.get_constituents("2020-12-31") == {"AAPL", "GOOGL", "MSFT"}
     
     def test_empty_basket(self):
         """Test handling of empty baskets."""
@@ -118,14 +118,14 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "empty_basket.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
-        # Empty basket should return empty list
-        assert universe.get_constituents("2020-01-01") == []
-        assert universe.get_constituents("2020-01-15") == []
+        # Empty basket should return empty set
+        assert universe.get_constituents("2020-01-01") == set()
+        assert universe.get_constituents("2020-01-15") == set()
         
         # Non-empty basket
-        assert universe.get_constituents("2020-02-01") == ["AAPL", "GOOGL"]
+        assert universe.get_constituents("2020-02-01") == {"AAPL", "GOOGL"}
     
     def test_single_ticker(self):
         """Test universe with single ticker in basket."""
@@ -136,10 +136,10 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "single_ticker.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
-        assert universe.get_constituents("2020-01-01") == ["AAPL"]
-        assert universe.get_constituents("2020-02-01") == ["GOOGL"]
+        assert universe.get_constituents("2020-01-01") == {"AAPL"}
+        assert universe.get_constituents("2020-02-01") == {"GOOGL"}
     
     def test_duplicate_dates(self):
         """Test behavior with duplicate dates (should use last one)."""
@@ -150,10 +150,10 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "duplicate_dates.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Should use the last entry for the date
-        assert universe.get_constituents("2020-01-01") == ["MSFT", "AMZN"]
+        assert universe.get_constituents("2020-01-01") == {"MSFT", "AMZN"}
     
     def test_binary_search_edge_cases(self):
         """Test binary search edge cases."""
@@ -167,25 +167,25 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "binary_search_edge_cases.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Test exact matches
-        assert universe.get_constituents("2020-01-01") == ["A"]
-        assert universe.get_constituents("2020-03-01") == ["C"]
-        assert universe.get_constituents("2020-05-01") == ["E"]
+        assert universe.get_constituents("2020-01-01") == {"A"}
+        assert universe.get_constituents("2020-03-01") == {"C"}
+        assert universe.get_constituents("2020-05-01") == {"E"}
         
         # Test between dates
-        assert universe.get_constituents("2020-01-15") == ["A"]
-        assert universe.get_constituents("2020-02-15") == ["B"]
-        assert universe.get_constituents("2020-04-15") == ["D"]
+        assert universe.get_constituents("2020-01-15") == {"A"}
+        assert universe.get_constituents("2020-02-15") == {"B"}
+        assert universe.get_constituents("2020-04-15") == {"D"}
         
         # Test after last date
-        assert universe.get_constituents("2020-06-01") == ["E"]
+        assert universe.get_constituents("2020-06-01") == {"E"}
     
     def test_nonexistent_file(self):
         """Test handling of nonexistent file."""
         with pytest.raises(FileNotFoundError):
-            Universe("nonexistent_file.csv")
+            CSVUniverse("nonexistent_file.csv")
     
     def test_invalid_date_format(self):
         """Test handling of invalid date format."""
@@ -197,9 +197,9 @@ class TestUniverse:
         
         self.test_files.append(file_path)
         
-        universe = Universe(file_path)
+        universe = CSVUniverse(file_path)
         # Should skip invalid dates and return empty
-        assert universe.get_constituents("2020-01-01") == []
+        assert universe.get_constituents("2020-01-01") == set()
     
     def test_whitespace_in_basket(self):
         """Test handling of whitespace in basket."""
@@ -209,10 +209,10 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "whitespace_in_basket.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Should strip whitespace
-        assert universe.get_constituents("2020-01-01") == ["AAPL", "GOOGL", "MSFT"]
+        assert universe.get_constituents("2020-01-01") == {"AAPL", "GOOGL", "MSFT"}
     
     def test_unicode_characters(self):
         """Test handling of unicode characters in tickers."""
@@ -222,9 +222,9 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "unicode_characters.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
-        assert universe.get_constituents("2020-01-01") == ["AAPL", "GOOGL", "BRK.B"]
+        assert universe.get_constituents("2020-01-01") == {"AAPL", "GOOGL", "BRK.B"}
     
     def test_comments_and_empty_lines(self):
         """Test handling of comments and empty lines."""
@@ -240,10 +240,10 @@ class TestUniverse:
         
         self.test_files.append(file_path)
         
-        universe = Universe(file_path)
+        universe = CSVUniverse(file_path)
         
-        assert universe.get_constituents("2020-01-01") == ["AAPL", "GOOGL"]
-        assert universe.get_constituents("2020-02-01") == ["MSFT", "AMZN"]
+        assert universe.get_constituents("2020-01-01") == {"AAPL", "GOOGL"}
+        assert universe.get_constituents("2020-02-01") == {"MSFT", "AMZN"}
     
     def test_all_tickers(self):
         """Test the all_tickers method."""
@@ -256,7 +256,7 @@ class TestUniverse:
         
         csv_path = self.create_test_csv(data, "all_tickers.csv")
         
-        universe = Universe(csv_path)
+        universe = CSVUniverse(csv_path)
         
         # Should return all unique tickers across all dates
         all_tickers = universe.all_tickers
@@ -271,7 +271,7 @@ class TestUniverse:
         
         csv_path_single = self.create_test_csv(data_single, "all_tickers_single.csv")
         
-        universe_single = Universe(csv_path_single)
+        universe_single = CSVUniverse(csv_path_single)
         
         all_tickers_single = universe_single.all_tickers
         expected_tickers_single = {"AAPL", "GOOGL", "MSFT"}
@@ -285,7 +285,24 @@ class TestUniverse:
         
         csv_path_empty = self.create_test_csv(data_empty, "all_tickers_empty.csv")
         
-        universe_empty = Universe(csv_path_empty)
+        universe_empty = CSVUniverse(csv_path_empty)
         
         all_tickers_empty = universe_empty.all_tickers
         assert all_tickers_empty == set()
+    
+    def test_static_universe(self):
+        """Test creating a static universe directly."""
+        constituents = {
+            date(2020, 1, 1): {"AAPL", "GOOGL"},
+            date(2020, 2, 1): {"AAPL", "GOOGL", "MSFT"},
+        }
+        
+        universe = Universe(constituents)
+        
+        # Test functionality
+        assert universe.get_constituents("2020-01-01") == {"AAPL", "GOOGL"}
+        assert universe.get_constituents("2020-02-01") == {"AAPL", "GOOGL", "MSFT"}
+        assert universe.get_constituents("2020-01-15") == {"AAPL", "GOOGL"}
+        
+        # Test all_tickers
+        assert universe.all_tickers == {"AAPL", "GOOGL", "MSFT"}

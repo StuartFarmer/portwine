@@ -94,7 +94,20 @@ class Backtester:
             # enable or disable logging based on simple flag
             self.logger.disabled = not log
 
-    def _split_tickers(self, tickers: List[str]) -> Tuple[List[str], List[str]]:
+    def _split_tickers(self, tickers: set) -> Tuple[List[str], List[str]]:
+        """
+        Split tickers into regular and alternative data tickers.
+        
+        Parameters
+        ----------
+        tickers : set
+            Set of ticker symbols
+            
+        Returns
+        -------
+        Tuple[List[str], List[str]]
+            Tuple of (regular_tickers, alternative_tickers)
+        """
         reg, alt = [], []
         for t in tickers:
             if isinstance(t, str) and ":" in t:
@@ -127,18 +140,22 @@ class Backtester:
     ) -> Optional[Dict[str, pd.DataFrame]]:
         # adjust logging level based on verbosity
         self.logger.setLevel(_logging.DEBUG if verbose else _logging.INFO)
+        
         self.logger.info(
             "Starting backtest: tickers=%s, start_date=%s, end_date=%s",
             strategy.tickers, start_date, end_date,
         )
+        
         # 1) normalize date filters
         sd = pd.Timestamp(start_date) if start_date is not None else None
         ed = pd.Timestamp(end_date)   if end_date   is not None else None
         if sd is not None and ed is not None and sd > ed:
             raise ValueError("start_date must be on or before end_date")
 
-        # 2) split tickers
-        reg_tkrs, alt_tkrs = self._split_tickers(strategy.tickers)
+        # 2) split tickers - use all possible tickers from universe
+        all_tickers = strategy.universe.all_tickers
+        reg_tkrs, alt_tkrs = self._split_tickers(all_tickers)
+            
         self.logger.debug(
             "Split tickers: %d regular, %d alternative", len(reg_tkrs), len(alt_tkrs)
         )
@@ -148,7 +165,7 @@ class Backtester:
         if bm_type == BenchmarkTypes.INVALID:
             raise InvalidBenchmarkError(f"{benchmark} is not a valid benchmark.")
 
-        # 4) load regular data
+        # 4) load regular data - load ALL possible tickers for universe filtering
         reg_data = self.market_data_loader.fetch_data(reg_tkrs)
         self.logger.debug(
             "Fetched market data for %d tickers", len(reg_data)
@@ -280,10 +297,15 @@ class Backtester:
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
 
         for ts in iterator:
+            # Get current universe tickers
+            current_universe_tickers = strategy.universe.get_constituents(ts)
+            
             if hasattr(self.market_data_loader, "next"):
-                bar = self.market_data_loader.next(reg_tkrs, ts)
+                bar = self.market_data_loader.next(current_universe_tickers, ts)
             else:
-                bar = self._bar_dict(ts, reg_data)
+                # Filter the data to only include current universe tickers
+                filtered_reg_data = {t: reg_data[t] for t in current_universe_tickers if t in reg_data}
+                bar = self._bar_dict(ts, filtered_reg_data)
 
             if self.alternative_data_loader:
                 alt_ld = self.alternative_data_loader
@@ -294,6 +316,16 @@ class Backtester:
                         bar[t] = self._bar_dict(ts, {t: df})[t]
 
             sig = strategy.step(ts, bar)
+            
+            # Validate that strategy only assigns weights to tickers in the current universe
+            current_universe_tickers = strategy.universe.get_constituents(ts)
+            invalid_tickers = [t for t in sig.keys() if t not in current_universe_tickers]
+            if invalid_tickers:
+                raise ValueError(
+                    f"Strategy assigned weights to tickers not in current universe at {ts}: {invalid_tickers}. "
+                    f"Current universe: {current_universe_tickers}"
+                )
+            
             row = {"date": ts}
             for t in strategy.tickers:
                 row[t] = sig.get(t, 0.0)

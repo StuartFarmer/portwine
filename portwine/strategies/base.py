@@ -1,3 +1,8 @@
+from typing import Union, List, Set
+from portwine.universe import Universe
+from datetime import date
+
+
 class StrategyBase:
     """
     Base class for a trading strategy. Subclass this to implement a custom strategy.
@@ -5,21 +10,49 @@ class StrategyBase:
     A 'step' method is called each day with that day's data. The method should return
     a dictionary of signals/weights for each ticker on that day.
 
-    A strategy may also declare a separate set of 'alternative_data_tickers'
-    it depends on (e.g., indices, macro data, etc.). The backtester can then fetch
-    that data for the strategy's use.
+    The strategy always uses a universe object internally. If you pass a list of tickers,
+    it creates a static universe with those tickers from 1970-01-01 onwards.
     """
 
-    def __init__(self, tickers):
+    def __init__(self, tickers: Union[List[str], Universe]):
         """
         Parameters
         ----------
-        tickers : list
-            List of primary ticker symbols that the strategy will manage.
-            Duplicates will be removed, preserving the original order.
+        tickers : Union[List[str], Universe]
+            Either a list of ticker symbols or a Universe object.
+            If a list is provided, it creates a static universe with those tickers.
         """
-        # remove duplicates but keep order
-        self.tickers = list(dict.fromkeys(tickers))
+        if isinstance(tickers, Universe):
+            self.universe = tickers
+            # Store all possible tickers for reference
+            self.tickers = self.universe.all_tickers
+        else:
+            # Convert list to static universe
+            self.universe = self._create_static_universe(tickers)
+            # Store original tickers as set
+            self.tickers = set(tickers)
+
+    def _create_static_universe(self, tickers: List[str]) -> Universe:
+        """
+        Create a static universe from a list of tickers.
+        
+        Parameters
+        ----------
+        tickers : List[str]
+            List of ticker symbols
+            
+        Returns
+        -------
+        Universe
+            Static universe with tickers from 1970-01-01 onwards
+        """
+        # Remove duplicates and convert to set
+        unique_tickers = set(tickers)
+        
+        # Create static universe mapping
+        constituents = {date(1970, 1, 1): unique_tickers}
+        
+        return Universe(constituents)
 
     def step(self, current_date, daily_data):
         """
@@ -35,9 +68,8 @@ class StrategyBase:
             }
             or None if no data for that ticker on this date.
 
-            daily_data[ticker] can also return any arbitrary dictionary or value as well.
-
-            This is good for macroeconomic indices, alternative data, etc.
+            The backtester ensures that daily_data only contains tickers
+            that are currently in the universe.
 
         Returns
         -------
@@ -45,8 +77,8 @@ class StrategyBase:
             { ticker -> float weight }, where the weights are the fraction
             of capital allocated to each ticker (long/short).
         """
-        # Default: equally weight among all *primary* tickers that have data
-        valid_tickers = [t for t in self.tickers if daily_data.get(t) is not None]
+        # Default: equally weight among all tickers that have data
+        valid_tickers = [t for t in daily_data.keys() if daily_data.get(t) is not None]
         n = len(valid_tickers)
         weight = 1.0 / n if n > 0 else 0.0
         signals = {tkr: weight for tkr in valid_tickers}
