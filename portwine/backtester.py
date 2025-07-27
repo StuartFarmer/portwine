@@ -142,17 +142,18 @@ class Backtester:
                 'dates': df.index.values
             }
             
-            # Create fast lookup for each timestamp
+            # Create fast lookup for each timestamp using numpy arrays (no pandas indexing)
             data_cache[ticker] = {}
             for ts in all_ts:
                 if ts in date_to_idx:
                     idx = date_to_idx[ts]
+                    # Use numpy arrays directly instead of pandas .iloc[]
                     data_cache[ticker][ts] = {
-                        'open': float(df['open'].iloc[idx]),
-                        'high': float(df['high'].iloc[idx]),
-                        'low': float(df['low'].iloc[idx]),
-                        'close': float(df['close'].iloc[idx]),
-                        'volume': float(df['volume'].iloc[idx]),
+                        'open': float(price_cache[ticker]['open'][idx]),
+                        'high': float(price_cache[ticker]['high'][idx]),
+                        'low': float(price_cache[ticker]['low'][idx]),
+                        'close': float(price_cache[ticker]['close'][idx]),
+                        'volume': float(price_cache[ticker]['volume'][idx]),
                     }
                 else:
                     data_cache[ticker][ts] = None
@@ -321,7 +322,7 @@ class Backtester:
         n_dates = len(all_ts)
         tickers_list = list(strategy.tickers)
         n_tickers = len(tickers_list)
-        signals_array = np.zeros((n_dates, n_tickers), dtype=np.float32)
+        signals_array = np.zeros((n_dates, n_tickers), dtype=np.float64)
         dates_array = np.empty(n_dates, dtype=object)
         
         # OPTIMIZATION: Cache universe lookups to avoid repeated calls
@@ -370,35 +371,91 @@ class Backtester:
             for j, ticker in enumerate(tickers_list):
                 signals_array[i, j] = sig.get(ticker, 0.0)
 
-        # 9) construct signals_df using pre-allocated arrays
-        # OPTIMIZATION: Create DataFrame directly from numpy arrays
-        sig_df = pd.DataFrame(
-            signals_array, 
-            index=pd.DatetimeIndex(dates_array), 
-            columns=list(strategy.tickers)
-        )
-        sig_df.index.name = None
-        sig_reg = ((sig_df.shift(1).ffill() if shift_signals else sig_df)
-                   .fillna(0.0)[reg_tkrs])
-
-        # 10) OPTIMIZATION: Use pre-computed price data for returns calculation
-        self.logger.debug("Computing returns using optimized price data...")
+        # 9) OPTIMIZATION: Pure numpy signal processing (replaces pandas operations)
+        # Apply signal shifting using numpy operations
+        if shift_signals:
+            shifted_signals = np.zeros_like(signals_array)
+            if signals_array.shape[0] > 1:
+                shifted_signals[1:] = signals_array[:-1]  # Shift down by 1
+            signals_processed = shifted_signals
+        else:
+            signals_processed = signals_array
         
-        # Create price DataFrame using pre-computed data
-        price_data = {}
-        for ticker in reg_tkrs:
+        # Forward fill using numpy (replace .ffill()) - only for NaN values, not zeros
+        # Note: 0.0 is a valid signal value meaning "no allocation", so we don't forward fill zeros
+        # In our numpy array, we initialized with zeros, so no NaN handling needed here
+        # The original pandas .ffill() would only forward fill NaN values
+        # Since we pre-allocated with zeros and strategy.step() returns valid values,
+        # no forward fill is needed for this step-based backtester
+        
+        # Select only reg_tkrs columns (replace pandas column selection)
+        tickers_list = list(strategy.tickers)
+        reg_ticker_indices = [i for i, ticker in enumerate(tickers_list) if ticker in reg_tkrs]
+        sig_reg_array = signals_processed[:, reg_ticker_indices]
+        
+        # Create minimal DataFrame only for API compatibility at the end
+        sig_reg = pd.DataFrame(
+            sig_reg_array,
+            index=pd.DatetimeIndex(dates_array),
+            columns=[tickers_list[i] for i in reg_ticker_indices]
+        )
+
+        # 10) OPTIMIZATION: Pure numpy price processing and returns calculation
+        self.logger.debug("Computing returns using pure numpy operations...")
+        
+        # Build price matrix using numpy operations
+        n_dates = len(dates_array)
+        n_reg_tickers = len(reg_tkrs)
+        price_matrix = np.full((n_dates, n_reg_tickers), np.nan, dtype=np.float64)
+        
+        # Create date lookup for alignment
+        date_to_idx = {date: i for i, date in enumerate(dates_array)}
+        
+        # Fill price matrix for each ticker
+        for ticker_idx, ticker in enumerate(reg_tkrs):
             if ticker in price_cache:
-                # Align price data with signal dates
                 ticker_dates = price_cache[ticker]['dates']
                 ticker_prices = price_cache[ticker]['close']
                 
-                # Create Series with proper index
-                price_series = pd.Series(ticker_prices, index=ticker_dates)
-                price_data[ticker] = price_series.reindex(sig_reg.index).ffill()
+                # Align prices with our date array
+                for date_idx, date in enumerate(ticker_dates):
+                    if date in date_to_idx:
+                        price_matrix[date_to_idx[date], ticker_idx] = ticker_prices[date_idx]
         
-        px = pd.DataFrame(price_data)
-        ret_df = px.pct_change(fill_method=None).fillna(0.0)
-        strat_ret = (ret_df * sig_reg).sum(axis=1)
+        # Forward fill missing prices using numpy
+        for col in range(n_reg_tickers):
+            mask = np.isnan(price_matrix[:, col])
+            valid_indices = np.where(~mask)[0]
+            if len(valid_indices) > 0:
+                # Forward fill from first valid value
+                for i in range(valid_indices[0] + 1, n_dates):
+                    if mask[i]:
+                        # Find last valid value
+                        last_valid_idx = i - 1
+                        while last_valid_idx >= 0 and mask[last_valid_idx]:
+                            last_valid_idx -= 1
+                        if last_valid_idx >= 0:
+                            price_matrix[i, col] = price_matrix[last_valid_idx, col]
+        
+        # Calculate returns using numpy (replaces pct_change)
+        returns_matrix = np.zeros_like(price_matrix)
+        returns_matrix[1:] = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
+        # Replace NaN/inf with 0.0
+        returns_matrix = np.nan_to_num(returns_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Calculate strategy returns using numpy (replaces pandas matrix multiplication)
+        strat_ret_array = np.sum(returns_matrix * sig_reg_array, axis=1)
+        
+        # Create minimal pandas objects for API compatibility
+        ret_df = pd.DataFrame(
+            returns_matrix,
+            index=pd.DatetimeIndex(dates_array),
+            columns=reg_tkrs
+        )
+        strat_ret = pd.Series(
+            strat_ret_array,
+            index=pd.DatetimeIndex(dates_array)
+        )
 
         # 11) benchmark returns
         if bm_type == BenchmarkTypes.CUSTOM_METHOD:
@@ -411,9 +468,15 @@ class Backtester:
 
         # 12) dynamic alternative data update
         if self.alternative_data_loader and hasattr(self.alternative_data_loader, "update"):
-            for ts in sig_reg.index:
-                raw_sigs = sig_df.loc[ts, list(strategy.tickers)].to_dict()
+            for i, ts in enumerate(sig_reg.index):
+                # Create raw_sigs dict directly from numpy array
+                raw_sigs = {ticker: float(signals_processed[i, j]) 
+                           for j, ticker in enumerate(tickers_list)}
+                
+                # Create raw_rets dict directly from numpy array (ret_df still pandas for now)
                 raw_rets = ret_df.loc[ts].to_dict()
+                
+                # Get strategy return as float (strat_ret still pandas for now)
                 self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 
         # log completion
