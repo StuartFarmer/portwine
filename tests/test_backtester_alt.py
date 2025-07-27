@@ -18,7 +18,15 @@ class MockMarketDataLoader(MarketDataLoader):
 
     def fetch_data(self, tickers):
         """Fetch data for multiple tickers"""
-        return {t: self.mock_data[t] for t in tickers if t in self.mock_data}
+        fetched = {}
+        for t in tickers:
+            if t not in self._data_cache and t in self.mock_data:
+                self._data_cache[t] = self.mock_data[t]
+                # OPTIMIZATION: Create numpy caches for fast access
+                self._create_numpy_cache(t, self.mock_data[t])
+            if t in self._data_cache:
+                fetched[t] = self._data_cache[t]
+        return fetched
 
 class MockAlternativeDataLoader:
     """Mock alternative data loader for testing"""

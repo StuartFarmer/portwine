@@ -335,9 +335,13 @@ class TestBacktesterIntegration(unittest.TestCase):
             def fetch_data(self, tickers):
                 result = {}
                 for t in tickers:
-                    df = self.data.get(t)
-                    if df is not None:
-                        result[t] = df.copy()
+                    if t not in self._data_cache and t in self.data:
+                        df = self.data[t].copy()
+                        self._data_cache[t] = df
+                        # OPTIMIZATION: Create numpy caches for fast access
+                        self._create_numpy_cache(t, df)
+                    if t in self._data_cache:
+                        result[t] = self._data_cache[t]
                 return result
 
         # 2) Instantiate loaders and backtester

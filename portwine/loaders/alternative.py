@@ -77,6 +77,7 @@ class AlternativeMarketDataLoader(MarketDataLoader):
         """
         Ensures we have data loaded for each ticker in 'tickers'.
         Routes each ticker to the appropriate specialized data loader.
+        OPTIMIZATION: Creates numpy caches for fast access.
 
         Parameters
         ----------
@@ -91,11 +92,15 @@ class AlternativeMarketDataLoader(MarketDataLoader):
         fetched_data = {}
 
         for ticker in tickers:
-            data = self.load_ticker(ticker)
-
-            # Add to the returned dictionary if load was successful
-            if data is not None:
-                fetched_data[ticker] = data
+            if ticker not in self._data_cache:
+                data = self.load_ticker(ticker)
+                # OPTIMIZATION: Create numpy caches for fast access
+                if data is not None:
+                    self._create_numpy_cache(ticker, data)
+            
+            # Add to the returned dictionary if we have cached data
+            if ticker in self._data_cache:
+                fetched_data[ticker] = self._data_cache[ticker]
 
         return fetched_data
 

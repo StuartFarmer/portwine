@@ -347,13 +347,16 @@ class Backtester:
                 filtered_data_cache = {t: data_cache[t] for t in current_universe_tickers if t in data_cache}
                 bar = self._fast_bar_dict(ts, filtered_data_cache)
 
+
             if self.alternative_data_loader:
                 alt_ld = self.alternative_data_loader
                 if hasattr(alt_ld, "next"):
                     bar.update(alt_ld.next(alt_tkrs, ts))
                 else:
-                    for t, df in alt_ld.fetch_data(alt_tkrs).items():
-                        bar[t] = self._bar_dict(ts, {t: df})[t]
+                    alt_data = alt_ld.fetch_data(alt_tkrs)
+                    for t, df in alt_data.items():
+                        bar_result = self._bar_dict(ts, {t: df})[t]
+                        bar[t] = bar_result
 
             sig = strategy.step(ts, bar)
             
@@ -463,8 +466,36 @@ class Backtester:
         elif bm_type == BenchmarkTypes.STANDARD_BENCHMARK:
             bm_ret = STANDARD_BENCHMARKS[benchmark](ret_df)
         else:  # TICKER
-            ser = bm_data[benchmark]["close"].reindex(sig_reg.index).ffill()
-            bm_ret = ser.pct_change(fill_method=None).fillna(0.0)
+            # OPTIMIZATION: Replace pandas operations with numpy for benchmark calculation
+            bm_df = bm_data[benchmark]
+            bm_prices = bm_df["close"].values
+            bm_dates = bm_df.index.values
+            
+            # Align benchmark data with strategy dates using numpy
+            strategy_dates = pd.DatetimeIndex(dates_array).values
+            aligned_prices = np.full(len(strategy_dates), np.nan)
+            
+            # Fast date alignment using searchsorted
+            for i, target_date in enumerate(strategy_dates):
+                pos = np.searchsorted(bm_dates, target_date, side="right") - 1
+                if pos >= 0:
+                    aligned_prices[i] = bm_prices[pos]
+            
+            # Forward fill using numpy (replace .ffill())
+            last_valid_price = np.nan
+            for i in range(len(aligned_prices)):
+                if not np.isnan(aligned_prices[i]):
+                    last_valid_price = aligned_prices[i]
+                elif not np.isnan(last_valid_price):
+                    aligned_prices[i] = last_valid_price
+            
+            # Calculate returns using numpy (replace .pct_change().fillna())
+            bm_ret_array = np.zeros(len(aligned_prices))
+            bm_ret_array[1:] = (aligned_prices[1:] - aligned_prices[:-1]) / aligned_prices[:-1]
+            bm_ret_array = np.nan_to_num(bm_ret_array, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Create minimal pandas series for API compatibility
+            bm_ret = pd.Series(bm_ret_array, index=pd.DatetimeIndex(dates_array))
 
         # 12) dynamic alternative data update
         if self.alternative_data_loader and hasattr(self.alternative_data_loader, "update"):
@@ -492,11 +523,23 @@ class Backtester:
 
     @staticmethod
     def _bar_dict(ts: pd.Timestamp, data: Dict[str, pd.DataFrame]) -> Dict[str, dict | None]:
-        """Original _bar_dict method for compatibility."""
+        """
+        OPTIMIZED: _bar_dict method with 'at or before' logic for compatibility.
+        Uses the same logic as the loader optimization but for direct DataFrame access.
+        """
         out: Dict[str, dict | None] = {}
         for t, df in data.items():
-            if ts in df.index:
-                row = df.loc[ts]
+            if df.empty:
+                out[t] = None
+                continue
+                
+            # Use 'at or before' logic like the optimized loader
+            idx = df.index
+            pos = idx.searchsorted(ts, side="right") - 1
+            if pos < 0:
+                out[t] = None
+            else:
+                row = df.iloc[pos]
                 out[t] = {
                     "open":   float(row["open"]),
                     "high":   float(row["high"]),
@@ -504,6 +547,4 @@ class Backtester:
                     "close":  float(row["close"]),
                     "volume": float(row["volume"]),
                 }
-            else:
-                out[t] = None
         return out 
