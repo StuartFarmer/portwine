@@ -22,20 +22,29 @@ class FakeLoader:
             }, index=self.dates)
         return dfs
 
+class TestStrategy(StrategyBase):
+    """Concrete strategy for testing."""
+    def step(self, current_date, daily_data):
+        # Equal weight strategy
+        valid_tickers = [t for t in daily_data.keys() if daily_data.get(t) is not None]
+        n = len(valid_tickers)
+        weight = 1.0 / n if n > 0 else 0.0
+        return {ticker: weight for ticker in valid_tickers}
+
 class TestStrategyBase(unittest.TestCase):
     def test_dedup_tickers(self):
         # duplicates should be removed, preserving order
-        s = StrategyBase(['A', 'B', 'A', 'C', 'B'])
-        self.assertEqual(s.tickers, ['A', 'B', 'C'])
+        s = TestStrategy(['A', 'B', 'A', 'C', 'B'])
+        self.assertEqual(s.tickers, {'A', 'B', 'C'})
 
 class TestBacktesterIntegration(unittest.TestCase):
     def test_backtest_runs_and_respects_dedup(self):
         loader = FakeLoader()
         bt = Backtester(loader)
         # Initialize strategy with duplicate tickers
-        s = StrategyBase(['X', 'X', 'Y'])
+        s = TestStrategy(['X', 'X', 'Y'])
         # After init, duplicates must be removed
-        self.assertEqual(s.tickers, ['X', 'Y'])
+        self.assertEqual(s.tickers, {'X', 'Y'})
         # Run backtest; should not error
         res = bt.run_backtest(s, verbose=False)
         # Should return a dict including 'strategy_returns'

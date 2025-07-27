@@ -460,7 +460,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         # Create strategies
         class OriginalStrategy(StrategyBase):
             def __init__(self, tickers):
-                self.tickers = tickers
+                super().__init__(tickers)
                 self.weights = {}
                 
             def step(self, current_date, daily_data):
@@ -469,7 +469,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         
         class MomentumStrategy(StrategyBase):
             def __init__(self, tickers, lookback=20):
-                self.tickers = tickers
+                super().__init__(tickers)
                 self.lookback = lookback
                 self.prices = {t: [] for t in tickers}
                 
@@ -662,7 +662,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         # Create original strategy for all tickers
         class LargeOriginalStrategy(StrategyBase):
             def __init__(self, tickers):
-                self.tickers = tickers
+                super().__init__(tickers)
                 
             def step(self, current_date, daily_data):
                 # Equal weight strategy

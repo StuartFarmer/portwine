@@ -355,7 +355,7 @@ class Backtester:
         # 11) dynamic alternative data update
         if self.alternative_data_loader and hasattr(self.alternative_data_loader, "update"):
             for ts in sig_reg.index:
-                raw_sigs = sig_df.loc[ts, strategy.tickers].to_dict()
+                raw_sigs = sig_df.loc[ts, list(strategy.tickers)].to_dict()
                 raw_rets = ret_df.loc[ts].to_dict()
                 self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 

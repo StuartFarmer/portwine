@@ -1,9 +1,9 @@
 from typing import Union, List, Set
 from portwine.universe import Universe
 from datetime import date
+import abc
 
-
-class StrategyBase:
+class StrategyBase(abc.ABC):
     """
     Base class for a trading strategy. Subclass this to implement a custom strategy.
 
@@ -77,16 +77,4 @@ class StrategyBase:
             { ticker -> float weight }, where the weights are the fraction
             of capital allocated to each ticker (long/short).
         """
-        # Default: equally weight among all tickers that have data
-        valid_tickers = [t for t in daily_data.keys() if daily_data.get(t) is not None]
-        n = len(valid_tickers)
-        weight = 1.0 / n if n > 0 else 0.0
-        signals = {tkr: weight for tkr in valid_tickers}
-        return signals
-
-    def rebalance_portfolio(self, current_positions, current_date):
-        """
-        Optional rebalancing logic can be overridden here.
-        By default, returns current_positions unmodified.
-        """
-        return current_positions
+        ...
