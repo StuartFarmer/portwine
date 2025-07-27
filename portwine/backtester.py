@@ -317,15 +317,26 @@ class Backtester:
         price_cache = access_cache['price_cache']
 
         # 8) main loop: signals (optimized)
-        sig_rows = []
+        # OPTIMIZATION: Pre-allocate arrays instead of building lists
+        n_dates = len(all_ts)
+        tickers_list = list(strategy.tickers)
+        n_tickers = len(tickers_list)
+        signals_array = np.zeros((n_dates, n_tickers), dtype=np.float32)
+        dates_array = np.empty(n_dates, dtype=object)
+        
+        # OPTIMIZATION: Cache universe lookups to avoid repeated calls
+        universe_cache = {}
+        
         self.logger.debug(
             "Processing %d backtest steps", len(all_ts)
         )
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
 
-        for ts in iterator:
-            # Get current universe tickers
-            current_universe_tickers = strategy.universe.get_constituents(ts)
+        for i, ts in enumerate(iterator):
+            # OPTIMIZATION: Cache universe lookups
+            if ts not in universe_cache:
+                universe_cache[ts] = strategy.universe.get_constituents(ts)
+            current_universe_tickers = universe_cache[ts]
             
             # OPTIMIZATION: Use pre-computed data access
             if hasattr(self.market_data_loader, "next"):
@@ -346,7 +357,7 @@ class Backtester:
             sig = strategy.step(ts, bar)
             
             # Validate that strategy only assigns weights to tickers in the current universe
-            current_universe_tickers = strategy.universe.get_constituents(ts)
+            # OPTIMIZATION: Reuse cached universe lookup
             invalid_tickers = [t for t in sig.keys() if t not in current_universe_tickers]
             if invalid_tickers:
                 raise ValueError(
@@ -354,13 +365,18 @@ class Backtester:
                     f"Current universe: {current_universe_tickers}"
                 )
             
-            row = {"date": ts}
-            for t in strategy.tickers:
-                row[t] = sig.get(t, 0.0)
-            sig_rows.append(row)
+            # OPTIMIZATION: Direct array assignment instead of building dictionaries
+            dates_array[i] = ts
+            for j, ticker in enumerate(tickers_list):
+                signals_array[i, j] = sig.get(ticker, 0.0)
 
-        # 9) construct signals_df
-        sig_df = pd.DataFrame(sig_rows).set_index("date").sort_index()
+        # 9) construct signals_df using pre-allocated arrays
+        # OPTIMIZATION: Create DataFrame directly from numpy arrays
+        sig_df = pd.DataFrame(
+            signals_array, 
+            index=pd.DatetimeIndex(dates_array), 
+            columns=list(strategy.tickers)
+        )
         sig_df.index.name = None
         sig_reg = ((sig_df.shift(1).ffill() if shift_signals else sig_df)
                    .fillna(0.0)[reg_tkrs])

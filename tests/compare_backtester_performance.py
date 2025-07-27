@@ -11,7 +11,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from portwine.backtester import Backtester
-from portwine.backtester_optimized import OptimizedBacktester
 from profile_step_backtester import MockMarketDataLoader, EqualWeightStrategy, SimpleMovingAverageStrategy
 import pandas as pd
 import numpy as np
@@ -50,63 +49,39 @@ def compare_backtester_performance(
     else:
         strategy = SimpleMovingAverageStrategy(data_loader.tickers, short_window=20, long_window=50)
     
-    # Test original backtester
-    print(f"\n--- Testing Original Backtester ---")
-    original_backtester = Backtester(market_data_loader=data_loader, logger=None, log=False)
-    
-    original_times = []
-    for i in range(num_runs):
-        start_time = time.time()
-        original_results = original_backtester.run_backtest(
-            strategy=strategy,
-            benchmark='equal_weight',
-            verbose=False
-        )
-        end_time = time.time()
-        run_time = end_time - start_time
-        original_times.append(run_time)
-        print(f"  Run {i+1}/{num_runs}: {run_time:.4f} seconds")
-    
-    # Test optimized backtester
+    # Test optimized backtester (now integrated into main Backtester)
     print(f"\n--- Testing Optimized Backtester ---")
-    optimized_backtester = OptimizedBacktester(market_data_loader=data_loader, logger=None, log=False)
+    backtester = Backtester(market_data_loader=data_loader, logger=None, log=False)
     
-    optimized_times = []
+    times = []
     for i in range(num_runs):
         start_time = time.time()
-        optimized_results = optimized_backtester.run_backtest(
+        results = backtester.run_backtest(
             strategy=strategy,
             benchmark='equal_weight',
             verbose=False
         )
         end_time = time.time()
         run_time = end_time - start_time
-        optimized_times.append(run_time)
+        times.append(run_time)
         print(f"  Run {i+1}/{num_runs}: {run_time:.4f} seconds")
     
     # Calculate statistics
-    original_avg = np.mean(original_times)
-    original_std = np.std(original_times)
-    optimized_avg = np.mean(optimized_times)
-    optimized_std = np.std(optimized_times)
-    
-    speedup = original_avg / optimized_avg
+    avg_time = np.mean(times)
+    std_time = np.std(times)
     
     # Print results
     print(f"\n=== Performance Results ===")
-    print(f"Original Backtester:")
-    print(f"  Average time: {original_avg:.4f} ± {original_std:.4f} seconds")
-    print(f"  Min time: {min(original_times):.4f} seconds")
-    print(f"  Max time: {max(original_times):.4f} seconds")
+    print(f"Optimized Backtester:")
+    print(f"  Average time: {avg_time:.4f} ± {std_time:.4f} seconds")
+    print(f"  Min time: {min(times):.4f} seconds")
+    print(f"  Max time: {max(times):.4f} seconds")
     
-    print(f"\nOptimized Backtester:")
-    print(f"  Average time: {optimized_avg:.4f} ± {optimized_std:.4f} seconds")
-    print(f"  Min time: {min(optimized_times):.4f} seconds")
-    print(f"  Max time: {max(optimized_times):.4f} seconds")
-    
-    print(f"\nPerformance Improvement:")
-    print(f"  Speedup: {speedup:.2f}x faster")
-    print(f"  Time saved: {original_avg - optimized_avg:.4f} seconds ({((original_avg - optimized_avg) / original_avg * 100):.1f}%)")
+    print(f"\nOptimizations Applied:")
+    print(f"  ✓ Pre-allocated numpy arrays instead of building lists")
+    print(f"  ✓ Cached universe lookups to avoid repeated calls")
+    print(f"  ✓ Pre-computed data access patterns")
+    print(f"  ✓ Direct array assignment instead of dictionary building")
     
     # Verify results are similar
     print(f"\n=== Result Verification ===")
@@ -140,11 +115,9 @@ def compare_backtester_performance(
         print(f"  ⚠ Could not verify results: {e}")
     
     return {
-        'original_times': original_times,
-        'optimized_times': optimized_times,
-        'speedup': speedup,
-        'original_results': original_results,
-        'optimized_results': optimized_results
+        'times': times,
+        'avg_time': avg_time,
+        'results': results
     }
 
 
