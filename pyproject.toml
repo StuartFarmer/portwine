@@ -23,6 +23,7 @@ rich = "^14.0.0"
 fastparquet = "^2024.2.0"
 freezegun = "^1.5.1"
 numba = "^0.61.2"
+httpx = "^0.28.1"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.6.1"
