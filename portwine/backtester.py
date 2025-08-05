@@ -318,6 +318,11 @@ class Backtester:
                         bar[t] = self._bar_dict(ts, {t: df})[t]
 
             sig = strategy.step(ts, bar)
+            # Check for over-allocation: total weights >1
+            total_weight = sum(sig.values())
+            # Allow for minor floating-point rounding errors
+            if total_weight > 1.0 + 1e-8:
+                raise ValueError(f"Total allocation {total_weight:.6f} exceeds 1.0 at {ts}")
             
             # Validate that strategy only assigns weights to tickers in the current universe
             current_universe_tickers = strategy.universe.get_constituents(ts)

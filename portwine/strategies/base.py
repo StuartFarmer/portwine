@@ -22,19 +22,19 @@ class StrategyBase(abc.ABC):
             Either a list of ticker symbols or a Universe object.
             If a list is provided, it creates a static universe with those tickers.
         """
+        # Initialize universe: if list, treat as static universe; if Universe, use directly
         if isinstance(tickers, Universe):
             self.universe = tickers
         else:
-            # Convert list to static universe
             self.universe = self._create_static_universe(tickers)
 
     @property
-    def tickers(self) -> Set[str]:
+    def tickers(self) -> List[str]:
         """
         The tickers that the strategy is currently using.
         """
-        # Return a deduplicated set of tickers (static or dynamic)
-        return set(self.universe.tickers)
+        # Always return a sorted list of current universe tickers
+        return self.universe.tickers
 
     def _create_static_universe(self, tickers: List[str]) -> Universe:
         """

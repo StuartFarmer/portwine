@@ -35,7 +35,9 @@ class TestStrategyBase(unittest.TestCase):
     def test_dedup_tickers(self):
         # duplicates should be removed, preserving order
         s = TestStrategy(['A', 'B', 'A', 'C', 'B'])
-        self.assertEqual(s.tickers, {'A', 'B', 'C'})
+        # Should return a list with unique tickers (order not guaranteed)
+        self.assertIsInstance(s.tickers, list)
+        self.assertCountEqual(s.tickers, ['A', 'B', 'C'])
 
 class TestBacktesterIntegration(unittest.TestCase):
     def test_backtest_runs_and_respects_dedup(self):
@@ -44,7 +46,8 @@ class TestBacktesterIntegration(unittest.TestCase):
         # Initialize strategy with duplicate tickers
         s = TestStrategy(['X', 'X', 'Y'])
         # After init, duplicates must be removed
-        self.assertEqual(s.tickers, {'X', 'Y'})
+        self.assertIsInstance(s.tickers, list)
+        self.assertCountEqual(s.tickers, ['X', 'Y'])
         # Run backtest; should not error
         res = bt.run_backtest(s, verbose=False)
         # Should return a dict including 'strategy_returns'

@@ -451,7 +451,6 @@ class TestBacktester(unittest.TestCase):
         strategy = SimpleTestStrategy(tickers=self.tickers)
 
         with self.assertRaises(InvalidBenchmarkError):
-        # Invalid benchmark type
             results = self.backtester.run_backtest(
                 strategy=strategy,
                 benchmark=123  # Not a string or callable
@@ -463,6 +462,18 @@ class TestBacktester(unittest.TestCase):
                 strategy=strategy,
                 benchmark='NONEXISTENT'
             )
+
+    def test_over_allocation_raises(self):
+        """Test that backtest errors when strategy returns weights summing to >1."""
+        class OverAllocateStrategy(StrategyBase):
+            def __init__(self, tickers):
+                super().__init__(tickers)
+            def step(self, current_date, daily_data):
+                # Allocate 0.6 to each ticker, sum >1 for multiple tickers
+                return {ticker: 0.6 for ticker in self.tickers}
+        strategy = OverAllocateStrategy(self.tickers)
+        with self.assertRaises(ValueError):
+            self.backtester.run_backtest(strategy=strategy)
 
 
 class TestRequireAllHistory(unittest.TestCase):

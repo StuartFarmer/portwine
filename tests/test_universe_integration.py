@@ -53,7 +53,10 @@ class TestUniverseIntegration:
         
         # Verify universe was created
         assert strategy.universe is not None
-        assert strategy.tickers == {"AAPL", "GOOGL", "MSFT"}
+        # Static universe should preserve deduplicated order as list
+        # Should return a list with all tickers (order not guaranteed)
+        assert isinstance(strategy.tickers, list)
+        assert set(strategy.tickers) == {"AAPL", "GOOGL", "MSFT"}
         
         # Verify static universe behavior
         assert strategy.universe.get_constituents("2024-01-01") == {"AAPL", "GOOGL", "MSFT"}
@@ -85,7 +88,8 @@ class TestUniverseIntegration:
         
         # Verify universe was used directly
         assert strategy.universe is universe
-        assert strategy.tickers == {"AAPL", "MSFT"}
+        # Dynamic universe may not preserve order; check set membership
+        assert set(strategy.tickers) == {"AAPL", "MSFT"}
         
         # Verify dynamic universe behavior
         assert strategy.universe.get_constituents("2024-01-15") == {"AAPL"}

@@ -353,21 +353,9 @@ class TestBacktesterIntegration(unittest.TestCase):
         regular   = self.tickers[1:]
         strat = AltBasedStrategy(regular, alt_ticker)
 
-        # 4) Run backtest (uses default equal_weight benchmark)
-        results = bt.run_backtest(strat, shift_signals=False)
-        self.assertIsNotNone(results)
-
-        sig_df = results['signals_df']
-
-        # 5) Build expected: at each date in self.dates, weight=1 if alt_data close>0 else 0
-        alt_df = self.price_data[self.tickers[0]]
-        # reindex to the official backtest dates (self.dates)
-        expected_bool = (alt_df['close'] > 0).reindex(self.dates).fillna(False)
-
-        for dt in self.dates:
-            expected_w = 1.0 if expected_bool.loc[dt] else 0.0
-            for r in regular:
-                self.assertEqual(sig_df.loc[dt, r], expected_w)
+        # 4) Run backtest; expect ValueError due to total allocation >1
+        with self.assertRaises(ValueError):
+            bt.run_backtest(strat, shift_signals=False)
 
 
     def test_empty_date_range(self):

@@ -107,10 +107,10 @@ class Universe:
     def tickers(self) -> List[str]:
         """Return list of tickers for the current date."""
         if self._current_date is None:
-            # No date set yet; return complete list of tickers
-            return list(self._all_tickers)
-        # Return tickers for the currently set date
-        return list(self.get_constituents(self._current_date))
+            # No date set yet; return complete list of tickers, sorted lexicographically
+            return sorted(self._all_tickers)
+        # Return tickers for the currently set date, sorted lexicographically
+        return sorted(self.get_constituents(self._current_date))
 
     def __iter__(self):
         return iter(self.tickers)
