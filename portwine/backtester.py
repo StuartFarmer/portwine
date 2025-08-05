@@ -143,7 +143,7 @@ class Backtester:
         
         self.logger.info(
             "Starting backtest: tickers=%s, start_date=%s, end_date=%s",
-            strategy.tickers, start_date, end_date,
+            strategy.universe.all_tickers, start_date, end_date,
         )
         
         # 1) normalize date filters
@@ -297,6 +297,8 @@ class Backtester:
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
 
         for ts in iterator:
+            # set universe to current timestamp for dynamic tickers
+            strategy.universe.set_datetime(ts)
             # Get current universe tickers
             current_universe_tickers = strategy.universe.get_constituents(ts)
             

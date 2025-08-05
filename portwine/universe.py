@@ -30,6 +30,8 @@ class Universe:
         
         # Pre-compute all tickers
         self._all_tickers = self._compute_all_tickers()
+        # Add attribute to track current date for dynamic tickers
+        self._current_date = None
     
     def get_constituents(self, dt) -> Set[str]:
         """
@@ -93,6 +95,28 @@ class Universe:
             Set of all ticker symbols
         """
         return self._all_tickers
+
+    def set_datetime(self, dt):
+        """Set the current datetime for dynamic constituents lookup."""
+        if hasattr(dt, 'date'):
+            self._current_date = dt.date()
+        else:
+            self._current_date = date.fromisoformat(str(dt).split()[0])
+
+    @property
+    def tickers(self) -> List[str]:
+        """Return list of tickers for the current date."""
+        if self._current_date is None:
+            # No date set yet; return complete list of tickers
+            return list(self._all_tickers)
+        # Return tickers for the currently set date
+        return list(self.get_constituents(self._current_date))
+
+    def __iter__(self):
+        return iter(self.tickers)
+
+    def __len__(self):
+        return len(self.tickers)
 
 
 class CSVUniverse(Universe):

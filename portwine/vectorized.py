@@ -109,9 +109,17 @@ class VectorizedStrategyBase(StrategyBase):
     Subclasses must implement batch() to return a float‐typed weights DataFrame.
     """
     def __init__(self, tickers):
-        self.tickers = tickers
+        # Store original tickers list for deterministic ordering
+        self._initial_tickers = tickers
+        # Initialize static universe via base class
+        super().__init__(tickers)
         self.prices_df = None
         self.weights_df = None
+    
+    @property
+    def tickers(self) -> List[str]:
+        """Return the original tickers list for this vectorized strategy."""
+        return self._initial_tickers
 
     def batch(self, prices_df):
         raise NotImplementedError("Subclasses must implement batch()")
@@ -295,14 +303,22 @@ class NumPyVectorizedStrategyBase(StrategyBase):
     def __init__(self, tickers: List[str]):
         """
         Initialize with the tickers this strategy uses.
-        
+    
         Parameters:
         -----------
         tickers : List[str]
             List of ticker symbols this strategy will use
         """
-        self.tickers = tickers
-        
+        # Store original tickers list for deterministic ordering
+        self._initial_tickers = tickers
+        # Delegate universe setup to base class
+        super().__init__(tickers)
+
+    @property
+    def tickers(self) -> List[str]:
+        """Override to return the original tickers list."""
+        return self._initial_tickers
+    
     def batch(self, price_matrix: np.ndarray, dates: List[pd.Timestamp], 
               column_indices: List[int]) -> np.ndarray:
         """

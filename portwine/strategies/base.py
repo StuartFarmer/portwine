@@ -24,13 +24,17 @@ class StrategyBase(abc.ABC):
         """
         if isinstance(tickers, Universe):
             self.universe = tickers
-            # Store all possible tickers for reference
-            self.tickers = self.universe.all_tickers
         else:
             # Convert list to static universe
             self.universe = self._create_static_universe(tickers)
-            # Store original tickers as set
-            self.tickers = set(tickers)
+
+    @property
+    def tickers(self) -> Set[str]:
+        """
+        The tickers that the strategy is currently using.
+        """
+        # Return a deduplicated set of tickers (static or dynamic)
+        return set(self.universe.tickers)
 
     def _create_static_universe(self, tickers: List[str]) -> Universe:
         """
