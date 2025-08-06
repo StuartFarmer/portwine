@@ -4,6 +4,19 @@ from datetime import datetime
 from portwine.strategies.base import StrategyBase
 from portwine.backtester import Backtester
 
+class MockDailyMarketCalendar:
+    """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
+    def __init__(self, calendar_name):
+        self.calendar_name = calendar_name
+        # For testing, we'll use all calendar days to match original behavior
+        
+    def schedule(self, start_date, end_date):
+        """Return all calendar days to match original data-driven behavior"""
+        days = pd.date_range(start_date, end_date, freq="D")
+        # Set market close to match the data timestamps (00:00:00)
+        closes = [pd.Timestamp(d.date()) for d in days]
+        return pd.DataFrame({"market_close": closes}, index=days)
+
 # Fake market data loader for integration testing
 class FakeLoader:
     def __init__(self):
@@ -42,7 +55,7 @@ class TestStrategyBase(unittest.TestCase):
 class TestBacktesterIntegration(unittest.TestCase):
     def test_backtest_runs_and_respects_dedup(self):
         loader = FakeLoader()
-        bt = Backtester(loader)
+        bt = Backtester(loader, calendar=MockDailyMarketCalendar("NYSE"))
         # Initialize strategy with duplicate tickers
         s = TestStrategy(['X', 'X', 'Y'])
         # After init, duplicates must be removed

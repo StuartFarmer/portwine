@@ -71,7 +71,7 @@ class Backtester:
         self,
         market_data_loader: MarketDataLoader,
         alternative_data_loader=None,
-        calendar: Optional[Union[str, DailyMarketCalendar]] = None,
+        calendar: Optional[Union[str, DailyMarketCalendar]] = 'NYSE',
         logger: Optional[_logging.Logger] = None,  # pre-configured logger or default
         log: bool = False,  # enable backtester logging if True
     ):

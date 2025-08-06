@@ -11,6 +11,19 @@ from portwine.loaders.broker import BrokerDataLoader
 from portwine.backtester import Backtester
 from portwine.strategies.base import StrategyBase
 
+class MockDailyMarketCalendar:
+    """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
+    def __init__(self, calendar_name):
+        self.calendar_name = calendar_name
+        # For testing, we'll use all calendar days to match original behavior
+        
+    def schedule(self, start_date, end_date):
+        """Return all calendar days to match original data-driven behavior"""
+        days = pd.date_range(start_date, end_date, freq="D")
+        # Set market close to match the data timestamps (00:00:00)
+        closes = [pd.Timestamp(d.date()) for d in days]
+        return pd.DataFrame({"market_close": closes}, index=days)
+
 
 class SimpleMarketLoader(MarketDataLoader):
     """Market loader that returns the same OHLCV DataFrame for any ticker."""
@@ -58,7 +71,8 @@ class TestBacktesterBrokerLoaderIntegration(unittest.TestCase):
         strat = BrokerIntegrationStrategy()
         bt = Backtester(
             market_data_loader=market_loader,
-            alternative_data_loader=broker_loader
+            alternative_data_loader=broker_loader,
+            calendar=MockDailyMarketCalendar("NYSE")
         )
 
         # Run backtest without shifting signals (direct mapping)

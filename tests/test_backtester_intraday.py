@@ -6,6 +6,8 @@ from portwine.backtester import Backtester
 from portwine.strategies.base import StrategyBase
 
 
+
+
 class OvernightIntradayStrategy(StrategyBase):
     """
     Goes long only on the 16:00 bar; flat at all other times.
@@ -84,7 +86,7 @@ class CustomIntradayLoader:
 class TestIntradayBacktester(unittest.TestCase):
     def setUp(self):
         self.loader = MockIntradayLoader()
-        self.bt = Backtester(self.loader)
+        self.bt = Backtester(self.loader, calendar=None)
 
     def test_overnight_intraday_signals_raw(self):
         strat = OvernightIntradayStrategy(['TEST'])
@@ -155,7 +157,7 @@ class TestIntradayBacktester(unittest.TestCase):
 
 class TestIntradayReturnCalculations(unittest.TestCase):
     def setUp(self):
-        self.bt = Backtester(CustomIntradayLoader())
+        self.bt = Backtester(CustomIntradayLoader(), calendar=None)
 
         # precompute the four percent returns:
         # first bar: 09:30 -> no prior bar -> pct_change = NaN -> filled to 0
