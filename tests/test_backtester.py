@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 
 # Import components to be tested
-from portwine.backtester import Backtester, InvalidBenchmarkError
+from portwine.backtester import Backtester
+from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 

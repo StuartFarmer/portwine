@@ -5,8 +5,9 @@ Vectorized strategy base class and updated backtester implementation.
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from portwine.backtester.benchmarks import STANDARD_BENCHMARKS
 from portwine.strategies import StrategyBase
-from portwine.backtester import Backtester, STANDARD_BENCHMARKS
+from portwine.backtester import Backtester
 from typing import Dict, List, Optional, Tuple, Set, Union
 import numba as nb
 

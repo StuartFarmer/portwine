@@ -2,70 +2,17 @@
 
 from __future__ import annotations
 
-import cvxpy as cp
-import numpy as np
 import pandas as pd
 from typing import Callable, Dict, List, Optional, Tuple, Union
 import logging as _logging
 from tqdm import tqdm
+from portwine.backtester.benchmarks import STANDARD_BENCHMARKS, BenchmarkTypes, InvalidBenchmarkError, get_benchmark_type
 from portwine.logging import Logger
 
 import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
 
-class InvalidBenchmarkError(Exception):
-    """Raised when the requested benchmark is neither a standard name nor a valid ticker."""
-    pass
 
-# ----------------------------------------------------------------------
-# Built‑in benchmark helpers
-# ----------------------------------------------------------------------
-def benchmark_equal_weight(ret_df: pd.DataFrame, *_, **__) -> pd.Series:
-    return ret_df.mean(axis=1)
-
-def benchmark_markowitz(
-    ret_df: pd.DataFrame,
-    lookback: int = 60,
-    shift_signals: bool = True,
-    verbose: bool = False,
-) -> pd.Series:
-    tickers = ret_df.columns
-    n = len(tickers)
-    iterator = tqdm(ret_df.index, desc="Markowitz") if verbose else ret_df.index
-    w_rows: List[np.ndarray] = []
-    for ts in iterator:
-        win = ret_df.loc[:ts].tail(lookback)
-        if len(win) < 2:
-            w = np.ones(n) / n
-        else:
-            cov = win.cov().values
-            w_var = cp.Variable(n, nonneg=True)
-            prob = cp.Problem(cp.Minimize(cp.quad_form(w_var, cov)), [cp.sum(w_var) == 1])
-            try:
-                prob.solve()
-                w = w_var.value if w_var.value is not None else np.ones(n) / n
-            except Exception:
-                w = np.ones(n) / n
-        w_rows.append(w)
-    w_df = pd.DataFrame(w_rows, index=ret_df.index, columns=tickers)
-    if shift_signals:
-        w_df = w_df.shift(1).ffill().fillna(1.0 / n)
-    return (w_df * ret_df).sum(axis=1)
-
-STANDARD_BENCHMARKS: Dict[str, Callable] = {
-    "equal_weight": benchmark_equal_weight,
-    "markowitz":    benchmark_markowitz,
-}
-
-class BenchmarkTypes:
-    STANDARD_BENCHMARK = 0
-    TICKER             = 1
-    CUSTOM_METHOD      = 2
-    INVALID            = 3
-
-# ------------------------------------------------------------------------------
-# Backtester
-# ------------------------------------------------------------------------------
 class Backtester:
     """
     A step‑driven back‑tester that supports intraday bars and,
@@ -116,17 +63,6 @@ class Backtester:
                 reg.append(t)
         return reg, alt
 
-    def get_benchmark_type(self, benchmark) -> int:
-        if isinstance(benchmark, str):
-            if benchmark in STANDARD_BENCHMARKS:
-                return BenchmarkTypes.STANDARD_BENCHMARK
-            if self.market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
-                return BenchmarkTypes.TICKER
-            return BenchmarkTypes.INVALID
-        if callable(benchmark):
-            return BenchmarkTypes.CUSTOM_METHOD
-        return BenchmarkTypes.INVALID
-
     def run_backtest(
         self,
         strategy,
@@ -161,7 +97,7 @@ class Backtester:
         )
 
         # 3) classify benchmark
-        bm_type = self.get_benchmark_type(benchmark)
+        bm_type = get_benchmark_type(benchmark, self.market_data_loader)
         if bm_type == BenchmarkTypes.INVALID:
             raise InvalidBenchmarkError(f"{benchmark} is not a valid benchmark.")
 

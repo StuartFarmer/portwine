@@ -201,7 +201,7 @@ class TestVectorizedBacktester(unittest.TestCase):
     
     def test_run_backtest_standard_benchmark(self):
         # Test with standard benchmark
-        from portwine.backtester import STANDARD_BENCHMARKS
+        from portwine.backtester.benchmarks import STANDARD_BENCHMARKS
         
         # Mock the STANDARD_BENCHMARKS
         original = STANDARD_BENCHMARKS.copy()

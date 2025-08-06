@@ -6,13 +6,14 @@ from typing import List, Dict, Tuple, Optional
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
+from portwine.backtester.benchmarks import STANDARD_BENCHMARKS
 from portwine.vectorized import (
     load_price_matrix,
     NumPyVectorizedStrategyBase,
     NumpyVectorizedBacktester,
     SubsetStrategy
 )
-from portwine.backtester import Backtester, STANDARD_BENCHMARKS
+from portwine.backtester import Backtester
 from portwine.strategies import StrategyBase
 
 class MockMarketDataLoader:
