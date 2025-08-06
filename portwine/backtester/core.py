@@ -13,6 +13,24 @@ import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
 
 
+class DailyMarketCalendar:
+    def __init__(self, calendar_name):
+        self.calendar = MarketCalendar.factory(calendar_name)
+
+    def get_datetime_index(self, start_date='2000-01-01', end_date=None):
+        # Fill the end date with today's date if needed
+        if end_date is None:
+            end_date = datetime.datetime.now().strftime('%Y-%m-%d')
+
+        schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+
+        dt_index = schedule['market_open'].index
+
+        dt_localized = dt_index.tz_localize("UTC")
+        dt_converted = dt_localized.tz_convert(None)
+
+        return dt_converted.to_numpy()
+
 class Backtester:
     """
     A step‑driven back‑tester that supports intraday bars and,
@@ -23,7 +41,7 @@ class Backtester:
         self,
         market_data_loader: MarketDataLoader,
         alternative_data_loader=None,
-        calendar: Optional[Union[str, mcal.ExchangeCalendar]] = None,
+        calendar: Optional[Union[str, DailyMarketCalendar]] = 'NYSE',
         logger: Optional[_logging.Logger] = None,  # pre-configured logger or default
         log: bool = False,  # enable backtester logging if True
     ):
