@@ -4,6 +4,7 @@ Integration tests for Universe class with Backtester and Strategy.
 
 import pytest
 import pandas as pd
+import numpy as np
 import os
 from datetime import date, datetime
 from portwine.universe import Universe, CSVUniverse
@@ -59,9 +60,9 @@ class TestUniverseIntegration:
         assert set(strategy.tickers) == {"AAPL", "GOOGL", "MSFT"}
         
         # Verify static universe behavior
-        assert strategy.universe.get_constituents("2024-01-01") == {"AAPL", "GOOGL", "MSFT"}
-        assert strategy.universe.get_constituents("1970-01-01") == {"AAPL", "GOOGL", "MSFT"}
-        assert strategy.universe.get_constituents("2030-01-01") == {"AAPL", "GOOGL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-01-01")) == {"AAPL", "GOOGL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("1970-01-01")) == {"AAPL", "GOOGL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2030-01-01")) == {"AAPL", "GOOGL", "MSFT"}
         
         # Verify all_tickers
         assert strategy.universe.all_tickers == {"AAPL", "GOOGL", "MSFT"}
@@ -92,9 +93,9 @@ class TestUniverseIntegration:
         assert set(strategy.tickers) == {"AAPL", "MSFT"}
         
         # Verify dynamic universe behavior
-        assert strategy.universe.get_constituents("2024-01-15") == {"AAPL"}
-        assert strategy.universe.get_constituents("2024-02-15") == {"AAPL", "MSFT"}
-        assert strategy.universe.get_constituents("2024-03-15") == {"MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-01-15")) == {"AAPL"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-02-15")) == {"AAPL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-03-15")) == {"MSFT"}
     
     def test_universe_strategy_integration(self):
         """Test that a strategy can use a universe object."""

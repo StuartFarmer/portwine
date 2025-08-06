@@ -292,9 +292,11 @@ class Backtester:
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
 
         for i, ts in enumerate(iterator):
+            # Convert pandas Timestamp to numpy datetime64
+            ts_np = np.datetime64(ts)
             # OPTIMIZATION: Cache universe lookups
             if ts not in universe_cache:
-                universe_cache[ts] = strategy.universe.get_constituents(ts)
+                universe_cache[ts] = strategy.universe.get_constituents(ts_np)
             current_universe_tickers = universe_cache[ts]
             
             # OPTIMIZATION: Use pre-computed data access

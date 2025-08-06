@@ -3,39 +3,11 @@ import pandas as pd
 import numpy as np
 
 # Import components to be tested
-from portwine.backtester.core import NewBacktester
+from portwine.backtester import Backtester
 from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
-from portwine.data.interface import RestrictedDataInterface
 
-
-class MockRestrictedDataInterface(RestrictedDataInterface):
-    """Mock restricted data interface for testing purposes"""
-
-    def __init__(self, mock_data=None):
-        self.mock_data = mock_data or {}
-        self.set_timestamp_calls = []
-        self.get_calls = []
-
-    def set_current_timestamp(self, dt):
-        """Set current timestamp"""
-        self.set_timestamp_calls.append(dt)
-
-    def set_restricted_tickers(self, tickers):
-        """Set restricted tickers"""
-        self.restricted_tickers = tickers
-
-    def __getitem__(self, ticker):
-        """Get data for a ticker"""
-        self.get_calls.append(ticker)
-        if ticker in self.mock_data:
-            return self.mock_data[ticker]
-        return None
-
-    def exists(self, ticker, start_date, end_date):
-        """Check if ticker exists"""
-        return ticker in self.mock_data
 
 class MockMarketDataLoader(MarketDataLoader):
     """Mock market data loader for testing purposes"""
@@ -133,14 +105,6 @@ class MockDailyMarketCalendar:
         # Set market close to match the data timestamps (00:00:00)
         closes = [pd.Timestamp(d.date()) for d in days]
         return pd.DataFrame({"market_close": closes}, index=days)
-    
-    def get_datetime_index(self, start_date, end_date):
-        """Return datetime index for the given date range"""
-        if start_date is None:
-            start_date = '2020-01-01'
-        if end_date is None:
-            end_date = '2020-01-10'
-        return pd.date_range(start_date, end_date, freq='D').to_numpy()
 
 
 class TestBacktester(unittest.TestCase):
@@ -193,56 +157,51 @@ class TestBacktester(unittest.TestCase):
             'volume': [2000000] * 10
         }, index=self.dates)
 
-        # Create mock data interface with sample data
-        self.data_interface = MockRestrictedDataInterface()
+        # Create mock loader with sample data
+        self.loader = MockMarketDataLoader()
         for ticker, data in self.price_data.items():
-            # Convert DataFrame to dict format expected by NewBacktester
-            self.data_interface.mock_data[ticker] = {
-                'close': data['close'].values,
-                'open': data['open'].values,
-                'high': data['high'].values,
-                'low': data['low'].values,
-                'volume': data['volume'].values
-            }
+            self.loader.set_data(ticker, data)
 
         # Create backktester with test calendar
         from portwine.backtester.core import DailyMarketCalendar
-        self.backtester = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        self.backtester = Backtester(self.loader, calendar=MockDailyMarketCalendar("NYSE"))
 
     def test_initialization(self):
         """Test backktester initialization"""
         self.assertIsNotNone(self.backtester)
-        self.assertEqual(self.backtester.data, self.data_interface)
+        self.assertEqual(self.backtester.market_data_loader, self.loader)
 
     def test_simple_backtest(self):
         """Test basic backtest with fixed allocation strategy"""
         # Create a strategy with equal allocation
         strategy = SimpleTestStrategy(tickers=self.tickers)
 
-        # Define a simple benchmark function
-        def equal_weight_benchmark(ret_df):
-            n_tickers = len(ret_df.columns)
-            weights = np.ones(n_tickers) / n_tickers
-            return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
-
-        # Run backtest
+        # Run backtest without lookahead protection
         results = self.backtester.run_backtest(
             strategy=strategy,
-            start_date='2020-01-01',
-            end_date='2020-01-10',
-            benchmark_func=equal_weight_benchmark
+            shift_signals=False,
         )
 
         # Assert results are non-empty
         self.assertIsNotNone(results)
 
         # Check that we have the expected keys in results
-        expected_keys = ['signals_df', 'tickers_returns', 'strategy_returns', 'benchmark_returns']
+        expected_keys = ['signals_df', 'tickers_returns', 'strategy_returns']
         for key in expected_keys:
             self.assertIn(key, results)
 
         # Check that results have correct dates
         self.assertEqual(len(results['signals_df']), len(self.dates))
+
+        # Fix: Compare index values, not the entire index object which includes metadata like name
+        pd.testing.assert_index_equal(
+            results['signals_df'].index,
+            self.dates,
+            check_names=False  # Ignore index names in comparison
+        )
+
+        # Verify first day return is 0 (as expected for first day without shift_signals)
+        self.assertEqual(results['strategy_returns'].iloc[0], 0.0)
 
         # Check that signals dataframe contains the correct tickers
         for ticker in self.tickers:

@@ -425,10 +425,12 @@ class Backtester:
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
 
         for ts in iterator:
+            # Convert pandas Timestamp to numpy datetime64
+            ts_np = np.datetime64(ts)
             # set universe to current timestamp for dynamic tickers
-            strategy.universe.set_datetime(ts)
+            strategy.universe.set_datetime(ts_np)
             # Get current universe tickers
-            current_universe_tickers = strategy.universe.get_constituents(ts)
+            current_universe_tickers = strategy.universe.get_constituents(ts_np)
             
             if hasattr(self.market_data_loader, "next"):
                 bar = self.market_data_loader.next(current_universe_tickers, ts)
@@ -453,7 +455,7 @@ class Backtester:
                 raise ValueError(f"Total allocation {total_weight:.6f} exceeds 1.0 at {ts}")
             
             # Validate that strategy only assigns weights to tickers in the current universe
-            current_universe_tickers = strategy.universe.get_constituents(ts)
+            current_universe_tickers = strategy.universe.get_constituents(ts_np)
             invalid_tickers = [t for t in sig.keys() if t not in current_universe_tickers]
             if invalid_tickers:
                 raise ValueError(
