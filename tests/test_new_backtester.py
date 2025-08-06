@@ -195,6 +195,14 @@ class TestNewBacktester(unittest.TestCase):
         
         # Create NewBacktester instance
         self.backtester = NewBacktester(self.mock_data_interface, self.mock_calendar)
+        
+        # Create a simple benchmark function for testing
+        def equal_weight_benchmark(ret_df):
+            n_tickers = len(ret_df.columns)
+            weights = np.ones(n_tickers) / n_tickers
+            return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
+        
+        self.benchmark_func = equal_weight_benchmark
     
     def test_initialization(self):
         """Test NewBacktester initialization"""
@@ -245,7 +253,8 @@ class TestNewBacktester(unittest.TestCase):
         result = self.backtester.run_backtest(
             self.mock_strategy, 
             start_date='2023-01-01', 
-            end_date='2023-01-05'
+            end_date='2023-01-05',
+            benchmark_func=self.benchmark_func
         )
         
         # Verify calendar was called correctly
@@ -258,11 +267,17 @@ class TestNewBacktester(unittest.TestCase):
         # Verify strategy step was called for each day
         self.assertEqual(len(self.mock_strategy.step_calls), 5)
         
-        # Verify the result is a tuple of DataFrames (signals and returns)
-        self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 2)
+        # Verify the result is a dictionary of DataFrames
+        self.assertIsInstance(result, dict)
+        self.assertIn('signals_df', result)
+        self.assertIn('tickers_returns', result)
+        self.assertIn('strategy_returns', result)
+        self.assertIn('benchmark_returns', result)
         
-        sig_df, ret_df = result
+        sig_df = result['signals_df']
+        ret_df = result['tickers_returns']
+        strategy_ret_df = result['strategy_returns']
+        benchmark_ret_df = result['benchmark_returns']
         
         # Verify signals DataFrame
         self.assertIsInstance(sig_df, pd.DataFrame)
@@ -278,6 +293,15 @@ class TestNewBacktester(unittest.TestCase):
         self.assertEqual(list(ret_df.columns), ['AAPL', 'GOOGL'])
         # First day returns should be 0 (no previous day to calculate from)
         self.assertTrue(all(ret_df.iloc[0] == 0.0))
+        
+        # Verify strategy returns DataFrame
+        self.assertIsInstance(strategy_ret_df, pd.DataFrame)
+        self.assertEqual(len(strategy_ret_df), 5)  # 5 days
+        self.assertEqual(list(strategy_ret_df.columns), ['strategy_returns'])
+        
+        # Verify benchmark returns DataFrame
+        self.assertIsInstance(benchmark_ret_df, pd.DataFrame)
+        self.assertEqual(len(benchmark_ret_df), 5)  # 5 days
     
     def test_run_backtest_without_dates(self):
         """Test backtest execution without specifying dates"""
@@ -288,17 +312,23 @@ class TestNewBacktester(unittest.TestCase):
         }
         
         # Run backtest without dates
-        result = self.backtester.run_backtest(self.mock_strategy)
+        result = self.backtester.run_backtest(self.mock_strategy, benchmark_func=self.benchmark_func)
         
         # Verify calendar was called with None dates
         self.assertEqual(len(self.mock_calendar.get_datetime_index_calls), 1)
         self.assertEqual(self.mock_calendar.get_datetime_index_calls[0], (None, None))
         
-        # Verify result is a tuple of DataFrames (signals and returns)
-        self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 2)
+        # Verify result is a dictionary of DataFrames
+        self.assertIsInstance(result, dict)
+        self.assertIn('signals_df', result)
+        self.assertIn('tickers_returns', result)
+        self.assertIn('strategy_returns', result)
+        self.assertIn('benchmark_returns', result)
         
-        sig_df, ret_df = result
+        sig_df = result['signals_df']
+        ret_df = result['tickers_returns']
+        strategy_ret_df = result['strategy_returns']
+        benchmark_ret_df = result['benchmark_returns']
         
         # Verify signals DataFrame
         self.assertIsInstance(sig_df, pd.DataFrame)
@@ -314,6 +344,15 @@ class TestNewBacktester(unittest.TestCase):
         self.assertEqual(list(ret_df.columns), ['AAPL', 'GOOGL'])
         # First day returns should be 0 (no previous day to calculate from)
         self.assertTrue(all(ret_df.iloc[0] == 0.0))
+        
+        # Verify strategy returns DataFrame
+        self.assertIsInstance(strategy_ret_df, pd.DataFrame)
+        self.assertEqual(len(strategy_ret_df), 365)  # Full year
+        self.assertEqual(list(strategy_ret_df.columns), ['strategy_returns'])
+        
+        # Verify benchmark returns DataFrame
+        self.assertIsInstance(benchmark_ret_df, pd.DataFrame)
+        self.assertEqual(len(benchmark_ret_df), 365)  # Full year
     
     def test_run_backtest_data_validation_failure(self):
         """Test backtest execution when data validation fails"""
@@ -349,11 +388,12 @@ class TestNewBacktester(unittest.TestCase):
             'GOOGL': True
         }
         
-        # Run backtest
+                # Run backtest
         self.backtester.run_backtest(
-            strategy, 
-            start_date='2023-01-01', 
-            end_date='2023-01-03'
+            strategy,
+            start_date='2023-01-01',
+            end_date='2023-01-03',
+            benchmark_func=self.benchmark_func
         )
         
         # Verify universe methods were called
@@ -419,17 +459,24 @@ class TestNewBacktester(unittest.TestCase):
         result = self.backtester.run_backtest(
             dynamic_strategy, 
             start_date='2023-01-01', 
-            end_date='2023-01-03'
+            end_date='2023-01-03',
+            benchmark_func=self.benchmark_func
         )
         
         # Verify strategy was called 3 times
         self.assertEqual(len(dynamic_strategy.step_calls), 3)
         
-        # Verify the result is a tuple of DataFrames (signals and returns)
-        self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 2)
+        # Verify the result is a dictionary of DataFrames
+        self.assertIsInstance(result, dict)
+        self.assertIn('signals_df', result)
+        self.assertIn('tickers_returns', result)
+        self.assertIn('strategy_returns', result)
+        self.assertIn('benchmark_returns', result)
         
-        sig_df, ret_df = result
+        sig_df = result['signals_df']
+        ret_df = result['tickers_returns']
+        strategy_ret_df = result['strategy_returns']
+        benchmark_ret_df = result['benchmark_returns']
         
         # Verify signals DataFrame
         self.assertIsInstance(sig_df, pd.DataFrame)
@@ -449,6 +496,15 @@ class TestNewBacktester(unittest.TestCase):
         self.assertEqual(list(ret_df.columns), ['AAPL', 'GOOGL'])
         # First day returns should be 0 (no previous day to calculate from)
         self.assertTrue(all(ret_df.iloc[0] == 0.0))
+        
+        # Verify strategy returns DataFrame
+        self.assertIsInstance(strategy_ret_df, pd.DataFrame)
+        self.assertEqual(len(strategy_ret_df), 3)  # 3 days
+        self.assertEqual(list(strategy_ret_df.columns), ['strategy_returns'])
+        
+        # Verify benchmark returns DataFrame
+        self.assertIsInstance(benchmark_ret_df, pd.DataFrame)
+        self.assertEqual(len(benchmark_ret_df), 3)  # 3 days
     
     def test_run_backtest_with_mock_data(self):
         """Test backtest with actual mock data"""
@@ -479,7 +535,8 @@ class TestNewBacktester(unittest.TestCase):
         result = self.backtester.run_backtest(
             self.mock_strategy, 
             start_date='2023-01-01', 
-            end_date='2023-01-03'
+            end_date='2023-01-03',
+            benchmark_func=self.benchmark_func
         )
         
         # Verify data was retrieved correctly
@@ -488,11 +545,17 @@ class TestNewBacktester(unittest.TestCase):
         # 3 days * 2 tickers = 6 calls for strategy + additional for returns
         self.assertGreaterEqual(len(self.mock_data_interface.get_calls), 6)
         
-        # Verify the result is a tuple of DataFrames (signals and returns)
-        self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 2)
+        # Verify the result is a dictionary of DataFrames
+        self.assertIsInstance(result, dict)
+        self.assertIn('signals_df', result)
+        self.assertIn('tickers_returns', result)
+        self.assertIn('strategy_returns', result)
+        self.assertIn('benchmark_returns', result)
         
-        sig_df, ret_df = result
+        sig_df = result['signals_df']
+        ret_df = result['tickers_returns']
+        strategy_ret_df = result['strategy_returns']
+        benchmark_ret_df = result['benchmark_returns']
         
         # Verify signals DataFrame
         self.assertIsInstance(sig_df, pd.DataFrame)
@@ -508,6 +571,15 @@ class TestNewBacktester(unittest.TestCase):
         self.assertEqual(list(ret_df.columns), ['AAPL', 'GOOGL'])
         # First day returns should be 0 (no previous day to calculate from)
         self.assertTrue(all(ret_df.iloc[0] == 0.0))
+        
+        # Verify strategy returns DataFrame
+        self.assertIsInstance(strategy_ret_df, pd.DataFrame)
+        self.assertEqual(len(strategy_ret_df), 3)  # 3 days
+        self.assertEqual(list(strategy_ret_df.columns), ['strategy_returns'])
+        
+        # Verify benchmark returns DataFrame
+        self.assertIsInstance(benchmark_ret_df, pd.DataFrame)
+        self.assertEqual(len(benchmark_ret_df), 3)  # 3 days
     
     def test_run_backtest_restricted_data_access(self):
         """Test that backtest uses restricted data interface to prevent access to non-universe tickers"""
@@ -551,17 +623,24 @@ class TestNewBacktester(unittest.TestCase):
         result = self.backtester.run_backtest(
             malicious_strategy, 
             start_date='2023-01-01', 
-            end_date='2023-01-03'
+            end_date='2023-01-03',
+            benchmark_func=self.benchmark_func
         )
         
         # Verify strategy was called
         self.assertEqual(len(malicious_strategy.step_calls), 3)
         
-        # Verify the result is a tuple of DataFrames (signals and returns)
-        self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 2)
+        # Verify the result is a dictionary of DataFrames
+        self.assertIsInstance(result, dict)
+        self.assertIn('signals_df', result)
+        self.assertIn('tickers_returns', result)
+        self.assertIn('strategy_returns', result)
+        self.assertIn('benchmark_returns', result)
         
-        sig_df, ret_df = result
+        sig_df = result['signals_df']
+        ret_df = result['tickers_returns']
+        strategy_ret_df = result['strategy_returns']
+        benchmark_ret_df = result['benchmark_returns']
         
         # Verify signals DataFrame
         self.assertIsInstance(sig_df, pd.DataFrame)
@@ -607,14 +686,21 @@ class TestNewBacktester(unittest.TestCase):
         result = self.backtester.run_backtest(
             self.mock_strategy, 
             start_date='2023-01-01', 
-            end_date='2023-01-03'
+            end_date='2023-01-03',
+            benchmark_func=self.benchmark_func
         )
         
         # Verify result structure
-        self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result, dict)
+        self.assertIn('signals_df', result)
+        self.assertIn('tickers_returns', result)
+        self.assertIn('strategy_returns', result)
+        self.assertIn('benchmark_returns', result)
         
-        sig_df, ret_df = result
+        sig_df = result['signals_df']
+        ret_df = result['tickers_returns']
+        strategy_ret_df = result['strategy_returns']
+        benchmark_ret_df = result['benchmark_returns']
         
         # Verify returns DataFrame structure
         self.assertIsInstance(ret_df, pd.DataFrame)
@@ -651,10 +737,14 @@ class TestNewBacktester(unittest.TestCase):
         result2 = self.backtester.run_backtest(
             self.mock_strategy, 
             start_date='2023-01-01', 
-            end_date='2023-01-02'
+            end_date='2023-01-02',
+            benchmark_func=self.benchmark_func
         )
         
-        sig_df2, ret_df2 = result2
+        sig_df2 = result2['signals_df']
+        ret_df2 = result2['tickers_returns']
+        strategy_ret_df2 = result2['strategy_returns']
+        benchmark_ret_df2 = result2['benchmark_returns']
         
         # First day returns should be 0
         self.assertTrue(all(ret_df2.iloc[0] == 0.0))

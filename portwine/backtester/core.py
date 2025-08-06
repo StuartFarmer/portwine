@@ -25,7 +25,6 @@ from numba import jit
 
 class DailyMarketCalendar:
     def __init__(self, calendar_name):
-        from pandas_market_calendars import MarketCalendar
         self.calendar = MarketCalendar.factory(calendar_name)
 
     def schedule(self, start_date, end_date):
@@ -95,6 +94,7 @@ class BacktestResult:
         self.sig_array = np.zeros((len(datetime_index), len(all_tickers)), dtype=np.float64)
         self.ret_array = np.zeros((len(datetime_index), len(all_tickers)), dtype=np.float64)
         self.close_array = np.zeros((len(datetime_index), len(all_tickers)), dtype=np.float64)
+        self.strategy_returns = np.zeros(len(datetime_index), dtype=np.float64)
 
     def add_signals(self, i: int, sig: Dict[str, float]):
         """Add signals for a specific time step using vectorized operations."""
@@ -108,24 +108,54 @@ class BacktestResult:
             data_interface[ticker]['close'] if data_interface[ticker] is not None else 0.0 
             for ticker in self.all_tickers
         ])
+
+    @staticmethod
+    @jit(nopython=True, cache=True)
+    def _calculate_returns(close_array: np.ndarray, ret_array: np.ndarray):
+        """Numba-optimized returns calculation."""
+        n_days, n_tickers = close_array.shape
+        
+        for i in range(1, n_days):  # Skip first day (no previous data)
+            for j in range(n_tickers):
+                prev_close = close_array[i-1, j]
+                curr_close = close_array[i, j]
+                
+                if prev_close > 0:
+                    ret_array[i, j] = (curr_close - prev_close) / prev_close
+                else:
+                    ret_array[i, j] = 0.0
     
-    def calculate_returns(self):
-        """Calculate returns using Numba-optimized computation."""
-        if len(self.datetime_index) > 0:
-            NewBacktester.calculate_returns(self.close_array, self.ret_array)
+    @staticmethod
+    @jit(nopython=True, cache=True)
+    def _calculate_strategy_returns(signals: np.ndarray, returns: np.ndarray, strategy_returns: np.ndarray):
+        """Numba-optimized strategy returns calculation."""
+        n_days, n_tickers = signals.shape
+        
+        for i in range(n_days):
+            daily_return = 0.0
+            for j in range(n_tickers):
+                daily_return += signals[i, j] * returns[i, j]
+            strategy_returns[i] = daily_return
+    
+    def calculate_results(self):
+        self._calculate_returns(self.close_array, self.ret_array)
+        # Calculate strategy returns: sum(signals * returns) for each day
+        shifted_signals = np.roll(self.sig_array, 1, axis=0)
+        shifted_signals[0, :] = 0.0  # First day has no previous signals
+        self._calculate_strategy_returns(shifted_signals, self.ret_array, self.strategy_returns)
     
     def get_results(self):
         """Return the final DataFrames."""
-        if len(self.datetime_index) == 0:
-            return None
-            
         sig_df = pd.DataFrame(self.sig_array, index=self.datetime_index, columns=self.all_tickers)
         sig_df.index.name = None
         
         ret_df = pd.DataFrame(self.ret_array, index=self.datetime_index, columns=self.all_tickers)
         ret_df.index.name = None
         
-        return sig_df, ret_df
+        strategy_ret_df = pd.DataFrame(self.strategy_returns, index=self.datetime_index, columns=['strategy_returns'])
+        strategy_ret_df.index.name = None
+        
+        return sig_df, ret_df, strategy_ret_df
 
 
 class NewBacktester:
@@ -154,8 +184,11 @@ class NewBacktester:
                 f"Current universe: {current_universe_tickers}"
             )
 
-    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None):
+    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark_func=None):
         datetime_index = self.calendar.get_datetime_index(start_date, end_date)
+
+        if len(datetime_index) == 0:
+            return None
 
         self.validate_data(strategy.universe.all_tickers, start_date, end_date)
 
@@ -178,12 +211,21 @@ class NewBacktester:
             result.add_signals(i, sig)
             result.add_close_prices(i, self.data)
         
-        # Calculate returns using BacktestResult
-        result.calculate_returns()
+        # Calculate returns and strategy returns using BacktestResult
+        result.calculate_results()
+        
+        # Calculate benchmark returns if benchmark function is provided
+        sig_df, ret_df, strategy_ret_df = result.get_results()
+
+        benchmark_returns = benchmark_func(ret_df)
         
         # Return results from BacktestResult
-        return result.get_results()
-
+        return {
+            "signals_df":        sig_df,
+            "tickers_returns":   ret_df,
+            "strategy_returns":  strategy_ret_df,
+            "benchmark_returns": benchmark_returns
+        }
 
 class Backtester:
     """
