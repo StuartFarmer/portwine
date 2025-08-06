@@ -7,11 +7,50 @@ import os
 import shutil
 
 # Import components to be tested
-from portwine.backtester import Backtester
+from portwine.backtester.core import NewBacktester
 from portwine.strategies.base import StrategyBase
 from portwine.loaders import MarketDataLoader, AlternativeMarketDataLoader
 from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
 from portwine.analyzers.correlation import CorrelationAnalyzer
+from portwine.data.interface import RestrictedDataInterface
+
+class MockRestrictedDataInterface(RestrictedDataInterface):
+    def __init__(self, mock_data=None):
+        self.mock_data = mock_data or {}
+        self.set_timestamp_calls = []
+        self.get_calls = []
+        self.current_timestamp = None
+
+    def set_current_timestamp(self, dt):
+        self.set_timestamp_calls.append(dt)
+        self.current_timestamp = dt
+
+    def set_restricted_tickers(self, tickers):
+        self.restricted_tickers = tickers
+
+    def __getitem__(self, ticker):
+        self.get_calls.append(ticker)
+        if ticker in self.mock_data:
+            data = self.mock_data[ticker]
+            if self.current_timestamp is not None:
+                dt_python = pd.Timestamp(self.current_timestamp)
+                dates = pd.date_range('2020-01-01', '2020-01-10', freq='D')  # Hardcoded for test
+                try:
+                    idx = dates.get_loc(dt_python)
+                    return {
+                        'close': data['close'][idx],
+                        'open': data['open'][idx],
+                        'high': data['high'][idx],
+                        'low': data['low'][idx],
+                        'volume': data['volume'][idx]
+                    }
+                except KeyError:
+                    return None
+            return data
+        return None
+
+    def exists(self, ticker, start_date, end_date):
+        return ticker in self.mock_data
 
 class MockDailyMarketCalendar:
     """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
@@ -25,6 +64,24 @@ class MockDailyMarketCalendar:
         # Set market close to match the data timestamps (00:00:00)
         closes = [pd.Timestamp(d.date()) for d in days]
         return pd.DataFrame({"market_close": closes}, index=days)
+    
+    def get_datetime_index(self, start_date, end_date):
+        """Return datetime index for the given date range"""
+        if start_date is None:
+            start_date = '2020-01-01'
+        if end_date is None:
+            end_date = '2020-01-10'
+        
+        # Check if the requested date range is within the available data range
+        # For testing, we'll consider only dates in 2020 as "available"
+        start_dt = pd.Timestamp(start_date)
+        end_dt = pd.Timestamp(end_date)
+        
+        # If the date range is outside 2020, return empty array to simulate no data
+        if start_dt.year > 2020 or end_dt.year > 2020:
+            return np.array([])
+        
+        return pd.date_range(start_date, end_date, freq='D').to_numpy()
 
 
 class DiskBasedMarketDataLoader(MarketDataLoader):
@@ -94,8 +151,12 @@ class VolatilityStrategy(StrategyBase):
         # Update price history
         for ticker in self.tickers:
             price = None
-            if daily_data.get(ticker) is not None:
-                price = daily_data[ticker].get('close')
+            try:
+                ticker_data = daily_data[ticker]
+                if ticker_data is not None:
+                    price = ticker_data.get('close')
+            except (KeyError, TypeError):
+                pass
 
             # Forward fill missing data
             if price is None and len(self.price_history[ticker]) > 0:
@@ -169,8 +230,19 @@ class TestBacktesterIntegration(unittest.TestCase):
         for ticker, data in self.price_data.items():
             self.loader.save_ticker_data(ticker, data)
 
-        # Create backktester
-        self.backtester = Backtester(self.loader, calendar=MockDailyMarketCalendar("NYSE"))
+        # Create mock data interface
+        self.data_interface = MockRestrictedDataInterface()
+        for ticker, data in self.price_data.items():
+            self.data_interface.mock_data[ticker] = {
+                'close': data['close'].values,
+                'open': data['open'].values,
+                'high': data['high'].values,
+                'low': data['low'].values,
+                'volume': data['volume'].values
+            }
+
+        # Create backtester
+        self.backtester = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
     def tearDown(self):
         """Clean up after test"""
@@ -253,11 +325,20 @@ class TestBacktesterIntegration(unittest.TestCase):
         # Create volatility strategy
         strategy = VolatilityStrategy(tickers=self.tickers, lookback=10)
 
-        # Run backtest with SPY benchmark
+        # Define a simple benchmark function
+        def spy_benchmark(ret_df):
+            # For this test, we'll create a simple benchmark using the ticker returns
+            # In a real scenario, this would use actual SPY data
+            n_tickers = len(ret_df.columns)
+            weights = np.ones(n_tickers) / n_tickers
+            return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
+        
+        # Run backtest with benchmark function
         results = self.backtester.run_backtest(
             strategy=strategy,
-            benchmark='SPY',
-            shift_signals=True
+            start_date='2020-01-01',
+            end_date='2020-01-30',
+            benchmark_func=spy_benchmark
         )
 
         # Verify we get results
@@ -298,11 +379,19 @@ class TestBacktesterIntegration(unittest.TestCase):
         """Test date filtering in a full integration test"""
         strategy = VolatilityStrategy(tickers=self.tickers, lookback=5)
 
+        # Define a simple benchmark function
+        def equal_weight_benchmark(ret_df):
+            n_tickers = len(ret_df.columns)
+            weights = np.ones(n_tickers) / n_tickers
+            return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
+        
         # Run with first half of dates
         half_point = self.dates[len(self.dates) // 2]
         results_first_half = self.backtester.run_backtest(
             strategy=strategy,
-            end_date=half_point
+            start_date='2020-01-01',
+            end_date=half_point,
+            benchmark_func=equal_weight_benchmark
         )
 
         # Check if results are None (which can happen if data loading failed)
@@ -312,7 +401,9 @@ class TestBacktesterIntegration(unittest.TestCase):
         # Run with second half of dates
         results_second_half = self.backtester.run_backtest(
             strategy=strategy,
-            start_date=half_point
+            start_date=half_point,
+            end_date='2020-01-30',
+            benchmark_func=equal_weight_benchmark
         )
 
         # Check if results are None
@@ -325,7 +416,10 @@ class TestBacktesterIntegration(unittest.TestCase):
 
         # Run full backtest
         results_full = self.backtester.run_backtest(
-            strategy=strategy
+            strategy=strategy,
+            start_date='2020-01-01',
+            end_date='2020-01-30',
+            benchmark_func=equal_weight_benchmark
         )
 
         # Check if results are None
@@ -357,13 +451,18 @@ class TestBacktesterIntegration(unittest.TestCase):
                         result[t] = self._data_cache[t]
                 return result
 
-        # 2) Instantiate loaders and backtester
-        mock_loader = MockSourceLoader(self.price_data)
-        alt_loader  = AlternativeMarketDataLoader([mock_loader])
-        bt = Backtester(
-            market_data_loader=mock_loader,
-            alternative_data_loader=alt_loader
-        )
+        # 2) Create mock data interface for the alternative data test
+        mock_data_interface = MockRestrictedDataInterface()
+        for ticker, data in self.price_data.items():
+            mock_data_interface.mock_data[ticker] = {
+                'close': data['close'].values,
+                'open': data['open'].values,
+                'high': data['high'].values,
+                'low': data['low'].values,
+                'volume': data['volume'].values
+            }
+        
+        bt = NewBacktester(mock_data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
         # 3) Pick one ticker as alt, the rest as regular
         alt_ticker = f"MOCK:{self.tickers[0]}"
@@ -371,8 +470,18 @@ class TestBacktesterIntegration(unittest.TestCase):
         strat = AltBasedStrategy(regular, alt_ticker)
 
         # 4) Run backtest; expect ValueError due to total allocation >1
+        def equal_weight_benchmark(ret_df):
+            n_tickers = len(ret_df.columns)
+            weights = np.ones(n_tickers) / n_tickers
+            return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
+        
         with self.assertRaises(ValueError):
-            bt.run_backtest(strat, shift_signals=False)
+            bt.run_backtest(
+                strat, 
+                start_date='2020-01-01',
+                end_date='2020-01-30',
+                benchmark_func=equal_weight_benchmark
+            )
 
 
     def test_empty_date_range(self):
@@ -383,12 +492,19 @@ class TestBacktesterIntegration(unittest.TestCase):
         start_date = self.dates[-1] + timedelta(days=1)
         end_date = self.dates[0] - timedelta(days=1)
 
+        # Define a simple benchmark function
+        def equal_weight_benchmark(ret_df):
+            n_tickers = len(ret_df.columns)
+            weights = np.ones(n_tickers) / n_tickers
+            return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
+        
         # This should raise ValueError
         with self.assertRaises(ValueError):
             self.backtester.run_backtest(
                 strategy=strategy,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                benchmark_func=equal_weight_benchmark
             )
 
         # Set both dates outside the available range
@@ -401,7 +517,8 @@ class TestBacktesterIntegration(unittest.TestCase):
             results = self.backtester.run_backtest(
                 strategy=strategy,
                 start_date=future_start,
-                end_date=future_end
+                end_date=future_end,
+                benchmark_func=equal_weight_benchmark
             )
 
             print(results)

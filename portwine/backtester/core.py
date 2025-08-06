@@ -188,7 +188,11 @@ class NewBacktester:
         datetime_index = self.calendar.get_datetime_index(start_date, end_date)
 
         if len(datetime_index) == 0:
-            return None
+            raise ValueError("No trading days found in the specified date range")
+
+        # Validate that strategy has tickers
+        if not strategy.universe.all_tickers:
+            raise ValueError("Strategy has no tickers. Cannot run backtest with empty universe.")
 
         self.validate_data(strategy.universe.all_tickers, start_date, end_date)
 
@@ -203,7 +207,9 @@ class NewBacktester:
             self.data.set_current_timestamp(dt)
             self.data.set_restricted_tickers(current_universe_tickers)
 
-            sig = strategy.step(dt, self.data)
+            # Convert numpy.datetime64 to Python datetime for strategy compatibility
+            dt_datetime = pd.Timestamp(dt).to_pydatetime()
+            sig = strategy.step(dt_datetime, self.data)
             
             self.validate_signals(sig, dt, current_universe_tickers)
             
@@ -219,12 +225,16 @@ class NewBacktester:
 
         benchmark_returns = benchmark_func(ret_df)
         
+        # Convert DataFrames to Series for compatibility with analyzers
+        strategy_returns_series = strategy_ret_df.iloc[:, 0]  # Extract first column as Series
+        benchmark_returns_series = benchmark_returns.iloc[:, 0]  # Extract first column as Series
+        
         # Return results from BacktestResult
         return {
             "signals_df":        sig_df,
             "tickers_returns":   ret_df,
-            "strategy_returns":  strategy_ret_df,
-            "benchmark_returns": benchmark_returns
+            "strategy_returns":  strategy_returns_series,
+            "benchmark_returns": benchmark_returns_series
         }
 
 class Backtester:
