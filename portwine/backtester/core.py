@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Union
 import logging as _logging
 from tqdm import tqdm
@@ -17,6 +18,9 @@ import datetime
 
 from portwine.data.interface import DataInterface, RestrictedDataInterface
 from portwine.strategies.base import StrategyBase
+
+# Optional Numba import for JIT compilation
+from numba import jit
 
 
 class DailyMarketCalendar:
@@ -81,6 +85,48 @@ def _split_tickers(tickers: set) -> Tuple[List[str], List[str]]:
                 reg.append(t)
         return reg, alt
 
+class BacktestResult:
+    def __init__(self, datetime_index, all_tickers):
+        self.datetime_index = datetime_index
+        self.all_tickers = all_tickers
+        self.ticker_to_idx = {ticker: i for i, ticker in enumerate(all_tickers)}
+        
+        # Initialize numpy arrays for signals and returns with zeros
+        self.sig_array = np.zeros((len(datetime_index), len(all_tickers)), dtype=np.float64)
+        self.ret_array = np.zeros((len(datetime_index), len(all_tickers)), dtype=np.float64)
+        self.close_array = np.zeros((len(datetime_index), len(all_tickers)), dtype=np.float64)
+
+    def add_signals(self, i: int, sig: Dict[str, float]):
+        """Add signals for a specific time step using vectorized operations."""
+        # Vectorized signal assignment - map dictionary values to array positions
+        self.sig_array[i, :] = np.array([sig.get(ticker, 0.0) for ticker in self.all_tickers])
+    
+    def add_close_prices(self, i: int, data_interface):
+        """Add close prices for a specific time step using vectorized operations."""
+        # Vectorized close price collection - single numpy operation
+        self.close_array[i, :] = np.array([
+            data_interface[ticker]['close'] if data_interface[ticker] is not None else 0.0 
+            for ticker in self.all_tickers
+        ])
+    
+    def calculate_returns(self):
+        """Calculate returns using Numba-optimized computation."""
+        if len(self.datetime_index) > 0:
+            NewBacktester.calculate_returns(self.close_array, self.ret_array)
+    
+    def get_results(self):
+        """Return the final DataFrames."""
+        if len(self.datetime_index) == 0:
+            return None
+            
+        sig_df = pd.DataFrame(self.sig_array, index=self.datetime_index, columns=self.all_tickers)
+        sig_df.index.name = None
+        
+        ret_df = pd.DataFrame(self.ret_array, index=self.datetime_index, columns=self.all_tickers)
+        ret_df.index.name = None
+        
+        return sig_df, ret_df
+
 
 class NewBacktester:
     def __init__(self, data: RestrictedDataInterface, calendar: DailyMarketCalendar):
@@ -92,22 +138,51 @@ class NewBacktester:
             if not self.data.exists(ticker, start_date, end_date):
                 raise ValueError(f"Data for ticker {ticker} does not exist for the given date range.")
         return True
+    
+    def validate_signals(self, sig: Dict[str, float], dt: pd.Timestamp, current_universe_tickers: List[str]) -> bool:
+        # Check for over-allocation: total weights >1
+        total_weight = sum(sig.values())
+        # Allow for minor floating-point rounding errors
+        if total_weight > 1.0 + 1e-8:
+            raise ValueError(f"Total allocation {total_weight:.6f} exceeds 1.0 at {dt}")
+        
+        # Validate that strategy only assigns weights to tickers in the current universe
+        invalid_tickers = [t for t in sig.keys() if t not in current_universe_tickers]
+        if invalid_tickers:
+            raise ValueError(
+                f"Strategy assigned weights to tickers not in current universe at {dt}: {invalid_tickers}. "
+                f"Current universe: {current_universe_tickers}"
+            )
 
     def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None):
         datetime_index = self.calendar.get_datetime_index(start_date, end_date)
 
         self.validate_data(strategy.universe.all_tickers, start_date, end_date)
 
-        for dt in datetime_index:
+        # Initialize BacktestResult to handle data collection
+        all_tickers = sorted(strategy.universe.all_tickers)
+        result = BacktestResult(datetime_index, all_tickers)
+        
+        for i, dt in enumerate(datetime_index):
             strategy.universe.set_datetime(dt)
             current_universe_tickers = strategy.universe.get_constituents(dt)
-            
+
             self.data.set_current_timestamp(dt)
             self.data.set_restricted_tickers(current_universe_tickers)
 
             sig = strategy.step(dt, self.data)
-
-        return sig
+            
+            self.validate_signals(sig, dt, current_universe_tickers)
+            
+            # Use BacktestResult to handle signal and close price updates
+            result.add_signals(i, sig)
+            result.add_close_prices(i, self.data)
+        
+        # Calculate returns using BacktestResult
+        result.calculate_returns()
+        
+        # Return results from BacktestResult
+        return result.get_results()
 
 
 class Backtester:
