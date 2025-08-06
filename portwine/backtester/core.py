@@ -12,6 +12,9 @@ from portwine.logging import Logger
 import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
 
+from pandas_market_calendars import MarketCalendar
+import datetime
+
 import numpy as np
 
 class DailyMarketCalendar:
@@ -55,7 +58,7 @@ class Backtester:
         self.market_data_loader      = market_data_loader
         self.alternative_data_loader = alternative_data_loader
         if isinstance(calendar, str):
-            self.calendar = mcal.get_calendar(calendar)
+            self.calendar = DailyMarketCalendar(calendar)
         else:
             self.calendar = calendar
         
@@ -139,17 +142,6 @@ class Backtester:
         for ticker, ticker_cache in data_cache.items():
             out[ticker] = ticker_cache.get(ts)
         return out
-
-    def get_benchmark_type(self, benchmark) -> int:
-        if isinstance(benchmark, str):
-            if benchmark in STANDARD_BENCHMARKS:
-                return BenchmarkTypes.STANDARD_BENCHMARK
-            if self.market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
-                return BenchmarkTypes.TICKER
-            return BenchmarkTypes.INVALID
-        if callable(benchmark):
-            return BenchmarkTypes.CUSTOM_METHOD
-        return BenchmarkTypes.INVALID
 
     def run_backtest(
         self,
