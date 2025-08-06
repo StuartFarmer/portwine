@@ -15,6 +15,9 @@ from portwine.loaders.base import MarketDataLoader
 from pandas_market_calendars import MarketCalendar
 import datetime
 
+from portwine.data.interface import DataInterface, RestrictedDataInterface
+from portwine.strategies.base import StrategyBase
+
 
 class DailyMarketCalendar:
     def __init__(self, calendar_name):
@@ -24,9 +27,26 @@ class DailyMarketCalendar:
     def schedule(self, start_date, end_date):
         """Expose the schedule method from the underlying calendar"""
         return self.calendar.schedule(start_date=start_date, end_date=end_date)
+    
+    def validate_dates(self, start_date: str, end_date: Union[str, None]) -> bool:
+        assert isinstance(start_date, str), "Start date is required in string format YYYY-MM-DD."
 
-    def get_datetime_index(self, start_date='2000-01-01', end_date=None):
-        # Fill the end date with today's date if needed
+        # Cast to datetime objects
+        start_date_obj = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+
+        if end_date is None:
+            end_date_obj = datetime.datetime.now()
+        else:
+            end_date_obj = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+
+        assert end_date_obj > start_date_obj, "End date must be after start date."
+
+        return True
+    
+    def get_datetime_index(self, start_date: str, end_date: Union[str, None]=None):
+        self.validate_dates(start_date, end_date)
+
+        # Use today's date if end_date is None
         if end_date is None:
             end_date = datetime.datetime.now().strftime('%Y-%m-%d')
 
@@ -60,6 +80,35 @@ def _split_tickers(tickers: set) -> Tuple[List[str], List[str]]:
             else:
                 reg.append(t)
         return reg, alt
+
+
+class NewBacktester:
+    def __init__(self, data: RestrictedDataInterface, calendar: DailyMarketCalendar):
+        self.data = data
+        self.calendar = calendar
+
+    def validate_data(self, tickers: List[str], start_date: str, end_date: str) -> bool:
+        for ticker in tickers:
+            if not self.data.exists(ticker, start_date, end_date):
+                raise ValueError(f"Data for ticker {ticker} does not exist for the given date range.")
+        return True
+
+    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None):
+        datetime_index = self.calendar.get_datetime_index(start_date, end_date)
+
+        self.validate_data(strategy.universe.all_tickers, start_date, end_date)
+
+        for dt in datetime_index:
+            strategy.universe.set_datetime(dt)
+            current_universe_tickers = strategy.universe.get_constituents(dt)
+            
+            self.data.set_current_timestamp(dt)
+            self.data.set_restricted_tickers(current_universe_tickers)
+
+            sig = strategy.step(dt, self.data)
+
+        return sig
+
 
 class Backtester:
     """

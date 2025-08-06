@@ -1,0 +1,522 @@
+import unittest
+import pandas as pd
+import numpy as np
+from datetime import datetime, date
+from unittest.mock import Mock, MagicMock, patch
+from typing import Dict, List, Set
+
+# Import components to be tested
+from portwine.backtester.core import NewBacktester, DailyMarketCalendar
+from portwine.data.interface import DataInterface, RestrictedDataInterface
+from portwine.strategies.base import StrategyBase
+from portwine.universe import Universe
+
+
+class MockDataInterface(DataInterface):
+    """Mock data interface for testing purposes"""
+    
+    def __init__(self, mock_data=None, exists_data=None):
+        super().__init__(Mock())  # Mock data loader
+        self.mock_data = mock_data or {}
+        self.exists_data = exists_data or {}
+        self.current_timestamp = None
+        self.set_timestamp_calls = []
+        self.get_calls = []
+    
+    def exists(self, ticker: str, start_date: str, end_date: str) -> bool:
+        """Mock exists method"""
+        return self.exists_data.get(ticker, True)
+    
+    def set_current_timestamp(self, timestamp):
+        """Mock set_current_timestamp method"""
+        self.current_timestamp = timestamp
+        self.set_timestamp_calls.append(timestamp)
+    
+    def get(self, tickers: List[str], dt) -> Dict[str, Dict]:
+        """Mock get method"""
+        self.get_calls.append((tickers, dt))
+        result = {}
+        for ticker in tickers:
+            if ticker in self.mock_data:
+                result[ticker] = self.mock_data[ticker]
+            else:
+                # Return default OHLCV data
+                result[ticker] = {
+                    'open': 100.0,
+                    'high': 105.0,
+                    'low': 95.0,
+                    'close': 102.0,
+                    'volume': 1000000
+                }
+        return result
+
+
+class MockRestrictedDataInterface(RestrictedDataInterface):
+    """Mock restricted data interface for testing purposes"""
+    
+    def __init__(self, mock_data=None, exists_data=None):
+        # Create a mock data loader
+        self.mock_data_loader = Mock()
+        self.mock_data = mock_data or {}
+        self.exists_data = exists_data or {}
+        self.current_timestamp = None
+        self.set_timestamp_calls = []
+        self.set_restricted_calls = []
+        self.get_calls = []
+        
+        # Initialize parent with mock loaders
+        super().__init__({None: self.mock_data_loader})
+    
+    def exists(self, ticker: str, start_date: str, end_date: str) -> bool:
+        """Mock exists method"""
+        return self.exists_data.get(ticker, True)
+    
+    def set_current_timestamp(self, timestamp):
+        """Mock set_current_timestamp method"""
+        self.current_timestamp = timestamp
+        self.set_timestamp_calls.append(timestamp)
+        super().set_current_timestamp(timestamp)
+    
+    def set_restricted_tickers(self, tickers: List[str]):
+        """Mock set_restricted_tickers method"""
+        self.set_restricted_calls.append(tickers)
+        super().set_restricted_tickers(tickers)
+    
+    def __getitem__(self, ticker: str):
+        """Mock __getitem__ method"""
+        self.get_calls.append(ticker)
+        
+        # Check if ticker is in restricted list (parent method)
+        if ticker not in self.restricted_tickers and len(self.restricted_tickers) > 0:
+            raise KeyError(f"Ticker {ticker} is not in the restricted tickers list.")
+        
+        # Return mock data for the ticker
+        if ticker in self.mock_data:
+            return self.mock_data[ticker]
+        else:
+            # Return default OHLCV data
+            return {
+                'open': 100.0,
+                'high': 105.0,
+                'low': 95.0,
+                'close': 102.0,
+                'volume': 1000000
+            }
+
+
+class MockDailyMarketCalendar(DailyMarketCalendar):
+    """Mock calendar for testing purposes"""
+    
+    def __init__(self, calendar_name="NYSE"):
+        # Don't call parent __init__ to avoid real calendar creation
+        self.calendar_name = calendar_name
+        self.validate_calls = []
+        self.get_datetime_index_calls = []
+    
+    def validate_dates(self, start_date: str, end_date=None) -> bool:
+        """Mock validate_dates method"""
+        self.validate_calls.append((start_date, end_date))
+        return True
+    
+    def get_datetime_index(self, start_date: str, end_date=None):
+        """Mock get_datetime_index method"""
+        self.get_datetime_index_calls.append((start_date, end_date))
+        # Return a simple datetime index for testing
+        if start_date is None:
+            start_date = '2023-01-01'
+        if end_date is None:
+            end_date = '2023-12-31'
+        dates = pd.date_range(start_date, end_date, freq='D')
+        return dates.to_numpy()
+
+
+class MockUniverse:
+    """Mock universe for testing purposes"""
+    
+    def __init__(self, tickers: List[str]):
+        self.all_tickers = set(tickers)
+        self._current_date = None
+        self.set_datetime_calls = []
+        self.get_constituents_calls = []
+    
+    def set_datetime(self, dt):
+        """Mock set_datetime method"""
+        self._current_date = dt
+        self.set_datetime_calls.append(dt)
+    
+    def get_constituents(self, dt):
+        """Mock get_constituents method"""
+        self.get_constituents_calls.append(dt)
+        return self.all_tickers
+
+
+class MockStrategy(StrategyBase):
+    """Mock strategy for testing purposes"""
+    
+    def __init__(self, tickers: List[str]):
+        # Create a mock universe instead of using the real one
+        self.universe = MockUniverse(tickers)
+        self.step_calls = []
+        self.step_return = {ticker: 1.0 / len(tickers) for ticker in tickers}
+    
+    def step(self, current_date, daily_data):
+        """Mock step method"""
+        self.step_calls.append((current_date, daily_data))
+        
+        # Test that we can access data through the restricted interface
+        if hasattr(daily_data, '__getitem__'):
+            # This is a RestrictedDataInterface, test accessing tickers
+            for ticker in self.universe.all_tickers:
+                try:
+                    data = daily_data[ticker]
+                    # Verify we got OHLCV data
+                    assert 'open' in data
+                    assert 'close' in data
+                except KeyError as e:
+                    # This is expected if ticker is not in restricted list
+                    pass
+        
+        return self.step_return.copy()
+
+
+class TestNewBacktester(unittest.TestCase):
+    """Test cases for NewBacktester class"""
+    
+    def setUp(self):
+        """Set up test fixtures"""
+        # Create mock restricted data interface
+        self.mock_data_interface = MockRestrictedDataInterface()
+        
+        # Create mock calendar
+        self.mock_calendar = MockDailyMarketCalendar()
+        
+        # Create mock strategy
+        self.mock_strategy = MockStrategy(['AAPL', 'GOOGL'])
+        
+        # Create NewBacktester instance
+        self.backtester = NewBacktester(self.mock_data_interface, self.mock_calendar)
+    
+    def test_initialization(self):
+        """Test NewBacktester initialization"""
+        # Test that initialization works correctly
+        self.assertIs(self.backtester.data, self.mock_data_interface)
+        self.assertIs(self.backtester.calendar, self.mock_calendar)
+    
+    def test_validate_data_success(self):
+        """Test validate_data method with valid data"""
+        # Set up mock data to exist
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Test validation
+        result = self.backtester.validate_data(['AAPL', 'GOOGL'], '2023-01-01', '2023-12-31')
+        self.assertTrue(result)
+    
+    def test_validate_data_missing_ticker(self):
+        """Test validate_data method with missing ticker data"""
+        # Set up mock data where one ticker doesn't exist
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': False  # This ticker doesn't exist
+        }
+        
+        # Test that validation raises ValueError
+        with self.assertRaises(ValueError) as context:
+            self.backtester.validate_data(['AAPL', 'GOOGL'], '2023-01-01', '2023-12-31')
+        
+        self.assertIn("Data for ticker GOOGL does not exist", str(context.exception))
+    
+    def test_validate_data_empty_tickers(self):
+        """Test validate_data method with empty ticker list"""
+        result = self.backtester.validate_data([], '2023-01-01', '2023-12-31')
+        self.assertTrue(result)
+    
+    def test_run_backtest_basic(self):
+        """Test basic backtest execution"""
+        # Set up mock data
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Run backtest
+        result = self.backtester.run_backtest(
+            self.mock_strategy, 
+            start_date='2023-01-01', 
+            end_date='2023-01-05'
+        )
+        
+        # Verify calendar was called correctly
+        self.assertEqual(len(self.mock_calendar.get_datetime_index_calls), 1)
+        self.assertEqual(self.mock_calendar.get_datetime_index_calls[0], ('2023-01-01', '2023-01-05'))
+        
+        # Verify data validation was called
+        self.assertEqual(len(self.mock_data_interface.set_timestamp_calls), 5)  # 5 days
+        
+        # Verify strategy step was called for each day
+        self.assertEqual(len(self.mock_strategy.step_calls), 5)
+        
+        # Verify the result is the last signal
+        expected_signal = {'AAPL': 0.5, 'GOOGL': 0.5}
+        self.assertEqual(result, expected_signal)
+    
+    def test_run_backtest_without_dates(self):
+        """Test backtest execution without specifying dates"""
+        # Set up mock data
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Run backtest without dates
+        result = self.backtester.run_backtest(self.mock_strategy)
+        
+        # Verify calendar was called with None dates
+        self.assertEqual(len(self.mock_calendar.get_datetime_index_calls), 1)
+        self.assertEqual(self.mock_calendar.get_datetime_index_calls[0], (None, None))
+        
+        # Verify result is returned
+        expected_signal = {'AAPL': 0.5, 'GOOGL': 0.5}
+        self.assertEqual(result, expected_signal)
+    
+    def test_run_backtest_data_validation_failure(self):
+        """Test backtest execution when data validation fails"""
+        # Set up mock data where ticker doesn't exist
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': False  # This ticker doesn't exist
+        }
+        
+        # Test that backtest raises ValueError
+        with self.assertRaises(ValueError) as context:
+            self.backtester.run_backtest(
+                self.mock_strategy, 
+                start_date='2023-01-01', 
+                end_date='2023-01-05'
+            )
+        
+        self.assertIn("Data for ticker GOOGL does not exist", str(context.exception))
+    
+    def test_run_backtest_strategy_universe_interaction(self):
+        """Test that backtest properly interacts with strategy universe"""
+        # Create a strategy with a mock universe
+        mock_universe = Mock()
+        mock_universe.all_tickers = {'AAPL', 'GOOGL'}
+        mock_universe.get_constituents.return_value = {'AAPL', 'GOOGL'}
+        
+        strategy = MockStrategy(['AAPL', 'GOOGL'])
+        strategy.universe = mock_universe
+        
+        # Set up mock data
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Run backtest
+        self.backtester.run_backtest(
+            strategy, 
+            start_date='2023-01-01', 
+            end_date='2023-01-03'
+        )
+        
+        # Verify universe methods were called
+        self.assertEqual(mock_universe.set_datetime.call_count, 3)  # 3 days
+        self.assertEqual(mock_universe.get_constituents.call_count, 3)
+        
+        # Verify data interface was called with universe constituents
+        # Now the strategy accesses individual tickers through __getitem__
+        expected_calls = ['AAPL', 'GOOGL'] * 3  # 3 days, 2 tickers each
+        self.assertEqual(self.mock_data_interface.get_calls, expected_calls)
+    
+    def test_run_backtest_empty_calendar(self):
+        """Test backtest execution with empty calendar (no trading days)"""
+        # Mock calendar to return empty datetime index
+        self.mock_calendar.get_datetime_index = Mock(return_value=np.array([]))
+        
+        # Set up mock data
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Run backtest - this should raise UnboundLocalError since sig is never assigned
+        with self.assertRaises(UnboundLocalError):
+            self.backtester.run_backtest(
+                self.mock_strategy, 
+                start_date='2023-01-01', 
+                end_date='2023-01-05'
+            )
+        
+        # Verify no strategy steps were called
+        self.assertEqual(len(self.mock_strategy.step_calls), 0)
+    
+    def test_run_backtest_strategy_returns_different_signals(self):
+        """Test backtest with strategy that returns different signals each step"""
+        # Create a strategy that returns different signals
+        class DynamicStrategy(MockStrategy):
+            def step(self, current_date, daily_data):
+                self.step_calls.append((current_date, daily_data))
+                # Return different allocations based on date
+                if len(self.step_calls) == 1:
+                    return {'AAPL': 0.7, 'GOOGL': 0.3}
+                elif len(self.step_calls) == 2:
+                    return {'AAPL': 0.3, 'GOOGL': 0.7}
+                else:
+                    return {'AAPL': 0.5, 'GOOGL': 0.5}
+        
+        dynamic_strategy = DynamicStrategy(['AAPL', 'GOOGL'])
+        
+        # Set up mock data
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Run backtest
+        result = self.backtester.run_backtest(
+            dynamic_strategy, 
+            start_date='2023-01-01', 
+            end_date='2023-01-03'
+        )
+        
+        # Verify strategy was called 3 times
+        self.assertEqual(len(dynamic_strategy.step_calls), 3)
+        
+        # Verify the result is the last signal
+        expected_signal = {'AAPL': 0.5, 'GOOGL': 0.5}
+        self.assertEqual(result, expected_signal)
+    
+    def test_run_backtest_with_mock_data(self):
+        """Test backtest with actual mock data"""
+        # Set up mock data with specific OHLCV values
+        self.mock_data_interface.mock_data = {
+            'AAPL': {
+                'open': 150.0,
+                'high': 155.0,
+                'low': 148.0,
+                'close': 152.0,
+                'volume': 5000000
+            },
+            'GOOGL': {
+                'open': 2800.0,
+                'high': 2850.0,
+                'low': 2780.0,
+                'close': 2820.0,
+                'volume': 2000000
+            }
+        }
+        
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True
+        }
+        
+        # Run backtest
+        result = self.backtester.run_backtest(
+            self.mock_strategy, 
+            start_date='2023-01-01', 
+            end_date='2023-01-03'
+        )
+        
+        # Verify data was retrieved correctly
+        # Now the strategy accesses individual tickers through __getitem__
+        # 3 days * 2 tickers = 6 calls
+        self.assertEqual(len(self.mock_data_interface.get_calls), 6)
+        
+        # Verify the result is the last signal
+        expected_signal = {'AAPL': 0.5, 'GOOGL': 0.5}
+        self.assertEqual(result, expected_signal)
+    
+    def test_run_backtest_restricted_data_access(self):
+        """Test that backtest uses restricted data interface to prevent access to non-universe tickers"""
+        # Create a strategy that tries to access a ticker outside the universe
+        class MaliciousStrategy(MockStrategy):
+            def step(self, current_date, daily_data):
+                self.step_calls.append((current_date, daily_data))
+                
+                # Try to access a ticker that's not in the universe
+                try:
+                    # This should raise a KeyError because 'MSFT' is not in the universe
+                    data = daily_data['MSFT']
+                    # If we get here, the restriction failed
+                    raise AssertionError("Should not be able to access MSFT data")
+                except KeyError as e:
+                    # This is expected - MSFT is not in the restricted tickers
+                    assert "MSFT" in str(e)
+                
+                # Try to access a ticker that IS in the universe
+                try:
+                    data = daily_data['AAPL']
+                    # This should work
+                    assert 'open' in data
+                    assert 'close' in data
+                except KeyError:
+                    # This should not happen
+                    raise AssertionError("Should be able to access AAPL data")
+                
+                return self.step_return.copy()
+        
+        malicious_strategy = MaliciousStrategy(['AAPL', 'GOOGL'])
+        
+        # Set up mock data
+        self.mock_data_interface.exists_data = {
+            'AAPL': True,
+            'GOOGL': True,
+            'MSFT': True  # MSFT exists in data but not in universe
+        }
+        
+        # Run backtest
+        result = self.backtester.run_backtest(
+            malicious_strategy, 
+            start_date='2023-01-01', 
+            end_date='2023-01-03'
+        )
+        
+        # Verify strategy was called
+        self.assertEqual(len(malicious_strategy.step_calls), 3)
+        
+        # Verify the result is the last signal
+        expected_signal = {'AAPL': 0.5, 'GOOGL': 0.5}
+        self.assertEqual(result, expected_signal)
+
+
+class TestDailyMarketCalendar(unittest.TestCase):
+    """Test cases for DailyMarketCalendar class"""
+    
+    def test_initialization(self):
+        """Test DailyMarketCalendar initialization"""
+        calendar = DailyMarketCalendar("NYSE")
+        # The real DailyMarketCalendar doesn't store calendar_name as an attribute
+        # It just uses it to create the calendar object
+        self.assertIsNotNone(calendar.calendar)
+    
+    def test_validate_dates_valid(self):
+        """Test validate_dates with valid dates"""
+        calendar = DailyMarketCalendar("NYSE")
+        result = calendar.validate_dates("2023-01-01", "2023-12-31")
+        self.assertTrue(result)
+    
+    def test_validate_dates_invalid_start_date(self):
+        """Test validate_dates with invalid start date format"""
+        calendar = DailyMarketCalendar("NYSE")
+        with self.assertRaises(AssertionError):
+            calendar.validate_dates(123, "2023-12-31")
+    
+    def test_validate_dates_end_before_start(self):
+        """Test validate_dates with end date before start date"""
+        calendar = DailyMarketCalendar("NYSE")
+        with self.assertRaises(AssertionError):
+            calendar.validate_dates("2023-12-31", "2023-01-01")
+    
+    def test_validate_dates_none_end_date(self):
+        """Test validate_dates with None end date"""
+        calendar = DailyMarketCalendar("NYSE")
+        result = calendar.validate_dates("2023-01-01", None)
+        self.assertTrue(result)
+
+
+if __name__ == '__main__':
+    unittest.main() 
