@@ -43,9 +43,18 @@ tests/
 imgs/
 examples/
 
-portwine/analyzers/gridequitydrawdown.py
-portwine/analyzers/noiserobustness.py
-portwine/analyzers/regimechange.py
-portwine/analyzers/strategycomparison.py
-portwine/analyzers/studentttest.py
-portwine/analyzers/transactioncost.py
+portwine/analyzers/
+
+private/
+codebase.md
+
+test_data/
+
+# Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+
+docs/

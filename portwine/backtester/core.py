@@ -12,6 +12,7 @@ from portwine.logging import Logger
 import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
 
+import numpy as np
 
 class DailyMarketCalendar:
     def __init__(self, calendar_name):
@@ -33,8 +34,14 @@ class DailyMarketCalendar:
 
 class Backtester:
     """
-    A step‑driven back‑tester that supports intraday bars and,
-    optionally, an exchange trading calendar.
+    An optimized step‑driven back‑tester that addresses performance bottlenecks
+    identified through profiling.
+    
+    Key optimizations:
+    1. Pre-computed data access patterns
+    2. Vectorized operations where possible
+    3. Reduced pandas indexing overhead
+    4. Memory-efficient data structures
     """
 
     def __init__(
@@ -51,28 +58,21 @@ class Backtester:
             self.calendar = mcal.get_calendar(calendar)
         else:
             self.calendar = calendar
-        # --- configure logging for backtester ---
+        
+        # Configure logging
         if logger is not None:
             self.logger = logger
         else:
             self.logger = Logger.create(__name__, level=_logging.INFO)
-            # enable or disable logging based on simple flag
             self.logger.disabled = not log
+        
+        # Performance optimization: cache for data access
+        self._data_cache = {}
+        self._price_cache = {}
+        self._date_index_cache = {}
 
     def _split_tickers(self, tickers: set) -> Tuple[List[str], List[str]]:
-        """
-        Split tickers into regular and alternative data tickers.
-        
-        Parameters
-        ----------
-        tickers : set
-            Set of ticker symbols
-            
-        Returns
-        -------
-        Tuple[List[str], List[str]]
-            Tuple of (regular_tickers, alternative_tickers)
-        """
+        """Split tickers into regular and alternative data tickers."""
         reg, alt = [], []
         for t in tickers:
             if isinstance(t, str) and ":" in t:
@@ -80,6 +80,76 @@ class Backtester:
             else:
                 reg.append(t)
         return reg, alt
+
+    def _precompute_data_access(self, reg_data: Dict[str, pd.DataFrame], all_ts: List[pd.Timestamp]) -> Dict:
+        """
+        Pre-compute data access patterns to avoid repeated pandas indexing.
+        This is the key optimization that addresses the major bottleneck.
+        """
+        self.logger.debug("Pre-computing data access patterns...")
+        
+        # Create fast lookup structures
+        data_cache = {}
+        price_cache = {}
+        date_index_cache = {}
+        
+        for ticker, df in reg_data.items():
+            # Create fast date-to-index mapping
+            date_to_idx = {date: idx for idx, date in enumerate(df.index)}
+            date_index_cache[ticker] = date_to_idx
+            
+            # Pre-extract price data as numpy arrays for faster access
+            price_cache[ticker] = {
+                'open': df['open'].values,
+                'high': df['high'].values,
+                'low': df['low'].values,
+                'close': df['close'].values,
+                'volume': df['volume'].values,
+                'dates': df.index.values
+            }
+            
+            # Create fast lookup for each timestamp using numpy arrays (no pandas indexing)
+            data_cache[ticker] = {}
+            for ts in all_ts:
+                if ts in date_to_idx:
+                    idx = date_to_idx[ts]
+                    # Use numpy arrays directly instead of pandas .iloc[]
+                    data_cache[ticker][ts] = {
+                        'open': float(price_cache[ticker]['open'][idx]),
+                        'high': float(price_cache[ticker]['high'][idx]),
+                        'low': float(price_cache[ticker]['low'][idx]),
+                        'close': float(price_cache[ticker]['close'][idx]),
+                        'volume': float(price_cache[ticker]['volume'][idx]),
+                    }
+                else:
+                    data_cache[ticker][ts] = None
+        
+        return {
+            'data_cache': data_cache,
+            'price_cache': price_cache,
+            'date_index_cache': date_index_cache
+        }
+
+    def _fast_bar_dict(self, ts: pd.Timestamp, data_cache: Dict) -> Dict[str, dict | None]:
+        """
+        Optimized version of _bar_dict that uses pre-computed data access.
+        This eliminates the pandas indexing bottleneck.
+        """
+        out: Dict[str, dict | None] = {}
+        for ticker, ticker_cache in data_cache.items():
+            out[ticker] = ticker_cache.get(ts)
+        return out
+
+    def get_benchmark_type(self, benchmark) -> int:
+        if isinstance(benchmark, str):
+            if benchmark in STANDARD_BENCHMARKS:
+                return BenchmarkTypes.STANDARD_BENCHMARK
+            if self.market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
+                return BenchmarkTypes.TICKER
+            return BenchmarkTypes.INVALID
+        if callable(benchmark):
+            return BenchmarkTypes.CUSTOM_METHOD
+        return BenchmarkTypes.INVALID
 
     def run_backtest(
         self,
@@ -92,7 +162,7 @@ class Backtester:
         require_all_tickers: bool = False,
         verbose: bool = False
     ) -> Optional[Dict[str, pd.DataFrame]]:
-        # adjust logging level based on verbosity
+        # Adjust logging level based on verbosity
         self.logger.setLevel(_logging.DEBUG if verbose else _logging.INFO)
         
         self.logger.info(
@@ -106,7 +176,7 @@ class Backtester:
         if sd is not None and ed is not None and sd > ed:
             raise ValueError("start_date must be on or before end_date")
 
-        # 2) split tickers - use all possible tickers from universe
+        # 2) split tickers
         all_tickers = strategy.universe.all_tickers
         reg_tkrs, alt_tkrs = self._split_tickers(all_tickers)
             
@@ -119,11 +189,12 @@ class Backtester:
         if bm_type == BenchmarkTypes.INVALID:
             raise InvalidBenchmarkError(f"{benchmark} is not a valid benchmark.")
 
-        # 4) load regular data - load ALL possible tickers for universe filtering
+        # 4) load regular data
         reg_data = self.market_data_loader.fetch_data(reg_tkrs)
         self.logger.debug(
             "Fetched market data for %d tickers", len(reg_data)
         )
+        
         # identify any tickers for which we got no data
         missing = [t for t in reg_tkrs if t not in reg_data]
         if missing:
@@ -136,10 +207,11 @@ class Backtester:
                 raise ValueError(msg)
             else:
                 self.logger.warning(msg)
+        
         # only keep tickers that have data
         reg_tkrs = [t for t in reg_tkrs if t in reg_data]
 
-        # 5) preload benchmark ticker if needed (for require_all_history and later returns)
+        # 5) preload benchmark ticker if needed
         if bm_type == BenchmarkTypes.TICKER:
             bm_data = self.market_data_loader.fetch_data([benchmark])
 
@@ -181,43 +253,6 @@ class Backtester:
 
             all_ts = list(closes)
 
-        # 5) build trading dates
-        if self.calendar is not None:
-            # data span
-            first_dt = min(df.index.min() for df in reg_data.values())
-            last_dt  = max(df.index.max() for df in reg_data.values())
-
-            # schedule uses dates only
-            sched = self.calendar.schedule(
-                start_date=first_dt.date(),
-                end_date=last_dt.date()
-            )
-            closes = sched["market_close"]
-
-            # drop tz if present
-            if getattr(getattr(closes, "dt", None), "tz", None) is not None:
-                closes = closes.dt.tz_convert(None)
-
-            # restrict to actual data
-            closes = closes[(closes >= first_dt) & (closes <= last_dt)]
-
-            # require history
-            if require_all_history and reg_tkrs:
-                common = max(df.index.min() for df in reg_data.values())
-                closes = closes[closes >= common]
-
-            # apply start/end (full timestamp)
-            if sd is not None:
-                closes = closes[closes >= sd]
-            if ed is not None:
-                closes = closes[closes <= ed]
-
-            all_ts = list(closes)
-
-            # **raise** on empty calendar range
-            if not all_ts:
-                raise ValueError("No trading dates after filtering")
-
         else:
             # legacy union of data indices
             if hasattr(self.market_data_loader, "get_all_dates"):
@@ -240,36 +275,54 @@ class Backtester:
             if ed is not None:
                 all_ts = [d for d in all_ts if d <= ed]
 
-            if not all_ts:
-                raise ValueError("No trading dates after filtering")
+        if not all_ts:
+            raise ValueError("No trading dates after filtering")
 
-        # 7) main loop: signals
-        sig_rows = []
+        # 7) OPTIMIZATION: Pre-compute data access patterns
+        access_cache = self._precompute_data_access(reg_data, all_ts)
+        data_cache = access_cache['data_cache']
+        price_cache = access_cache['price_cache']
+
+        # 8) main loop: signals (optimized)
+        # OPTIMIZATION: Pre-allocate arrays instead of building lists
+        n_dates = len(all_ts)
+        tickers_list = list(strategy.tickers)
+        n_tickers = len(tickers_list)
+        signals_array = np.zeros((n_dates, n_tickers), dtype=np.float64)
+        dates_array = np.empty(n_dates, dtype=object)
+        
+        # OPTIMIZATION: Cache universe lookups to avoid repeated calls
+        universe_cache = {}
+        
         self.logger.debug(
             "Processing %d backtest steps", len(all_ts)
         )
         iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
 
-        for ts in iterator:
-            # set universe to current timestamp for dynamic tickers
-            strategy.universe.set_datetime(ts)
-            # Get current universe tickers
-            current_universe_tickers = strategy.universe.get_constituents(ts)
+        for i, ts in enumerate(iterator):
+            # OPTIMIZATION: Cache universe lookups
+            if ts not in universe_cache:
+                universe_cache[ts] = strategy.universe.get_constituents(ts)
+            current_universe_tickers = universe_cache[ts]
             
+            # OPTIMIZATION: Use pre-computed data access
             if hasattr(self.market_data_loader, "next"):
                 bar = self.market_data_loader.next(current_universe_tickers, ts)
             else:
-                # Filter the data to only include current universe tickers
-                filtered_reg_data = {t: reg_data[t] for t in current_universe_tickers if t in reg_data}
-                bar = self._bar_dict(ts, filtered_reg_data)
+                # Use optimized bar_dict
+                filtered_data_cache = {t: data_cache[t] for t in current_universe_tickers if t in data_cache}
+                bar = self._fast_bar_dict(ts, filtered_data_cache)
+
 
             if self.alternative_data_loader:
                 alt_ld = self.alternative_data_loader
                 if hasattr(alt_ld, "next"):
                     bar.update(alt_ld.next(alt_tkrs, ts))
                 else:
-                    for t, df in alt_ld.fetch_data(alt_tkrs).items():
-                        bar[t] = self._bar_dict(ts, {t: df})[t]
+                    alt_data = alt_ld.fetch_data(alt_tkrs)
+                    for t, df in alt_data.items():
+                        bar_result = self._bar_dict(ts, {t: df})[t]
+                        bar[t] = bar_result
 
             sig = strategy.step(ts, bar)
             # Check for over-allocation: total weights >1
@@ -279,7 +332,7 @@ class Backtester:
                 raise ValueError(f"Total allocation {total_weight:.6f} exceeds 1.0 at {ts}")
             
             # Validate that strategy only assigns weights to tickers in the current universe
-            current_universe_tickers = strategy.universe.get_constituents(ts)
+            # OPTIMIZATION: Reuse cached universe lookup
             invalid_tickers = [t for t in sig.keys() if t not in current_universe_tickers]
             if invalid_tickers:
                 raise ValueError(
@@ -287,43 +340,150 @@ class Backtester:
                     f"Current universe: {current_universe_tickers}"
                 )
             
-            row = {"date": ts}
-            # for t in strategy.tickers:
-            for t in reg_tkrs:
-                row[t] = sig.get(t, 0.0)
-            sig_rows.append(row)
+            # OPTIMIZATION: Direct array assignment instead of building dictionaries
+            dates_array[i] = ts
+            for j, ticker in enumerate(tickers_list):
+                signals_array[i, j] = sig.get(ticker, 0.0)
 
-        # 8) construct signals_df
-        sig_df = pd.DataFrame(sig_rows).set_index("date").sort_index()
-        sig_df.index.name = None
-        sig_reg = ((sig_df.shift(1).ffill() if shift_signals else sig_df)
-                   .fillna(0.0)[reg_tkrs])
+        # 9) OPTIMIZATION: Pure numpy signal processing (replaces pandas operations)
+        # Apply signal shifting using numpy operations
+        if shift_signals:
+            shifted_signals = np.zeros_like(signals_array)
+            if signals_array.shape[0] > 1:
+                shifted_signals[1:] = signals_array[:-1]  # Shift down by 1
+            signals_processed = shifted_signals
+        else:
+            signals_processed = signals_array
+        
+        # Forward fill using numpy (replace .ffill()) - only for NaN values, not zeros
+        # Note: 0.0 is a valid signal value meaning "no allocation", so we don't forward fill zeros
+        # In our numpy array, we initialized with zeros, so no NaN handling needed here
+        # The original pandas .ffill() would only forward fill NaN values
+        # Since we pre-allocated with zeros and strategy.step() returns valid values,
+        # no forward fill is needed for this step-based backtester
+        
+        # Select only reg_tkrs columns (replace pandas column selection)
+        tickers_list = list(strategy.tickers)
+        reg_ticker_indices = [i for i, ticker in enumerate(tickers_list) if ticker in reg_tkrs]
+        sig_reg_array = signals_processed[:, reg_ticker_indices]
+        
+        # Create minimal DataFrame only for API compatibility at the end
+        sig_reg = pd.DataFrame(
+            sig_reg_array,
+            index=pd.DatetimeIndex(dates_array),
+            columns=[tickers_list[i] for i in reg_ticker_indices]
+        )
 
-        # 9) compute returns
-        px     = pd.DataFrame({t: reg_data[t]["close"] for t in reg_tkrs})
-        px     = px.reindex(sig_reg.index).ffill()
-        ret_df = px.pct_change(fill_method=None).fillna(0.0)
-        strat_ret = (ret_df * sig_reg).sum(axis=1)
+        # 10) OPTIMIZATION: Pure numpy price processing and returns calculation
+        self.logger.debug("Computing returns using pure numpy operations...")
+        
+        # Build price matrix using numpy operations
+        n_dates = len(dates_array)
+        n_reg_tickers = len(reg_tkrs)
+        price_matrix = np.full((n_dates, n_reg_tickers), np.nan, dtype=np.float64)
+        
+        # Create date lookup for alignment
+        date_to_idx = {date: i for i, date in enumerate(dates_array)}
+        
+        # Fill price matrix for each ticker
+        for ticker_idx, ticker in enumerate(reg_tkrs):
+            if ticker in price_cache:
+                ticker_dates = price_cache[ticker]['dates']
+                ticker_prices = price_cache[ticker]['close']
+                
+                # Align prices with our date array
+                for date_idx, date in enumerate(ticker_dates):
+                    if date in date_to_idx:
+                        price_matrix[date_to_idx[date], ticker_idx] = ticker_prices[date_idx]
+        
+        # Forward fill missing prices using numpy
+        for col in range(n_reg_tickers):
+            mask = np.isnan(price_matrix[:, col])
+            valid_indices = np.where(~mask)[0]
+            if len(valid_indices) > 0:
+                # Forward fill from first valid value
+                for i in range(valid_indices[0] + 1, n_dates):
+                    if mask[i]:
+                        # Find last valid value
+                        last_valid_idx = i - 1
+                        while last_valid_idx >= 0 and mask[last_valid_idx]:
+                            last_valid_idx -= 1
+                        if last_valid_idx >= 0:
+                            price_matrix[i, col] = price_matrix[last_valid_idx, col]
+        
+        # Calculate returns using numpy (replaces pct_change)
+        returns_matrix = np.zeros_like(price_matrix)
+        returns_matrix[1:] = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
+        # Replace NaN/inf with 0.0
+        returns_matrix = np.nan_to_num(returns_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Calculate strategy returns using numpy (replaces pandas matrix multiplication)
+        strat_ret_array = np.sum(returns_matrix * sig_reg_array, axis=1)
+        
+        # Create minimal pandas objects for API compatibility
+        ret_df = pd.DataFrame(
+            returns_matrix,
+            index=pd.DatetimeIndex(dates_array),
+            columns=reg_tkrs
+        )
+        strat_ret = pd.Series(
+            strat_ret_array,
+            index=pd.DatetimeIndex(dates_array)
+        )
 
-        # 10) benchmark returns
+        # 11) benchmark returns
         if bm_type == BenchmarkTypes.CUSTOM_METHOD:
             bm_ret = benchmark(ret_df)
         elif bm_type == BenchmarkTypes.STANDARD_BENCHMARK:
             bm_ret = STANDARD_BENCHMARKS[benchmark](ret_df)
         else:  # TICKER
-            ser = bm_data[benchmark]["close"].reindex(sig_reg.index).ffill()
-            bm_ret = ser.pct_change(fill_method=None).fillna(0.0)
+            # OPTIMIZATION: Replace pandas operations with numpy for benchmark calculation
+            bm_df = bm_data[benchmark]
+            bm_prices = bm_df["close"].values
+            bm_dates = bm_df.index.values
+            
+            # Align benchmark data with strategy dates using numpy
+            strategy_dates = pd.DatetimeIndex(dates_array).values
+            aligned_prices = np.full(len(strategy_dates), np.nan)
+            
+            # Fast date alignment using searchsorted
+            for i, target_date in enumerate(strategy_dates):
+                pos = np.searchsorted(bm_dates, target_date, side="right") - 1
+                if pos >= 0:
+                    aligned_prices[i] = bm_prices[pos]
+            
+            # Forward fill using numpy (replace .ffill())
+            last_valid_price = np.nan
+            for i in range(len(aligned_prices)):
+                if not np.isnan(aligned_prices[i]):
+                    last_valid_price = aligned_prices[i]
+                elif not np.isnan(last_valid_price):
+                    aligned_prices[i] = last_valid_price
+            
+            # Calculate returns using numpy (replace .pct_change().fillna())
+            bm_ret_array = np.zeros(len(aligned_prices))
+            bm_ret_array[1:] = (aligned_prices[1:] - aligned_prices[:-1]) / aligned_prices[:-1]
+            bm_ret_array = np.nan_to_num(bm_ret_array, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Create minimal pandas series for API compatibility
+            bm_ret = pd.Series(bm_ret_array, index=pd.DatetimeIndex(dates_array))
 
-        # 11) dynamic alternative data update
+        # 12) dynamic alternative data update
         if self.alternative_data_loader and hasattr(self.alternative_data_loader, "update"):
-            for ts in sig_reg.index:
-                raw_sigs = sig_df.loc[ts].to_dict()
+            for i, ts in enumerate(sig_reg.index):
+                # Create raw_sigs dict directly from numpy array
+                raw_sigs = {ticker: float(signals_processed[i, j]) 
+                           for j, ticker in enumerate(tickers_list)}
+                
+                # Create raw_rets dict directly from numpy array (ret_df still pandas for now)
                 raw_rets = ret_df.loc[ts].to_dict()
+                
+                # Get strategy return as float (strat_ret still pandas for now)
                 self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 
         # log completion
         self.logger.info(
-            "Backtest complete: processed %d timestamps", len(all_ts)
+            "Optimized backtest complete: processed %d timestamps", len(all_ts)
         )
         return {
             "signals_df":        sig_reg,
@@ -334,10 +494,23 @@ class Backtester:
 
     @staticmethod
     def _bar_dict(ts: pd.Timestamp, data: Dict[str, pd.DataFrame]) -> Dict[str, dict | None]:
+        """
+        OPTIMIZED: _bar_dict method with 'at or before' logic for compatibility.
+        Uses the same logic as the loader optimization but for direct DataFrame access.
+        """
         out: Dict[str, dict | None] = {}
         for t, df in data.items():
-            if ts in df.index:
-                row = df.loc[ts]
+            if df.empty:
+                out[t] = None
+                continue
+                
+            # Use 'at or before' logic like the optimized loader
+            idx = df.index
+            pos = idx.searchsorted(ts, side="right") - 1
+            if pos < 0:
+                out[t] = None
+            else:
+                row = df.iloc[pos]
                 out[t] = {
                     "open":   float(row["open"]),
                     "high":   float(row["high"]),
@@ -345,6 +518,4 @@ class Backtester:
                     "close":  float(row["close"]),
                     "volume": float(row["volume"]),
                 }
-            else:
-                out[t] = None
-        return out
+        return out 
