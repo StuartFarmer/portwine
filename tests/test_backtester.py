@@ -93,6 +93,19 @@ class FakeCalendar:
         closes = [pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in sel]
         return pd.DataFrame({"market_close": closes}, index=sel)
 
+class MockDailyMarketCalendar:
+    """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
+    def __init__(self, calendar_name):
+        self.calendar_name = calendar_name
+        # For testing, we'll use all calendar days to match original behavior
+        
+    def schedule(self, start_date, end_date):
+        """Return all calendar days to match original data-driven behavior"""
+        days = pd.date_range(start_date, end_date, freq="D")
+        # Set market close to match the data timestamps (00:00:00)
+        closes = [pd.Timestamp(d.date()) for d in days]
+        return pd.DataFrame({"market_close": closes}, index=days)
+
 
 class TestBacktester(unittest.TestCase):
     """Test cases for Backtester class"""
@@ -149,8 +162,9 @@ class TestBacktester(unittest.TestCase):
         for ticker, data in self.price_data.items():
             self.loader.set_data(ticker, data)
 
-        # Create backktester
-        self.backtester = Backtester(self.loader)
+        # Create backktester with test calendar
+        from portwine.backtester.core import DailyMarketCalendar
+        self.backtester = Backtester(self.loader, calendar=MockDailyMarketCalendar("NYSE"))
 
     def test_initialization(self):
         """Test backktester initialization"""
@@ -358,7 +372,7 @@ class TestBacktester(unittest.TestCase):
             staggered_loader.set_data(ticker, data)
 
         # Create backktester with staggered data
-        staggered_backtester = Backtester(staggered_loader)
+        staggered_backtester = Backtester(staggered_loader, calendar=None)
 
         # Create strategy
         strategy = SimpleTestStrategy(tickers=self.tickers)
@@ -498,7 +512,7 @@ class TestRequireAllHistory(unittest.TestCase):
                     }, index=dates)
             }
         )
-        self.bt = Backtester(self.loader)
+        self.bt = Backtester(self.loader, calendar=MockDailyMarketCalendar("NYSE"))
         self.strat = SimpleTestStrategy(["A", "B"])
 
     def test_require_all_history_false_keeps_full_length(self):
@@ -531,7 +545,7 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
                 }, index=dates)
             }
         )
-        self.bt = Backtester(self.loader)
+        self.bt = Backtester(self.loader, calendar=MockDailyMarketCalendar("NYSE"))
 
     def test_default_benchmark_equal_weight(self):
         strat = SimpleTestStrategy(["A", "B"])
@@ -643,7 +657,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         loader.set_data('B', pd.DataFrame(base, index=idx_full))
         loader.set_data('BENCH', pd.DataFrame(base, index=idx_bench))
 
-        backtester = Backtester(loader)
+        backtester = Backtester(loader, calendar=None)
         strat = SimpleTestStrategy(['A', 'B'])
         # With require_all_history=True, the backtest should begin at BENCH's first date
         result = backtester.run_backtest(
@@ -662,7 +676,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         loader.set_data('A', pd.DataFrame(base, index=idx_full))
         loader.set_data('B', pd.DataFrame(base, index=idx_full))
         loader.set_data('BENCH', pd.DataFrame(base, index=idx_bench))
-        backtester = Backtester(loader)
+        backtester = Backtester(loader, calendar=None)
         strat = SimpleTestStrategy(['A', 'B'])
         # With require_all_history=False, the backtest should begin at the earliest ticker date
         result = backtester.run_backtest(

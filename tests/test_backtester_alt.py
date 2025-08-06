@@ -140,8 +140,9 @@ class TestBacktesterWithAltData(unittest.TestCase):
         self.assertIs(self.backtester.alternative_data_loader, self.alt_loader)
 
     def test_ticker_parsing(self):
-        regular, alternative = self.backtester._split_tickers(
-            self.regular_tickers + self.alt_tickers
+        from portwine.backtester.core import _split_tickers
+        regular, alternative = _split_tickers(
+            set(self.regular_tickers + self.alt_tickers)
         )
         self.assertEqual(set(regular), set(self.regular_tickers))
         self.assertEqual(set(alternative), set(self.alt_tickers))

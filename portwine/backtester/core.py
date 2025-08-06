@@ -12,10 +12,18 @@ from portwine.logging import Logger
 import pandas_market_calendars as mcal
 from portwine.loaders.base import MarketDataLoader
 
+from pandas_market_calendars import MarketCalendar
+import datetime
+
 
 class DailyMarketCalendar:
     def __init__(self, calendar_name):
+        from pandas_market_calendars import MarketCalendar
         self.calendar = MarketCalendar.factory(calendar_name)
+
+    def schedule(self, start_date, end_date):
+        """Expose the schedule method from the underlying calendar"""
+        return self.calendar.schedule(start_date=start_date, end_date=end_date)
 
     def get_datetime_index(self, start_date='2000-01-01', end_date=None):
         # Fill the end date with today's date if needed
@@ -30,6 +38,28 @@ class DailyMarketCalendar:
         dt_converted = dt_localized.tz_convert(None)
 
         return dt_converted.to_numpy()
+    
+def _split_tickers(tickers: set) -> Tuple[List[str], List[str]]:
+        """
+        Split tickers into regular and alternative data tickers.
+        
+        Parameters
+        ----------
+        tickers : set
+            Set of ticker symbols
+            
+        Returns
+        -------
+        Tuple[List[str], List[str]]
+            Tuple of (regular_tickers, alternative_tickers)
+        """
+        reg, alt = [], []
+        for t in tickers:
+            if isinstance(t, str) and ":" in t:
+                alt.append(t)
+            else:
+                reg.append(t)
+        return reg, alt
 
 class Backtester:
     """
@@ -59,28 +89,6 @@ class Backtester:
             # enable or disable logging based on simple flag
             self.logger.disabled = not log
 
-    def _split_tickers(self, tickers: set) -> Tuple[List[str], List[str]]:
-        """
-        Split tickers into regular and alternative data tickers.
-        
-        Parameters
-        ----------
-        tickers : set
-            Set of ticker symbols
-            
-        Returns
-        -------
-        Tuple[List[str], List[str]]
-            Tuple of (regular_tickers, alternative_tickers)
-        """
-        reg, alt = [], []
-        for t in tickers:
-            if isinstance(t, str) and ":" in t:
-                alt.append(t)
-            else:
-                reg.append(t)
-        return reg, alt
-
     def run_backtest(
         self,
         strategy,
@@ -108,7 +116,7 @@ class Backtester:
 
         # 2) split tickers - use all possible tickers from universe
         all_tickers = strategy.universe.all_tickers
-        reg_tkrs, alt_tkrs = self._split_tickers(all_tickers)
+        reg_tkrs, alt_tkrs = _split_tickers(all_tickers)
             
         self.logger.debug(
             "Split tickers: %d regular, %d alternative", len(reg_tkrs), len(alt_tkrs)

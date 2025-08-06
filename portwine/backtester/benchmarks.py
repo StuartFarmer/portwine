@@ -9,8 +9,6 @@ class InvalidBenchmarkError(Exception):
     """Raised when the requested benchmark is neither a standard name nor a valid ticker."""
     pass
 
-
-
 def benchmark_equal_weight(ret_df: pd.DataFrame, *_, **__) -> pd.Series:
     return ret_df.mean(axis=1)
 
