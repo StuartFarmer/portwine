@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import tempfile
 import os
 import shutil
+from unittest.mock import Mock
 
 # Import components to be tested
 from portwine.backtester.core import NewBacktester
@@ -12,14 +13,63 @@ from portwine.strategies.base import StrategyBase
 from portwine.loaders import MarketDataLoader, AlternativeMarketDataLoader
 from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
 from portwine.analyzers.correlation import CorrelationAnalyzer
-from portwine.data.interface import RestrictedDataInterface
+from portwine.data.interface import DataInterface
 
-class MockRestrictedDataInterface(RestrictedDataInterface):
+class MockRestrictedDataInterface(DataInterface):
     def __init__(self, mock_data=None):
+        # Create a mock data loader
+        self.data_loader = Mock()
+        super().__init__(self.data_loader)
         self.mock_data = mock_data or {}
         self.set_timestamp_calls = []
         self.get_calls = []
         self.current_timestamp = None
+        
+        # Configure the mock data loader to return proper data
+        def mock_next(tickers, timestamp):
+            result = {}
+            for ticker in tickers:
+                if ticker in self.mock_data:
+                    data = self.mock_data[ticker]
+                    if self.current_timestamp is not None:
+                        dt_python = pd.Timestamp(self.current_timestamp)
+                        dates = pd.date_range('2020-01-01', '2020-01-10', freq='D')
+                        try:
+                            idx = dates.get_loc(dt_python)
+                            result[ticker] = {
+                                'close': float(data['close'][idx]),
+                                'open': float(data['open'][idx]),
+                                'high': float(data['high'][idx]),
+                                'low': float(data['low'][idx]),
+                                'volume': float(data['volume'][idx])
+                            }
+                        except (KeyError, IndexError):
+                            result[ticker] = {
+                                'close': 100.0,
+                                'open': 100.0,
+                                'high': 105.0,
+                                'low': 95.0,
+                                'volume': 1000000
+                            }
+                    else:
+                        result[ticker] = {
+                            'close': 100.0,
+                            'open': 100.0,
+                            'high': 105.0,
+                            'low': 95.0,
+                            'volume': 1000000
+                        }
+                else:
+                    result[ticker] = {
+                        'close': 100.0,
+                        'open': 100.0,
+                        'high': 105.0,
+                        'low': 95.0,
+                        'volume': 1000000
+                    }
+            return result
+        
+        self.data_loader.next = mock_next
 
     def set_current_timestamp(self, dt):
         self.set_timestamp_calls.append(dt)
@@ -338,7 +388,7 @@ class TestBacktesterIntegration(unittest.TestCase):
             strategy=strategy,
             start_date='2020-01-01',
             end_date='2020-01-30',
-            benchmark_func=spy_benchmark
+            benchmark=spy_benchmark
         )
 
         # Verify we get results
@@ -391,7 +441,7 @@ class TestBacktesterIntegration(unittest.TestCase):
             strategy=strategy,
             start_date='2020-01-01',
             end_date=half_point,
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
 
         # Check if results are None (which can happen if data loading failed)
@@ -403,7 +453,7 @@ class TestBacktesterIntegration(unittest.TestCase):
             strategy=strategy,
             start_date=half_point,
             end_date='2020-01-30',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
 
         # Check if results are None
@@ -419,7 +469,7 @@ class TestBacktesterIntegration(unittest.TestCase):
             strategy=strategy,
             start_date='2020-01-01',
             end_date='2020-01-30',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
 
         # Check if results are None
@@ -480,7 +530,7 @@ class TestBacktesterIntegration(unittest.TestCase):
                 strat, 
                 start_date='2020-01-01',
                 end_date='2020-01-30',
-                benchmark_func=equal_weight_benchmark
+                benchmark=equal_weight_benchmark
             )
 
 
@@ -504,7 +554,7 @@ class TestBacktesterIntegration(unittest.TestCase):
                 strategy=strategy,
                 start_date=start_date,
                 end_date=end_date,
-                benchmark_func=equal_weight_benchmark
+                benchmark=equal_weight_benchmark
             )
 
         # Set both dates outside the available range
@@ -518,7 +568,7 @@ class TestBacktesterIntegration(unittest.TestCase):
                 strategy=strategy,
                 start_date=future_start,
                 end_date=future_end,
-                benchmark_func=equal_weight_benchmark
+                benchmark=equal_weight_benchmark
             )
 
             print(results)

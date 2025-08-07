@@ -16,7 +16,7 @@ from portwine.loaders.base import MarketDataLoader
 from pandas_market_calendars import MarketCalendar
 import datetime
 
-from portwine.data.interface import DataInterface, RestrictedDataInterface
+from portwine.data.interface import DataInterface, RestrictedDataInterface, MultiDataInterface
 from portwine.strategies.base import StrategyBase
 
 # Optional Numba import for JIT compilation
@@ -159,8 +159,15 @@ class BacktestResult:
 
 
 class NewBacktester:
-    def __init__(self, data: RestrictedDataInterface, calendar: DailyMarketCalendar):
+    def __init__(self, data: DataInterface, calendar: DailyMarketCalendar):
         self.data = data
+        # Pass all loaders to RestrictedDataInterface if data is MultiDataInterface
+        if isinstance(data, MultiDataInterface):
+            # MultiDataInterface case
+            self.restricted_data = RestrictedDataInterface(data.loaders)
+        else:
+            # DataInterface case
+            self.restricted_data = RestrictedDataInterface({None: data.data_loader})
         self.calendar = calendar
 
     def validate_data(self, tickers: List[str], start_date: str, end_date: str) -> bool:
@@ -184,7 +191,7 @@ class NewBacktester:
                 f"Current universe: {current_universe_tickers}"
             )
 
-    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark_func=None):
+    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight"):
         datetime_index = self.calendar.get_datetime_index(start_date, end_date)
 
         if len(datetime_index) == 0:
@@ -196,6 +203,11 @@ class NewBacktester:
 
         self.validate_data(strategy.universe.all_tickers, start_date, end_date)
 
+        # Classify benchmark type
+        bm_type = get_benchmark_type(benchmark, self.data.data_loader)
+        if bm_type == BenchmarkTypes.INVALID:
+            raise InvalidBenchmarkError(f"{benchmark} is not a valid benchmark.")
+
         # Initialize BacktestResult to handle data collection
         all_tickers = sorted(strategy.universe.all_tickers)
         result = BacktestResult(datetime_index, all_tickers)
@@ -204,30 +216,38 @@ class NewBacktester:
             strategy.universe.set_datetime(dt)
             current_universe_tickers = strategy.universe.get_constituents(dt)
 
-            self.data.set_current_timestamp(dt)
-            self.data.set_restricted_tickers(current_universe_tickers)
+            # Create a RestrictedDataInterface for the strategy
+            self.restricted_data.set_current_timestamp(dt)
+            self.restricted_data.set_restricted_tickers(current_universe_tickers)
 
             # Convert numpy.datetime64 to Python datetime for strategy compatibility
             dt_datetime = pd.Timestamp(dt).to_pydatetime()
-            sig = strategy.step(dt_datetime, self.data)
+            sig = strategy.step(dt_datetime, self.restricted_data)
             
             self.validate_signals(sig, dt, current_universe_tickers)
             
             # Use BacktestResult to handle signal and close price updates
             result.add_signals(i, sig)
-            result.add_close_prices(i, self.data)
+            result.add_close_prices(i, self.restricted_data)
         
         # Calculate returns and strategy returns using BacktestResult
         result.calculate_results()
         
-        # Calculate benchmark returns if benchmark function is provided
+        # Get results from BacktestResult
         sig_df, ret_df, strategy_ret_df = result.get_results()
 
-        benchmark_returns = benchmark_func(ret_df)
+        # Calculate benchmark returns based on type
+        if bm_type == BenchmarkTypes.CUSTOM_METHOD:
+            benchmark_returns = benchmark(ret_df)
+        elif bm_type == BenchmarkTypes.STANDARD_BENCHMARK:
+            benchmark_returns = STANDARD_BENCHMARKS[benchmark](ret_df)
+        else:  # TICKER
+            # For ticker benchmarks, use the DataInterface to access benchmark data
+            benchmark_returns = self._calculate_ticker_benchmark_returns(benchmark, datetime_index, ret_df.index)
         
         # Convert DataFrames to Series for compatibility with analyzers
         strategy_returns_series = strategy_ret_df.iloc[:, 0]  # Extract first column as Series
-        benchmark_returns_series = benchmark_returns.iloc[:, 0]  # Extract first column as Series
+        benchmark_returns_series = benchmark_returns.iloc[:, 0] if hasattr(benchmark_returns, 'iloc') and benchmark_returns.ndim > 1 else benchmark_returns
         
         # Return results from BacktestResult
         return {
@@ -236,6 +256,33 @@ class NewBacktester:
             "strategy_returns":  strategy_returns_series,
             "benchmark_returns": benchmark_returns_series
         }
+
+    def _calculate_ticker_benchmark_returns(self, benchmark_ticker: str, datetime_index, ret_df_index):
+        """
+        Calculate returns for a ticker benchmark using the DataInterface.
+        
+        This method loads the benchmark ticker data and calculates its returns
+        aligned with the strategy timeline.
+        """
+        benchmark_returns = []
+        
+        for dt in datetime_index:
+            # Set the current timestamp to get benchmark data
+            self.data.set_current_timestamp(dt)
+            
+            try:
+                # Get benchmark data for this timestamp using the DataInterface
+                benchmark_data = self.data[benchmark_ticker]
+                benchmark_returns.append(benchmark_data['close'])
+            except (KeyError, ValueError):
+                # If benchmark data is not available, use 0 return
+                benchmark_returns.append(0.0)
+        
+        # Convert to pandas Series and calculate returns
+        benchmark_prices = pd.Series(benchmark_returns, index=ret_df_index)
+        benchmark_returns_series = benchmark_prices.pct_change(fill_method=None).fillna(0.0)
+        
+        return benchmark_returns_series
 
 class Backtester:
     """

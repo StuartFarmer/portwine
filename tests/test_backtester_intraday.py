@@ -2,6 +2,7 @@ import unittest
 from datetime import time
 import pandas as pd
 import numpy as np
+from unittest.mock import Mock
 
 from portwine.backtester.core import NewBacktester
 from portwine.strategies.base import StrategyBase
@@ -9,17 +10,79 @@ from portwine.data.interface import RestrictedDataInterface
 
 class MockRestrictedDataInterface(RestrictedDataInterface):
     def __init__(self, mock_data=None):
+        # Create a mock data loader
+        self.mock_data_loader = Mock()
         self.mock_data = mock_data or {}
         self.set_timestamp_calls = []
         self.get_calls = []
         self.current_timestamp = None
+        
+        # Initialize parent with mock loaders
+        super().__init__({None: self.mock_data_loader})
+        
+        # Add data_loader attribute for compatibility
+        self.data_loader = self.mock_data_loader
+        
+        # Configure the mock data loader to return proper data
+        def mock_next(tickers, timestamp):
+            result = {}
+            for ticker in tickers:
+                if ticker in self.mock_data:
+                    data = self.mock_data[ticker]
+                    if self.current_timestamp is not None:
+                        dt_python = pd.Timestamp(self.current_timestamp)
+                        # Use the exact timestamps that match the data
+                        dates = pd.to_datetime([
+                            '2025-04-14 09:30', '2025-04-14 16:00',
+                            '2025-04-15 09:30', '2025-04-15 16:00',
+                        ])
+                        try:
+                            idx = dates.get_loc(dt_python)
+                            result[ticker] = {
+                                'close': float(data['close'][idx]),
+                                'open': float(data['open'][idx]),
+                                'high': float(data['high'][idx]),
+                                'low': float(data['low'][idx]),
+                                'volume': float(data['volume'][idx])
+                            }
+                        except (KeyError, IndexError):
+                            # Fallback to first value if index not found
+                            result[ticker] = {
+                                'close': float(data['close'][0]),
+                                'open': float(data['open'][0]),
+                                'high': float(data['high'][0]),
+                                'low': float(data['low'][0]),
+                                'volume': float(data['volume'][0])
+                            }
+                    else:
+                        # Fallback to first value if no timestamp set
+                        result[ticker] = {
+                            'close': float(data['close'][0]),
+                            'open': float(data['open'][0]),
+                            'high': float(data['high'][0]),
+                            'low': float(data['low'][0]),
+                            'volume': float(data['volume'][0])
+                        }
+                else:
+                    result[ticker] = {
+                        'close': 100.0,
+                        'open': 100.0,
+                        'high': 105.0,
+                        'low': 95.0,
+                        'volume': 1000000
+                    }
+            return result
+        
+        self.mock_data_loader.next = mock_next
 
     def set_current_timestamp(self, dt):
         self.set_timestamp_calls.append(dt)
         self.current_timestamp = dt
+        super().set_current_timestamp(dt)
 
     def set_restricted_tickers(self, tickers):
         self.restricted_tickers = tickers
+        super().set_restricted_tickers(tickers)
 
     def __getitem__(self, ticker):
         self.get_calls.append(ticker)
@@ -190,7 +253,7 @@ class TestIntradayBacktester(unittest.TestCase):
             strat, 
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         sig = res['signals_df']
 
@@ -215,7 +278,7 @@ class TestIntradayBacktester(unittest.TestCase):
             strat, 
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         sig = res['signals_df']
 
@@ -241,7 +304,7 @@ class TestIntradayBacktester(unittest.TestCase):
             strat,
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         sig = res['signals_df']
 
@@ -263,7 +326,7 @@ class TestIntradayBacktester(unittest.TestCase):
             strat,
             start_date='2025-04-14 16:00',
             end_date='2025-04-14 16:00',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         sig = res['signals_df']
 
@@ -287,7 +350,7 @@ class TestIntradayBacktester(unittest.TestCase):
             strat, 
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         sig = res['signals_df']
 
@@ -316,7 +379,14 @@ class TestIntradayReturnCalculations(unittest.TestCase):
                 'volume': loader.df['volume'].values
             }
         
-        self.bt = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        # Create a custom backtester that uses the mock data interface directly
+        class CustomNewBacktester(NewBacktester):
+            def __init__(self, data_interface, calendar):
+                self.data = data_interface
+                self.restricted_data = data_interface  # Use the mock interface directly
+                self.calendar = calendar
+        
+        self.bt = CustomNewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
         # precompute the four percent returns:
         # first bar: 09:30 -> no prior bar -> pct_change = NaN -> filled to 0
@@ -344,7 +414,7 @@ class TestIntradayReturnCalculations(unittest.TestCase):
             strat, 
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         ret_df = res['tickers_returns']
 
@@ -375,7 +445,7 @@ class TestIntradayReturnCalculations(unittest.TestCase):
             strat, 
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         sr = res['strategy_returns']
 
@@ -414,7 +484,7 @@ class TestIntradayReturnCalculations(unittest.TestCase):
             strat,
             start_date='2025-04-14',
             end_date='2025-04-15',
-            benchmark_func=equal_weight_benchmark
+            benchmark=equal_weight_benchmark
         )
         
         sr = res['strategy_returns']
