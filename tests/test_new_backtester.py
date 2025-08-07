@@ -99,10 +99,10 @@ class MockRestrictedDataInterface(RestrictedDataInterface):
         self.set_timestamp_calls.append(timestamp)
         super().set_current_timestamp(timestamp)
     
-    def set_restricted_tickers(self, tickers: List[str]):
+    def set_restricted_tickers(self, tickers: List[str], prefix=None):
         """Mock set_restricted_tickers method"""
         self.set_restricted_calls.append(tickers)
-        super().set_restricted_tickers(tickers)
+        super().set_restricted_tickers(tickers, prefix)
     
     def __getitem__(self, ticker: str):
         """Mock __getitem__ method"""

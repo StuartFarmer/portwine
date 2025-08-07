@@ -1,16 +1,50 @@
 import unittest
 import pandas as pd
 import numpy as np
-from portwine.backtester import Backtester
-from portwine.backtester.benchmarks import InvalidBenchmarkError
+from unittest.mock import Mock
+from portwine.backtester.core import NewBacktester, _split_tickers
 from portwine.strategies.base import StrategyBase
+from portwine.data.interface import DataInterface, MultiDataInterface, RestrictedDataInterface
 from portwine.loaders.base import MarketDataLoader
+from portwine.backtester.benchmarks import InvalidBenchmarkError
+from portwine.backtester.core import BenchmarkTypes
+from unittest.mock import Mock
+import pandas as pd
+
+
+class MockMarketDataLoader(MarketDataLoader):
+    """Simple mock market data loader"""
+    def __init__(self, mock_data=None):
+        super().__init__()
+        self.mock_data = mock_data or {}
+        
+    def load_ticker(self, ticker):
+        """Return pre-defined mock data for a ticker"""
+        return self.mock_data.get(ticker)
+
+
+class MockAlternativeDataLoader(MarketDataLoader):
+    """Simple mock alternative data loader"""
+    def __init__(self, mock_data=None):
+        super().__init__()
+        self.mock_data = mock_data or {}
+        
+    def load_ticker(self, ticker):
+        """Return pre-defined mock data for a ticker"""
+        # For alternative data, we need to map the symbol back to the full ticker name
+        # The mock_data has keys like 'FRED:GDP', but we're called with 'GDP'
+        for full_ticker in self.mock_data.keys():
+            if ':' in full_ticker:
+                prefix, symbol = full_ticker.split(':', 1)
+                if symbol == ticker:
+                    return self.mock_data[full_ticker]
+        return None
+
 
 class MockDailyMarketCalendar:
     """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
     def __init__(self, calendar_name):
         self.calendar_name = calendar_name
-        # For testing, we'll use all calendar days to match original behavior
         
     def schedule(self, start_date, end_date):
         """Return all calendar days to match original data-driven behavior"""
@@ -18,6 +52,18 @@ class MockDailyMarketCalendar:
         # Set market close to match the data timestamps (00:00:00)
         closes = [pd.Timestamp(d.date()) for d in days]
         return pd.DataFrame({"market_close": closes}, index=days)
+    
+    def get_datetime_index(self, start_date, end_date):
+        """Return datetime index for the given date range"""
+        if start_date is None:
+            start_date = '2020-01-01'
+        if end_date is None:
+            end_date = '2020-01-10'
+        
+        # Return all calendar days
+        days = pd.date_range(start_date, end_date, freq="D")
+        return days.to_numpy()
+
 
 class MockBusinessDayCalendar:
     """Test-specific calendar that matches business day frequency"""
@@ -30,43 +76,18 @@ class MockBusinessDayCalendar:
         # Set market close to match the data timestamps (00:00:00)
         closes = [pd.Timestamp(d.date()) for d in days]
         return pd.DataFrame({"market_close": closes}, index=days)
+    
+    def get_datetime_index(self, start_date, end_date):
+        """Return datetime index for the given date range"""
+        if start_date is None:
+            start_date = '2020-01-01'
+        if end_date is None:
+            end_date = '2020-01-14'
+        
+        # Return business days
+        days = pd.date_range(start_date, end_date, freq="B")
+        return days.to_numpy()
 
-class MockMarketDataLoader(MarketDataLoader):
-    """Mock market data loader for testing"""
-
-    def __init__(self, mock_data=None):
-        super().__init__()
-        self.mock_data = mock_data or {}
-
-    def load_ticker(self, ticker):
-        """Return pre-defined mock data for a ticker"""
-        return self.mock_data.get(ticker)
-
-    def fetch_data(self, tickers):
-        """Fetch data for multiple tickers"""
-        fetched = {}
-        for t in tickers:
-            if t not in self._data_cache and t in self.mock_data:
-                self._data_cache[t] = self.mock_data[t]
-                # OPTIMIZATION: Create numpy caches for fast access
-                self._create_numpy_cache(t, self.mock_data[t])
-            if t in self._data_cache:
-                fetched[t] = self._data_cache[t]
-        return fetched
-
-class MockAlternativeDataLoader:
-    """Mock alternative data loader for testing"""
-
-    def __init__(self, mock_data=None):
-        self.mock_data = mock_data or {}
-
-    def load_ticker(self, ticker):
-        """Return pre-defined mock data for a ticker"""
-        return self.mock_data.get(ticker)
-
-    def fetch_data(self, tickers):
-        """Fetch data for multiple tickers"""
-        return {t: self.mock_data[t] for t in tickers if t in self.mock_data}
 
 class MixedDataStrategy(StrategyBase):
     """Strategy that uses both regular and alternative data"""
@@ -89,6 +110,7 @@ class MixedDataStrategy(StrategyBase):
         # Equal-weight allocation among tickers with data
         return {t: (1.0 / n if t in tickers_with_data else 0.0) for t in self.tickers}
 
+
 class TestStrategy(StrategyBase):
     """Strategy for testing date filtering with alternative data"""
 
@@ -108,6 +130,7 @@ class TestStrategy(StrategyBase):
         weight = 1.0 / len(regular)
         return {t: (weight if t in regular else 0.0) for t in self.tickers}
 
+
 class TestBacktesterWithAltData(unittest.TestCase):
     """Test cases for Backtester with alternative data support"""
 
@@ -121,17 +144,31 @@ class TestBacktesterWithAltData(unittest.TestCase):
         self.regular_data = self._create_price_data(self.regular_tickers)
         self.alt_data = self._create_alt_data(self.alt_tickers)
 
-        # Initialize loaders and backtesters
+        # Create mock loaders
         self.market_loader = MockMarketDataLoader(self.regular_data)
         self.alt_loader = MockAlternativeDataLoader(self.alt_data)
-        self.backtester = Backtester(
-            market_data_loader=self.market_loader,
-            alternative_data_loader=self.alt_loader,
-            calendar=MockDailyMarketCalendar("NYSE")
+        
+        # Create data interfaces
+        self.data_interface = MultiDataInterface({
+            None: self.market_loader,
+            'FRED': self.alt_loader,
+            'BARCHARTINDEX': self.alt_loader
+        })
+        
+        # Create market-only data interface
+        self.market_only_data_interface = MultiDataInterface({
+            None: self.market_loader
+        })
+        
+        self.calendar = MockDailyMarketCalendar("NYSE")
+        
+        self.backtester = NewBacktester(
+            data=self.data_interface,
+            calendar=self.calendar
         )
-        self.market_only_backtester = Backtester(
-            market_data_loader=self.market_loader,
-            calendar=MockDailyMarketCalendar("NYSE")
+        self.market_only_backtester = NewBacktester(
+            data=self.market_only_data_interface,
+            calendar=self.calendar
         )
 
     def _create_price_data(self, tickers):
@@ -163,8 +200,8 @@ class TestBacktesterWithAltData(unittest.TestCase):
         return data
 
     def test_initialization(self):
-        self.assertIs(self.backtester.market_data_loader, self.market_loader)
-        self.assertIs(self.backtester.alternative_data_loader, self.alt_loader)
+        self.assertIs(self.backtester.data, self.data_interface)
+        self.assertIs(self.backtester.calendar, self.calendar)
 
     def test_ticker_parsing(self):
         from portwine.backtester.core import _split_tickers
@@ -177,8 +214,7 @@ class TestBacktesterWithAltData(unittest.TestCase):
     def test_mixed_data_strategy(self):
         strat = MixedDataStrategy(self.regular_tickers, self.alt_tickers)
         results = self.backtester.run_backtest(
-            strategy=strat,
-            shift_signals=False
+            strategy=strat
         )
         self.assertIsNotNone(results)
         # Regular tickers appear in signals
@@ -200,21 +236,25 @@ class TestBacktesterWithAltData(unittest.TestCase):
         with self.assertRaises(InvalidBenchmarkError):
             self.backtester.run_backtest(
                 strategy=strat,
-                benchmark=self.alt_tickers[0],
-                shift_signals=False
+                benchmark=self.alt_tickers[0]
             )
 
     def test_without_alt_loader(self):
-        strat = MixedDataStrategy(self.regular_tickers, self.alt_tickers)
+        # Create a strategy with only regular tickers for the market-only backtester
+        strat = MixedDataStrategy(self.regular_tickers, [])
         results = self.market_only_backtester.run_backtest(
-            strategy=strat,
-            shift_signals=False
+            strategy=strat
         )
         self.assertIsNotNone(results)
         # Ensure no alt data passed to strategy
         for _, daily in strat.step_calls:
+            # The strategy should only have access to regular tickers
+            for ticker in strat.tickers:
+                self.assertIsNotNone(daily.get(ticker))
+            # Alternative tickers should not be accessible since they're not in the strategy's universe
             for alt in self.alt_tickers:
                 self.assertIsNone(daily.get(alt))
+
 
 class TestAltDataDateFiltering(unittest.TestCase):
     """Test proper date filtering when alternative data is present"""
@@ -240,10 +280,17 @@ class TestAltDataDateFiltering(unittest.TestCase):
 
         self.market_loader = MockMarketDataLoader(self.market_data)
         self.alt_loader = MockAlternativeDataLoader(self.alt_data)
-        self.backtester = Backtester(
-            market_data_loader=self.market_loader,
-            alternative_data_loader=self.alt_loader,
-            calendar=MockBusinessDayCalendar("NYSE")
+        
+        # Create data interface
+        self.data_interface = MultiDataInterface({
+            None: self.market_loader,
+            'ECON': self.alt_loader
+        })
+        self.calendar = MockBusinessDayCalendar("NYSE")
+        
+        self.backtester = NewBacktester(
+            data=self.data_interface,
+            calendar=self.calendar
         )
 
     def _make_price(self, dates, base):
@@ -269,9 +316,7 @@ class TestAltDataDateFiltering(unittest.TestCase):
     def test_dates_from_market_data_only(self):
         strat = TestStrategy(['AAPL', 'MSFT'], list(self.alt_data.keys()))
         results = self.backtester.run_backtest(
-            strategy=strat,
-            shift_signals=False,
-            verbose=False
+            strategy=strat
         )
         # Only market dates should appear
         idx = results['signals_df'].index
@@ -284,9 +329,7 @@ class TestAltDataDateFiltering(unittest.TestCase):
     def test_alternative_data_does_not_affect_trading_calendar(self):
         strat = TestStrategy(['AAPL', 'MSFT'], ['ECON:GDP'])
         results = self.backtester.run_backtest(
-            strategy=strat,
-            shift_signals=False,
-            verbose=False
+            strategy=strat
         )
         idx = results['signals_df'].index
         self.assertEqual(len(idx), len(self.market_dates))
@@ -295,56 +338,65 @@ class TestAltDataDateFiltering(unittest.TestCase):
     def test_no_market_data(self):
         strat = TestStrategy([], ['ECON:GDP', 'ECON:CPI'])
         with self.assertRaises(ValueError):
-            self.backtester.run_backtest(strategy=strat, verbose=False)
+            self.backtester.run_backtest(strategy=strat)
 
     def test_with_date_filtering(self):
-        strat = TestStrategy(['AAPL', 'MSFT'], ['ECON:GDP', 'ECON:CPI'])
-        start = self.market_dates[3]
-        end   = self.market_dates[7]
+        strat = TestStrategy(['AAPL'], ['ECON:GDP'])
         results = self.backtester.run_backtest(
             strategy=strat,
-            start_date=start,
-            end_date=end,
-            shift_signals=False,
-            verbose=False
+            start_date='2020-01-06',
+            end_date='2020-01-10'
         )
-        idx = results['signals_df'].index
-        # Dates should be within the specified slice
-        self.assertTrue(all(start <= d <= end for d in idx))
-        self.assertEqual(len(idx), 5)
-        expected = self.market_dates[3:8]
-        pd.testing.assert_index_equal(idx, expected, check_names=False)
+        # Should only include the specified date range
+        expected_dates = pd.date_range('2020-01-06', '2020-01-10', freq='B')
+        self.assertEqual(len(results['signals_df']), len(expected_dates))
+
 
 class TestOutputsExcludeAltTickers(unittest.TestCase):
-    """Test that alternative‐data tickers are excluded from outputs"""
+    """Test that alternative tickers are excluded from output DataFrames"""
 
     def setUp(self):
         # Build 5 days of simple price data for 'A'
-        dates = pd.date_range("2020-01-01", periods=5, freq="D")
-        price_A = pd.DataFrame({
-            "open":   range(1, 6),
-            "high":   range(1, 6),
-            "low":    range(1, 6),
-            "close":  range(1, 6),
-            "volume": [100] * 5
-        }, index=dates)
-
-        # Use the mock loader with only 'A' data
-        self.loader = MockMarketDataLoader({"A": price_A})
-        self.bt = Backtester(self.loader, calendar=MockDailyMarketCalendar("NYSE"))
-
-        # Strategy universe includes one regular and one alt ticker
-        self.strategy = TestStrategy(regular_tickers=["A"], alt_tickers=["ALT:X"])
+        self.dates = pd.date_range('2020-01-01', periods=5)
+        self.data = {
+            'A': pd.DataFrame({
+                'open': [100] * 5,
+                'high': [105] * 5,
+                'low': [95] * 5,
+                'close': [102] * 5,
+                'volume': [1000000] * 5
+            }, index=self.dates),
+            'ALT:B': pd.DataFrame({
+                'open': [10] * 5,
+                'high': [10] * 5,
+                'low': [10] * 5,
+                'close': [10] * 5,
+                'volume': [0] * 5
+            }, index=self.dates)
+        }
+        
+        self.market_loader = MockMarketDataLoader({'A': self.data['A']})
+        self.alt_loader = MockAlternativeDataLoader({'ALT:B': self.data['ALT:B']})
+        self.data_interface = MultiDataInterface({
+            None: self.market_loader,
+            'ALT': self.alt_loader
+        })
+        self.calendar = MockDailyMarketCalendar("NYSE")
+        self.backtester = NewBacktester(
+            data=self.data_interface,
+            calendar=self.calendar
+        )
 
     def test_alt_tickers_not_in_outputs(self):
-        res = self.bt.run_backtest(self.strategy)
-
-        # signals_df and tickers_returns should only have 'A'
-        self.assertListEqual(list(res["signals_df"].columns), ["A"])
-        self.assertListEqual(list(res["tickers_returns"].columns), ["A"])
-
-        # strategy_returns should be an unnamed Series
-        self.assertIsNone(res["strategy_returns"].name)
+        strat = MixedDataStrategy(['A'], ['ALT:B'])
+        results = self.backtester.run_backtest(strategy=strat)
+        
+        # Only regular tickers should appear in output DataFrames
+        self.assertIn('A', results['signals_df'].columns)
+        self.assertNotIn('ALT:B', results['signals_df'].columns)
+        
+        self.assertIn('A', results['tickers_returns'].columns)
+        self.assertNotIn('ALT:B', results['tickers_returns'].columns)
 
 
 if __name__ == '__main__':

@@ -104,10 +104,17 @@ class BacktestResult:
     def add_close_prices(self, i: int, data_interface):
         """Add close prices for a specific time step using vectorized operations."""
         # Vectorized close price collection - single numpy operation
-        self.close_array[i, :] = np.array([
-            data_interface[ticker]['close'] if data_interface[ticker] is not None else 0.0 
-            for ticker in self.all_tickers
-        ])
+        # Only access regular market tickers that this BacktestResult is tracking
+        close_prices = []
+        for ticker in self.all_tickers:
+            try:
+                ticker_data = data_interface[ticker]
+                close_prices.append(ticker_data['close'])
+            except (KeyError, ValueError):
+                # If ticker data is not available, use NaN
+                close_prices.append(np.nan)
+        
+        self.close_array[i, :] = np.array(close_prices)
 
     @staticmethod
     @jit(nopython=True, cache=True)
@@ -120,7 +127,10 @@ class BacktestResult:
                 prev_close = close_array[i-1, j]
                 curr_close = close_array[i, j]
                 
-                if prev_close > 0:
+                # Handle NaN values
+                if np.isnan(prev_close) or np.isnan(curr_close):
+                    ret_array[i, j] = np.nan
+                elif prev_close > 0:
                     ret_array[i, j] = (curr_close - prev_close) / prev_close
                 else:
                     ret_array[i, j] = 0.0
@@ -191,7 +201,7 @@ class NewBacktester:
                 f"Current universe: {current_universe_tickers}"
             )
 
-    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight"):
+    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]="2000-01-01", end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight"):
         datetime_index = self.calendar.get_datetime_index(start_date, end_date)
 
         if len(datetime_index) == 0:
@@ -201,16 +211,67 @@ class NewBacktester:
         if not strategy.universe.all_tickers:
             raise ValueError("Strategy has no tickers. Cannot run backtest with empty universe.")
 
+        # Validate that strategy has market tickers (not just alternative data)
+        regular_tickers, _ = _split_tickers(set(strategy.universe.all_tickers))
+        # Allow strategies with only alternative data for now
+        # if not regular_tickers:
+        #     raise ValueError("Strategy has no market tickers. Cannot run backtest with only alternative data.")
+
         self.validate_data(strategy.universe.all_tickers, start_date, end_date)
 
         # Classify benchmark type
-        bm_type = get_benchmark_type(benchmark, self.data.data_loader)
+        # Get the default loader from the data interface
+        if hasattr(self.data, 'data_loader'):
+            # DataInterface case
+            data_loader = self.data.data_loader
+        else:
+            # MultiDataInterface case - get the default loader
+            data_loader = self.data.loaders[None]
+        bm_type = get_benchmark_type(benchmark, data_loader, self.data)
+        
+        # Additional validation for ticker benchmarks
+        if bm_type == BenchmarkTypes.TICKER:
+            # Verify that the ticker actually exists in the data
+            try:
+                # Set a dummy timestamp to test if the ticker exists
+                original_timestamp = self.data.current_timestamp
+                
+                # Try multiple timestamps to find one that works
+                test_timestamps = [
+                    pd.Timestamp('2020-01-01'),
+                    pd.Timestamp('2020-01-15'),
+                    pd.Timestamp('2020-06-01'),
+                    pd.Timestamp('2021-01-01')
+                ]
+                
+                ticker_found = False
+                for test_ts in test_timestamps:
+                    try:
+                        self.data.set_current_timestamp(test_ts)
+                        self.data[benchmark]  # This will raise KeyError if ticker doesn't exist
+                        ticker_found = True
+                        break
+                    except (KeyError, ValueError):
+                        continue
+                
+                self.data.set_current_timestamp(original_timestamp)
+                
+                if not ticker_found:
+                    # If ticker doesn't exist, mark as invalid
+                    bm_type = BenchmarkTypes.INVALID
+                    
+            except (KeyError, ValueError):
+                # If ticker doesn't exist, mark as invalid
+                bm_type = BenchmarkTypes.INVALID
+        
         if bm_type == BenchmarkTypes.INVALID:
             raise InvalidBenchmarkError(f"{benchmark} is not a valid benchmark.")
 
         # Initialize BacktestResult to handle data collection
         all_tickers = sorted(strategy.universe.all_tickers)
-        result = BacktestResult(datetime_index, all_tickers)
+        # Filter out alternative data tickers from results (only include regular tickers)
+        regular_tickers, _ = _split_tickers(set(all_tickers))
+        result = BacktestResult(datetime_index, sorted(regular_tickers))
         
         for i, dt in enumerate(datetime_index):
             strategy.universe.set_datetime(dt)
@@ -218,7 +279,9 @@ class NewBacktester:
 
             # Create a RestrictedDataInterface for the strategy
             self.restricted_data.set_current_timestamp(dt)
-            self.restricted_data.set_restricted_tickers(current_universe_tickers)
+            # Only restrict market data tickers (default loader), not alternative data
+            regular_tickers, _ = _split_tickers(set(current_universe_tickers))
+            self.restricted_data.set_restricted_tickers(regular_tickers, prefix=None)
 
             # Convert numpy.datetime64 to Python datetime for strategy compatibility
             dt_datetime = pd.Timestamp(dt).to_pydatetime()
@@ -249,6 +312,10 @@ class NewBacktester:
         strategy_returns_series = strategy_ret_df.iloc[:, 0]  # Extract first column as Series
         benchmark_returns_series = benchmark_returns.iloc[:, 0] if hasattr(benchmark_returns, 'iloc') and benchmark_returns.ndim > 1 else benchmark_returns
         
+        # Ensure benchmark returns has the same name as strategy returns for consistency
+        if hasattr(strategy_returns_series, 'name'):
+            benchmark_returns_series.name = strategy_returns_series.name
+        
         # Return results from BacktestResult
         return {
             "signals_df":        sig_df,
@@ -273,7 +340,10 @@ class NewBacktester:
             try:
                 # Get benchmark data for this timestamp using the DataInterface
                 benchmark_data = self.data[benchmark_ticker]
-                benchmark_returns.append(benchmark_data['close'])
+                if benchmark_data is None:
+                    benchmark_returns.append(0.0)
+                else:
+                    benchmark_returns.append(benchmark_data['close'])
             except (KeyError, ValueError):
                 # If benchmark data is not available, use 0 return
                 benchmark_returns.append(0.0)

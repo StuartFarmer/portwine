@@ -86,7 +86,7 @@ class MockRestrictedDataInterface(DataInterface):
     def set_current_timestamp(self, dt):
         self.current_timestamp = dt
 
-    def set_restricted_tickers(self, tickers):
+    def set_restricted_tickers(self, tickers, prefix=None):
         self.restricted_tickers = tickers
 
     def __getitem__(self, ticker):

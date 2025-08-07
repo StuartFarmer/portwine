@@ -8,8 +8,80 @@ from portwine.execution import ExecutionBase
 from portwine.brokers.mock import MockBroker
 from portwine.loaders.base import MarketDataLoader
 from portwine.loaders.broker import BrokerDataLoader
-from portwine.backtester import Backtester
+from portwine.backtester.core import NewBacktester
 from portwine.strategies.base import StrategyBase
+from portwine.data.interface import DataInterface
+from unittest.mock import Mock
+
+class MockDataInterface(DataInterface):
+    """Mock DataInterface for testing"""
+    def __init__(self, mock_data=None):
+        self.mock_data = mock_data or {}
+        self.current_timestamp = None
+        
+        # Create a proper mock data loader
+        self.data_loader = Mock()
+        
+        # Configure the mock data loader to return proper data
+        def mock_next(tickers, timestamp):
+            result = {}
+            for ticker in tickers:
+                if ticker in self.mock_data:
+                    data = self.mock_data[ticker]
+                    if self.current_timestamp is not None:
+                        # Return data for the current timestamp
+                        dt_python = pd.Timestamp(self.current_timestamp)
+                        if hasattr(data, 'index'):
+                            try:
+                                idx = data.index.get_loc(dt_python)
+                                result[ticker] = {
+                                    'close': data['close'].iloc[idx],
+                                    'open': data['open'].iloc[idx],
+                                    'high': data['high'].iloc[idx],
+                                    'low': data['low'].iloc[idx],
+                                    'volume': data['volume'].iloc[idx]
+                                }
+                            except (KeyError, IndexError):
+                                result[ticker] = None
+                        else:
+                            result[ticker] = data
+                    else:
+                        result[ticker] = data
+                else:
+                    result[ticker] = None
+            return result
+        
+        self.data_loader.next = mock_next
+        
+    def set_current_timestamp(self, dt):
+        self.current_timestamp = dt
+        super().set_current_timestamp(dt)
+        
+    def __getitem__(self, ticker):
+        if ticker in self.mock_data:
+            data = self.mock_data[ticker]
+            if self.current_timestamp is not None:
+                # Return data for the current timestamp
+                dt_python = pd.Timestamp(self.current_timestamp)
+                if hasattr(data, 'index'):
+                    try:
+                        idx = data.index.get_loc(dt_python)
+                        return {
+                            'close': float(data['close'].iloc[idx]),
+                            'open': float(data['open'].iloc[idx]),
+                            'high': float(data['high'].iloc[idx]),
+                            'low': float(data['low'].iloc[idx]),
+                            'volume': float(data['volume'].iloc[idx])
+                        }
+                    except (KeyError, IndexError):
+                        return None
+                else:
+                    return data
+            return data
+        return None
+        
+    def exists(self, ticker, start_date, end_date):
+        return ticker in self.mock_data
 
 class MockDailyMarketCalendar:
     """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
@@ -23,6 +95,17 @@ class MockDailyMarketCalendar:
         # Set market close to match the data timestamps (00:00:00)
         closes = [pd.Timestamp(d.date()) for d in days]
         return pd.DataFrame({"market_close": closes}, index=days)
+    
+    def get_datetime_index(self, start_date, end_date):
+        """Return datetime index for the given date range"""
+        if start_date is None:
+            start_date = '2020-01-01'
+        if end_date is None:
+            end_date = '2020-01-10'
+        
+        # Return all calendar days
+        days = pd.date_range(start_date, end_date, freq="D")
+        return days.to_numpy()
 
 
 class SimpleMarketLoader(MarketDataLoader):
@@ -69,16 +152,20 @@ class TestBacktesterBrokerLoaderIntegration(unittest.TestCase):
 
         # Strategy and backtester
         strat = BrokerIntegrationStrategy()
-        bt = Backtester(
-            market_data_loader=market_loader,
-            alternative_data_loader=broker_loader,
-            calendar=MockDailyMarketCalendar("NYSE")
+        
+        # Convert data to the format expected by NewBacktester
+        mock_data = {"FAKE": df, "BROKER:ACCOUNT": {"equity": initial_equity}}
+        data_interface = MockDataInterface(mock_data)
+        calendar = MockDailyMarketCalendar("NYSE")
+        
+        bt = NewBacktester(
+            data=data_interface,
+            calendar=calendar
         )
 
         # Run backtest without shifting signals (direct mapping)
         results = bt.run_backtest(
-            strategy=strat,
-            shift_signals=False
+            strategy=strat
         )
 
         # 1) Strategy step was called once per date

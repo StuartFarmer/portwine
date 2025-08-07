@@ -80,9 +80,9 @@ class MockRestrictedDataInterface(RestrictedDataInterface):
         self.current_timestamp = dt
         super().set_current_timestamp(dt)
 
-    def set_restricted_tickers(self, tickers):
+    def set_restricted_tickers(self, tickers, prefix=None):
         self.restricted_tickers = tickers
-        super().set_restricted_tickers(tickers)
+        super().set_restricted_tickers(tickers, prefix)
 
     def __getitem__(self, ticker):
         self.get_calls.append(ticker)

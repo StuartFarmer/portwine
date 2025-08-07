@@ -58,10 +58,10 @@ class BenchmarkTypes:
 
 # Returns the type of benchmark
 # 0: Standard benchmark (exists in STANDARD_BENCHMARKS)
-# 1: Ticker (exists in market_data_loader)
+# 1: Ticker (exists in market_data_loader or data_interface)
 # 2: Custom method (callable, or a string of a function in the global namespace)
 # 3: Invalid (neither a string nor a callable)
-def get_benchmark_type(benchmark: str | Callable, market_data_loader: MarketDataLoader=None) -> int:
+def get_benchmark_type(benchmark: str | Callable, market_data_loader: MarketDataLoader=None, data_interface=None) -> int:
     benchmark_is_str = isinstance(benchmark, str)
 
     # Check if the benchmark is a standard benchmark
@@ -69,10 +69,50 @@ def get_benchmark_type(benchmark: str | Callable, market_data_loader: MarketData
         return BenchmarkTypes.STANDARD_BENCHMARK
     
 
-    # Check if the benchmark is a in the market_data_loader
-    if market_data_loader is not None and benchmark_is_str:
-        if market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
-            return BenchmarkTypes.TICKER
+    # Check if the benchmark is a ticker in the market_data_loader or data_interface
+    if benchmark_is_str:
+        # Alternative data tickers (with colons) should not be valid benchmarks
+        if ':' in benchmark:
+            return BenchmarkTypes.INVALID
+        
+        # Try market_data_loader first (for backward compatibility)
+        if market_data_loader is not None:
+            if market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
+                return BenchmarkTypes.TICKER
+        
+        # Try data_interface if available
+        if data_interface is not None:
+            try:
+                # Set a dummy timestamp to test if the ticker exists
+                original_timestamp = data_interface.current_timestamp
+                
+                # Try multiple timestamps to find one that works
+                test_timestamps = [
+                    pd.Timestamp('2020-01-01'),
+                    pd.Timestamp('2020-01-15'),
+                    pd.Timestamp('2020-06-01'),
+                    pd.Timestamp('2021-01-01')
+                ]
+                
+                ticker_found = False
+                for test_ts in test_timestamps:
+                    try:
+                        data_interface.set_current_timestamp(test_ts)
+                        data_interface[benchmark]  # This will raise KeyError if ticker doesn't exist
+                        ticker_found = True
+                        break
+                    except (KeyError, ValueError):
+                        continue
+                
+                data_interface.set_current_timestamp(original_timestamp)
+                
+                if ticker_found:
+                    return BenchmarkTypes.TICKER
+                else:
+                    return BenchmarkTypes.INVALID
+                    
+            except (KeyError, ValueError):
+                return BenchmarkTypes.INVALID
     
 
     # Check if the benchmark is a function in the global namespace

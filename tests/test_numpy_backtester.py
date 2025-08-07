@@ -13,8 +13,107 @@ from portwine.vectorized import (
     NumpyVectorizedBacktester,
     SubsetStrategy
 )
-from portwine.backtester import Backtester
+from portwine.backtester.core import NewBacktester
 from portwine.strategies import StrategyBase
+from portwine.data.interface import DataInterface
+
+class MockDataInterface(DataInterface):
+    """Mock DataInterface for testing"""
+    def __init__(self, mock_data=None):
+        self.mock_data = mock_data or {}
+        self.current_timestamp = None
+        
+        # Create a proper mock loader instead of using Mock()
+        class MockLoader:
+            def __init__(self, mock_data):
+                self.mock_data = mock_data
+                
+            def next(self, tickers, ts):
+                """Mock next method that returns data for the given timestamp."""
+                result = {}
+                for ticker in tickers:
+                    if ticker in self.mock_data:
+                        data = self.mock_data[ticker]
+                        # Find the data at or before the given timestamp
+                        if not data.empty:
+                            # Find the closest date at or before ts
+                            mask = data.index <= ts
+                            if mask.any():
+                                latest_idx = data.index[mask].max()
+                                row = data.loc[latest_idx]
+                                result[ticker] = {
+                                    'open': float(row['open']),
+                                    'high': float(row['high']),
+                                    'low': float(row['low']),
+                                    'close': float(row['close']),
+                                    'volume': float(row['volume'])
+                                }
+                            else:
+                                result[ticker] = None
+                        else:
+                            result[ticker] = None
+                    else:
+                        result[ticker] = None
+                return result
+                
+            def fetch_data(self, tickers):
+                """Mock fetch_data method."""
+                return {t: self.mock_data.get(t) for t in tickers if t in self.mock_data}
+        
+        self.data_loader = MockLoader(self.mock_data)
+        
+    def set_current_timestamp(self, dt):
+        self.current_timestamp = dt
+        
+    def __getitem__(self, ticker):
+        if ticker in self.mock_data:
+            data = self.mock_data[ticker]
+            if self.current_timestamp is not None:
+                # Return data for the current timestamp
+                dt_python = pd.Timestamp(self.current_timestamp)
+                if hasattr(data, 'index'):
+                    try:
+                        idx = data.index.get_loc(dt_python)
+                        return {
+                            'close': data['close'].iloc[idx],
+                            'open': data['open'].iloc[idx],
+                            'high': data['high'].iloc[idx],
+                            'low': data['low'].iloc[idx],
+                            'volume': data['volume'].iloc[idx]
+                        }
+                    except KeyError:
+                        return None
+                else:
+                    return data
+            return data
+        return None
+        
+    def exists(self, ticker, start_date, end_date):
+        return ticker in self.mock_data
+
+class MockDailyMarketCalendar:
+    """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
+    def __init__(self, calendar_name):
+        self.calendar_name = calendar_name
+        # For testing, we'll use all calendar days to match original behavior
+        
+    def schedule(self, start_date, end_date):
+        """Return all calendar days to match original data-driven behavior"""
+        days = pd.date_range(start_date, end_date, freq="D")
+        # Set market close to match the data timestamps (00:00:00)
+        closes = [pd.Timestamp(d.date()) for d in days]
+        return pd.DataFrame({"market_close": closes}, index=days)
+    
+    def get_datetime_index(self, start_date, end_date):
+        """Return datetime index for the given date range"""
+        if start_date is None:
+            start_date = '2020-01-01'
+        if end_date is None:
+            end_date = '2020-01-10'
+        
+        # Return all calendar days
+        days = pd.date_range(start_date, end_date, freq="D")
+        return days.to_numpy()
 
 class MockMarketDataLoader:
     """Mock market data loader for testing."""
@@ -26,6 +125,34 @@ class MockMarketDataLoader:
     def fetch_data(self, tickers):
         self.fetch_data_called += 1
         return {t: self.data_dict.get(t) for t in tickers if t in self.data_dict}
+    
+    def next(self, tickers, ts):
+        """Mock next method that returns data for the given timestamp."""
+        result = {}
+        for ticker in tickers:
+            if ticker in self.data_dict:
+                df = self.data_dict[ticker]
+                # Find the data at or before the given timestamp
+                if not df.empty:
+                    # Find the closest date at or before ts
+                    mask = df.index <= ts
+                    if mask.any():
+                        latest_idx = df.index[mask].max()
+                        row = df.loc[latest_idx]
+                        result[ticker] = {
+                            'open': float(row['open']),
+                            'high': float(row['high']),
+                            'low': float(row['low']),
+                            'close': float(row['close']),
+                            'volume': float(row['volume'])
+                        }
+                    else:
+                        result[ticker] = None
+                else:
+                    result[ticker] = None
+            else:
+                result[ticker] = None
+        return result
 
 def generate_test_data(
     tickers: List[str],
@@ -293,10 +420,10 @@ class TestNumpyVectorizedBacktester(unittest.TestCase):
         strategy = SubsetStrategy(self.tickers, weight_type='equal')
         
         # With shift_signals=True (default)
-        results_shift = self.backtester.run_backtest(strategy, shift_signals=True)
+        results_shift = self.backtester.run_backtest(strategy)
         
         # With shift_signals=False
-        results_no_shift = self.backtester.run_backtest(strategy, shift_signals=False)
+        results_no_shift = self.backtester.run_backtest(strategy)
         
         # Results should be different
         self.assertFalse(np.array_equal(
@@ -507,7 +634,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         self.numpy_momentum_strategy = SubsetStrategy(self.tickers, 'momentum')
         
         # Create backtesters
-        self.original_backtester = Backtester(self.loader)
+        data_interface = MockDataInterface(self.loader.data_dict)
+        calendar = MockDailyMarketCalendar("NYSE")
+        self.original_backtester = NewBacktester(
+            data=data_interface,
+            calendar=calendar
+        )
         self.numpy_backtester = NumpyVectorizedBacktester(
             self.loader, self.tickers, self.start_date, self.end_date
         )
@@ -518,14 +650,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         original_results = self.original_backtester.run_backtest(
             self.original_equal_strategy,
             start_date=self.start_date,
-            end_date=self.end_date,
-            shift_signals=True
+            end_date=self.end_date
         )
         
         # Run NumPy backtester
         numpy_results = self.numpy_backtester.run_backtest(
-            self.numpy_equal_strategy,
-            shift_signals=True
+            self.numpy_equal_strategy
         )
         
         # Align dates for comparison
@@ -557,14 +687,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         original_results = self.original_backtester.run_backtest(
             self.original_momentum_strategy,
             start_date=self.start_date,
-            end_date=self.end_date,
-            shift_signals=True
+            end_date=self.end_date
         )
         
         # Run NumPy backtester
         numpy_results = self.numpy_backtester.run_backtest(
-            self.numpy_momentum_strategy,
-            shift_signals=True
+            self.numpy_momentum_strategy
         )
         
         # Align dates for comparison (skipping initial lookback periods)
@@ -624,14 +752,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         original_results = self.original_backtester.run_backtest(
             self.original_equal_strategy,
             start_date=self.start_date,
-            end_date=self.end_date,
-            shift_signals=False  # Don't shift for easier comparison
+            end_date=self.end_date
         )
         
         # Run NumPy backtester
         numpy_results = self.numpy_backtester.run_backtest(
-            self.numpy_equal_strategy,
-            shift_signals=False
+            self.numpy_equal_strategy
         )
         
         # Align dates for comparison
@@ -695,7 +821,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         large_numpy_strategy = SubsetStrategy(large_tickers, 'equal')
         
         # Create backtesters
-        large_original_backtester = Backtester(loader)
+        data_interface = MockDataInterface(loader.data_dict)
+        calendar = MockDailyMarketCalendar("NYSE")
+        large_original_backtester = NewBacktester(
+            data=data_interface,
+            calendar=calendar
+        )
         large_numpy_backtester = NumpyVectorizedBacktester(
             loader, large_tickers, self.start_date, "2020-10-01"
         )
@@ -744,7 +875,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         numpy_strategy = SubsetStrategy(large_tickers, 'equal')
         
         # Create backtesters
-        original_backtester = Backtester(loader)
+        data_interface = MockDataInterface(loader.data_dict)
+        calendar = MockDailyMarketCalendar("NYSE")
+        original_backtester = NewBacktester(
+            data=data_interface,
+            calendar=calendar
+        )
         numpy_backtester = NumpyVectorizedBacktester(
             loader, large_tickers, self.start_date, "2020-12-31"
         )
@@ -792,7 +928,12 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         numpy_strategy = SubsetStrategy(subset_tickers, 'equal')
         
         # Create backtesters
-        original_backtester = Backtester(loader)
+        data_interface = MockDataInterface(loader.data_dict)
+        calendar = MockDailyMarketCalendar("NYSE")
+        original_backtester = NewBacktester(
+            data=data_interface,
+            calendar=calendar
+        )
         numpy_backtester = NumpyVectorizedBacktester(
             loader, large_tickers, self.start_date, "2020-12-31"
         )
