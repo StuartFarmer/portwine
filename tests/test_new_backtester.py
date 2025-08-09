@@ -6,7 +6,8 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, List, Set
 
 # Import components to be tested
-from portwine.backtester.core import NewBacktester, DailyMarketCalendar
+from portwine.backtester.core import NewBacktester, DailyMarketCalendar, validate_dates
+from tests.calendar_utils import TestDailyMarketCalendar
 from portwine.data.interface import DataInterface, RestrictedDataInterface
 from portwine.strategies.base import StrategyBase
 from portwine.universe import Universe
@@ -126,30 +127,22 @@ class MockRestrictedDataInterface(RestrictedDataInterface):
             }
 
 
-class MockDailyMarketCalendar(DailyMarketCalendar):
-    """Mock calendar for testing purposes"""
-    
+class MockDailyMarketCalendar(TestDailyMarketCalendar):
+    """Backward-compatible alias that records calls for assertions while using the shared test calendar."""
     def __init__(self, calendar_name="NYSE"):
-        # Don't call parent __init__ to avoid real calendar creation
-        self.calendar_name = calendar_name
-        self.validate_calls = []
+        super().__init__(
+            calendar_name=calendar_name,
+            mode="all",
+            allowed_year=2023,
+            default_start="2023-01-01",
+            default_end="2023-12-31",
+            default_hour=None,
+        )
         self.get_datetime_index_calls = []
-    
-    def validate_dates(self, start_date: str, end_date=None) -> bool:
-        """Mock validate_dates method"""
-        self.validate_calls.append((start_date, end_date))
-        return True
-    
+
     def get_datetime_index(self, start_date: str, end_date=None):
-        """Mock get_datetime_index method"""
         self.get_datetime_index_calls.append((start_date, end_date))
-        # Return a simple datetime index for testing
-        if start_date is None:
-            start_date = '2023-01-01'
-        if end_date is None:
-            end_date = '2023-12-31'
-        dates = pd.date_range(start_date, end_date, freq='D')
-        return dates.to_numpy()
+        return super().get_datetime_index(start_date, end_date)
 
 
 class MockUniverse:
@@ -209,7 +202,7 @@ class TestNewBacktester(unittest.TestCase):
         # Create mock data interface (DataInterface, not RestrictedDataInterface)
         self.mock_data_interface = MockDataInterface()
     
-        # Create mock calendar
+        # Create test calendar (shared impl configured for 2023)
         self.mock_calendar = MockDailyMarketCalendar()
     
         # Create mock strategy
@@ -422,9 +415,10 @@ class TestNewBacktester(unittest.TestCase):
     
     def test_run_backtest_empty_calendar(self):
         """Test backtest execution with empty calendar (no trading days)"""
-        # Mock calendar to return empty datetime index
-        self.mock_calendar.get_datetime_index = Mock(return_value=np.array([]))
-    
+        # Configure calendar to produce no trading days: odd-only mode with an even-only range
+        self.mock_calendar.mode = "odd"
+        even_only_day = '2023-01-02'  # even day, so odd filter yields empty
+
         # Set up mock data
         self.mock_data_interface.exists_data = {
             'AAPL': True,
@@ -435,8 +429,8 @@ class TestNewBacktester(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             result = self.backtester.run_backtest(
                 self.mock_strategy,
-                start_date='2023-01-01',
-                end_date='2023-01-05'
+                start_date=even_only_day,
+                end_date=even_only_day
             )
         
         # Verify the error message
@@ -767,33 +761,28 @@ class TestDailyMarketCalendar(unittest.TestCase):
     
     def test_initialization(self):
         """Test DailyMarketCalendar initialization"""
-        calendar = DailyMarketCalendar("NYSE")
         # The real DailyMarketCalendar doesn't store calendar_name as an attribute
         # It just uses it to create the calendar object
-        self.assertIsNotNone(calendar.calendar)
+        self.assertIsNotNone(DailyMarketCalendar("NYSE").calendar)
     
     def test_validate_dates_valid(self):
         """Test validate_dates with valid dates"""
-        calendar = DailyMarketCalendar("NYSE")
-        result = calendar.validate_dates("2023-01-01", "2023-12-31")
+        result = validate_dates("2023-01-01", "2023-12-31")
         self.assertTrue(result)
     
     def test_validate_dates_invalid_start_date(self):
         """Test validate_dates with invalid start date format"""
-        calendar = DailyMarketCalendar("NYSE")
         with self.assertRaises(AssertionError):
-            calendar.validate_dates(123, "2023-12-31")
+            validate_dates(123, "2023-12-31")
     
     def test_validate_dates_end_before_start(self):
         """Test validate_dates with end date before start date"""
-        calendar = DailyMarketCalendar("NYSE")
         with self.assertRaises(AssertionError):
-            calendar.validate_dates("2023-12-31", "2023-01-01")
+            validate_dates("2023-12-31", "2023-01-01")
     
     def test_validate_dates_none_end_date(self):
         """Test validate_dates with None end date"""
-        calendar = DailyMarketCalendar("NYSE")
-        result = calendar.validate_dates("2023-01-01", None)
+        result = validate_dates("2023-01-01", None)
         self.assertTrue(result)
 
 

@@ -2,7 +2,7 @@ import pytest
 import datetime
 import numpy as np
 from unittest.mock import Mock, patch
-from portwine.backtester.core import DailyMarketCalendar
+from portwine.backtester.core import DailyMarketCalendar, validate_dates
 
 
 class TestDailyMarketCalendar:
@@ -28,30 +28,30 @@ class TestDailyMarketCalendar:
     def test_validate_dates_valid(self):
         """Test valid date validation"""
         calendar = DailyMarketCalendar('NYSE')
-        assert calendar.validate_dates('2024-01-01', '2024-01-05') is True
+        assert validate_dates('2024-01-01', '2024-01-05') is True
     
     def test_validate_dates_with_none_end_date(self):
         """Test validation with None end date"""
         calendar = DailyMarketCalendar('NYSE')
-        assert calendar.validate_dates('2024-01-01', None) is True
+        assert validate_dates('2024-01-01', None) is True
     
     def test_validate_dates_invalid_order(self):
         """Test invalid date order"""
         calendar = DailyMarketCalendar('NYSE')
         with pytest.raises(AssertionError, match="End date must be after start date"):
-            calendar.validate_dates('2024-01-05', '2024-01-01')
+            validate_dates('2024-01-05', '2024-01-01')
     
     def test_validate_dates_same_date(self):
         """Test validation with same start and end date"""
         calendar = DailyMarketCalendar('NYSE')
         with pytest.raises(AssertionError, match="End date must be after start date"):
-            calendar.validate_dates('2024-01-01', '2024-01-01')
+            validate_dates('2024-01-01', '2024-01-01')
     
     def test_validate_dates_invalid_start_date_type(self):
         """Test validation with invalid start date type"""
         calendar = DailyMarketCalendar('NYSE')
         with pytest.raises(AssertionError, match="Start date is required in string format"):
-            calendar.validate_dates(123, '2024-01-05')
+            validate_dates(123, '2024-01-05')
     
     def test_get_datetime_index(self):
         """Test datetime index generation"""

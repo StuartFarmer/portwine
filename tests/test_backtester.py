@@ -235,44 +235,7 @@ class DynamicTestStrategy(StrategyBase):
         # Equal weight until we have enough history
         return {ticker: 1.0 / len(self.tickers) for ticker in self.tickers}
 
-class FakeCalendar:
-    tz = "UTC"
-    def schedule(self, start_date, end_date):
-        days = pd.date_range(start_date, end_date, freq="D")
-        sel = [d for d in days if d.day % 2 == 1]
-        closes = [pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in sel]
-        return pd.DataFrame({"market_close": closes}, index=sel)
-    
-    def validate_dates(self, start_date, end_date):
-        """Validate date range - raise ValueError if start_date > end_date"""
-        if start_date is not None and end_date is not None:
-            sd = pd.Timestamp(start_date)
-            ed = pd.Timestamp(end_date)
-            if sd > ed:
-                raise ValueError("start_date must be on or before end_date")
-    
-    def get_datetime_index(self, start_date, end_date):
-        """Return datetime index for the given date range"""
-        self.validate_dates(start_date, end_date)
-        
-        if start_date is None:
-            start_date = '2020-01-13'
-        if end_date is None:
-            end_date = '2020-01-18'
-        
-        # Check if the requested date range is within the available data range
-        # For testing, we'll consider only dates in 2020 as "available"
-        start_dt = pd.Timestamp(start_date)
-        end_dt = pd.Timestamp(end_date)
-        
-        # If the date range is outside 2020, return empty array to simulate no data
-        if start_dt.year > 2020 or end_dt.year > 2020:
-            return np.array([])
-        
-        # Use the same logic as schedule but return numpy array
-        days = pd.date_range(start_date, end_date, freq="D")
-        sel = [d for d in days if d.day % 2 == 1]
-        return np.array(sel)
+from tests.calendar_utils import TestDailyMarketCalendar
 
 class MockDailyMarketCalendar:
     """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
@@ -360,7 +323,16 @@ class TestBacktester(unittest.TestCase):
 
         # Create backktester with test calendar
         from portwine.backtester.core import DailyMarketCalendar
-        self.backtester = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        self.backtester = NewBacktester(
+            self.data_interface,
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="all",
+                default_start="2020-01-01",
+                default_end="2020-01-10",
+                default_hour=None,
+            ),
+        )
 
     def test_initialization(self):
         """Test backktester initialization"""
@@ -892,7 +864,13 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         
         self.bt = NewBacktester(
             data=self.data_interface,
-            calendar=FakeCalendar()
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="odd",
+                default_start="2020-01-13",
+                default_end="2020-01-18",
+                default_hour=None,
+            ),
         )
         # Use TestStrategy instead of ZeroStrategy
         self.strategy = SimpleTestStrategy(["X"])

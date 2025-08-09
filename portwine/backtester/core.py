@@ -22,6 +22,21 @@ from portwine.strategies.base import StrategyBase
 # Optional Numba import for JIT compilation
 from numba import jit
 
+def validate_dates(start_date: str, end_date: Union[str, None]) -> bool:
+    assert isinstance(start_date, str), "Start date is required in string format YYYY-MM-DD."
+
+    # Cast to datetime objects
+    start_date_obj = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+
+    if end_date is None:
+        end_date_obj = datetime.datetime.now()
+    else:
+        end_date_obj = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+
+    assert end_date_obj > start_date_obj, "End date must be after start date."
+
+    return True
+
 
 class DailyMarketCalendar:
     def __init__(self, calendar_name):
@@ -31,23 +46,8 @@ class DailyMarketCalendar:
         """Expose the schedule method from the underlying calendar"""
         return self.calendar.schedule(start_date=start_date, end_date=end_date)
     
-    def validate_dates(self, start_date: str, end_date: Union[str, None]) -> bool:
-        assert isinstance(start_date, str), "Start date is required in string format YYYY-MM-DD."
-
-        # Cast to datetime objects
-        start_date_obj = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-
-        if end_date is None:
-            end_date_obj = datetime.datetime.now()
-        else:
-            end_date_obj = datetime.datetime.strptime(end_date, '%Y-%m-%d')
-
-        assert end_date_obj > start_date_obj, "End date must be after start date."
-
-        return True
-    
     def get_datetime_index(self, start_date: str, end_date: Union[str, None]=None):
-        self.validate_dates(start_date, end_date)
+        validate_dates(start_date, end_date)
 
         # Use today's date if end_date is None
         if end_date is None:
@@ -60,7 +60,12 @@ class DailyMarketCalendar:
         dt_localized = dt_index.tz_localize("UTC")
         dt_converted = dt_localized.tz_convert(None)
 
-        return dt_converted.to_numpy()
+        datetime_index = dt_converted.to_numpy()
+
+        if len(datetime_index) == 0:
+            raise ValueError("No trading days found in the specified date range")
+
+        return datetime_index
     
 def _split_tickers(tickers: set) -> Tuple[List[str], List[str]]:
         """
@@ -151,8 +156,11 @@ class BacktestResult:
         self._calculate_returns(self.close_array, self.ret_array)
         # Calculate strategy returns: sum(signals * returns) for each day
         shifted_signals = np.roll(self.sig_array, 1, axis=0)
-        shifted_signals[0, :] = 0.0  # First day has no previous signals
-        self._calculate_strategy_returns(shifted_signals, self.ret_array, self.strategy_returns)
+        if shifted_signals.shape[0] > 0:
+            shifted_signals[0, :] = 0.0  # First day has no previous signals
+        # Treat NaN returns as 0 for strategy P&L to avoid NaN propagation in aggregates
+        returns_no_nan = np.where(np.isnan(self.ret_array), 0.0, self.ret_array)
+        self._calculate_strategy_returns(shifted_signals, returns_no_nan, self.strategy_returns)
     
     def get_results(self):
         """Return the final DataFrames."""
@@ -201,11 +209,8 @@ class NewBacktester:
                 f"Current universe: {current_universe_tickers}"
             )
 
-    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]="2000-01-01", end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight"):
+    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight"):
         datetime_index = self.calendar.get_datetime_index(start_date, end_date)
-
-        if len(datetime_index) == 0:
-            raise ValueError("No trading days found in the specified date range")
 
         # Validate that strategy has tickers
         if not strategy.universe.all_tickers:

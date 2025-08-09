@@ -14,6 +14,7 @@ from portwine.loaders import MarketDataLoader, AlternativeMarketDataLoader
 from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
 from portwine.analyzers.correlation import CorrelationAnalyzer
 from portwine.data.interface import DataInterface
+from tests.calendar_utils import TestDailyMarketCalendar
 
 class MockRestrictedDataInterface(DataInterface):
     def __init__(self, mock_data=None):
@@ -102,36 +103,7 @@ class MockRestrictedDataInterface(DataInterface):
     def exists(self, ticker, start_date, end_date):
         return ticker in self.mock_data
 
-class MockDailyMarketCalendar:
-    """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
-    def __init__(self, calendar_name):
-        self.calendar_name = calendar_name
-        # For testing, we'll use all calendar days to match original behavior
-        
-    def schedule(self, start_date, end_date):
-        """Return all calendar days to match original data-driven behavior"""
-        days = pd.date_range(start_date, end_date, freq="D")
-        # Set market close to match the data timestamps (00:00:00)
-        closes = [pd.Timestamp(d.date()) for d in days]
-        return pd.DataFrame({"market_close": closes}, index=days)
-    
-    def get_datetime_index(self, start_date, end_date):
-        """Return datetime index for the given date range"""
-        if start_date is None:
-            start_date = '2020-01-01'
-        if end_date is None:
-            end_date = '2020-01-10'
-        
-        # Check if the requested date range is within the available data range
-        # For testing, we'll consider only dates in 2020 as "available"
-        start_dt = pd.Timestamp(start_date)
-        end_dt = pd.Timestamp(end_date)
-        
-        # If the date range is outside 2020, return empty array to simulate no data
-        if start_dt.year > 2020 or end_dt.year > 2020:
-            return np.array([])
-        
-        return pd.date_range(start_date, end_date, freq='D').to_numpy()
+## Use shared, configurable test calendar
 
 
 class DiskBasedMarketDataLoader(MarketDataLoader):
@@ -291,8 +263,17 @@ class TestBacktesterIntegration(unittest.TestCase):
                 'volume': data['volume'].values
             }
 
-        # Create backtester
-        self.backtester = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        # Create backtester using shared test calendar (all days, midnight timestamps)
+        self.backtester = NewBacktester(
+            self.data_interface,
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="all",
+                default_start="2020-01-01",
+                default_end="2020-01-30",
+                default_hour=None,
+            ),
+        )
 
     def tearDown(self):
         """Clean up after test"""
@@ -512,7 +493,16 @@ class TestBacktesterIntegration(unittest.TestCase):
                 'volume': data['volume'].values
             }
         
-        bt = NewBacktester(mock_data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        bt = NewBacktester(
+            mock_data_interface,
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="all",
+                default_start="2020-01-01",
+                default_end="2020-01-30",
+                default_hour=None,
+            ),
+        )
 
         # 3) Pick one ticker as alt, the rest as regular
         alt_ticker = f"MOCK:{self.tickers[0]}"

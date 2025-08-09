@@ -195,29 +195,7 @@ class FakeCalendar:
         sel = [d for d in days if d.day % 2 == 1]
         return np.array(sel)
 
-class MockDailyMarketCalendar:
-    """Test-specific DailyMarketCalendar that mimics data-driven behavior"""
-    def __init__(self, calendar_name):
-        self.calendar_name = calendar_name
-        # For testing, we'll use odd-numbered calendar days to match original behavior
-        
-    def schedule(self, start_date, end_date):
-        """Return odd-numbered calendar days to match original behavior"""
-        days = pd.date_range(start_date, end_date, freq="D")
-        # Filter to odd-numbered days
-        odd_days = [d for d in days if d.day % 2 == 1]
-        # Set market close to match the data timestamps (16:00:00)
-        closes = [pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in odd_days]
-        return pd.DataFrame({"market_close": closes}, index=odd_days)
-    
-    def get_datetime_index(self, start_date, end_date):
-        """Return datetime index for the given date range"""
-        # For this test, just return the 3 dates that the test expects
-        return pd.DatetimeIndex([
-            pd.Timestamp('2020-01-13 16:00:00'),
-            pd.Timestamp('2020-01-15 16:00:00'),
-            pd.Timestamp('2020-01-17 16:00:00')
-        ])
+from tests.calendar_utils import TestDailyMarketCalendar
 
 
 class TestBacktester(unittest.TestCase):
@@ -282,19 +260,13 @@ class TestBacktester(unittest.TestCase):
         self.data_interface = MockDataInterface(self.price_data)
         
         # Create a calendar that returns all dates for TestBacktester
-        class AllDatesCalendar(MockDailyMarketCalendar):
-            def get_datetime_index(self, start_date, end_date):
-                """Return all calendar days with 16:00 timestamp"""
-                if start_date is None:
-                    start_date = '2020-01-01'
-                if end_date is None:
-                    end_date = '2020-01-10'
-                
-                # Return all calendar days with 16:00 timestamp
-                days = pd.date_range(start_date, end_date, freq="D")
-                return pd.DatetimeIndex([pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in days])
-        
-        self.calendar = AllDatesCalendar("NYSE")
+        self.calendar = TestDailyMarketCalendar(
+            calendar_name="NYSE",
+            mode="all",
+            default_start="2020-01-01",
+            default_end="2020-01-10",
+            default_hour=16,
+        )
         
         self.backtester = NewBacktester(
             data=self.data_interface,
@@ -515,21 +487,15 @@ class TestBacktester(unittest.TestCase):
         staggered_data_interface = MockDataInterface(staggered_data)
         
         # Create a calendar that returns all dates for this test
-        class AllDatesCalendar(MockDailyMarketCalendar):
-            def get_datetime_index(self, start_date, end_date):
-                """Return all calendar days with 16:00 timestamp"""
-                if start_date is None:
-                    start_date = '2020-01-01'
-                if end_date is None:
-                    end_date = '2020-01-10'
-                
-                # Return all calendar days with 16:00 timestamp
-                days = pd.date_range(start_date, end_date, freq="D")
-                return pd.DatetimeIndex([pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in days])
-        
         staggered_backtester = NewBacktester(
             data=staggered_data_interface,
-            calendar=AllDatesCalendar("NYSE")
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="all",
+                default_start="2020-01-01",
+                default_end="2020-01-10",
+                default_hour=16,
+            ),
         )
 
         # Create strategy
@@ -669,19 +635,13 @@ class TestRequireAllHistory(unittest.TestCase):
         self.data_interface = MockDataInterface(mock_data)
         
         # Create a calendar that returns all dates for TestRequireAllHistory
-        class AllDatesCalendar(MockDailyMarketCalendar):
-            def get_datetime_index(self, start_date, end_date):
-                """Return all calendar days with 16:00 timestamp"""
-                if start_date is None:
-                    start_date = '2020-01-01'
-                if end_date is None:
-                    end_date = '2020-01-10'
-                
-                # Return all calendar days with 16:00 timestamp
-                days = pd.date_range(start_date, end_date, freq="D")
-                return pd.DatetimeIndex([pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in days])
-        
-        self.calendar = AllDatesCalendar("NYSE")
+        self.calendar = TestDailyMarketCalendar(
+            calendar_name="NYSE",
+            mode="all",
+            default_start="2020-01-01",
+            default_end="2020-01-10",
+            default_hour=16,
+        )
         self.bt = NewBacktester(
             data=self.data_interface,
             calendar=self.calendar
@@ -719,19 +679,13 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
         self.data_interface = MockDataInterface(mock_data)
         
         # Create a calendar that returns all dates for TestBenchmarkDefaultAndInvalid
-        class AllDatesCalendar(MockDailyMarketCalendar):
-            def get_datetime_index(self, start_date, end_date):
-                """Return all calendar days with 16:00 timestamp"""
-                if start_date is None:
-                    start_date = '2020-01-01'
-                if end_date is None:
-                    end_date = '2020-01-10'
-                
-                # Return all calendar days with 16:00 timestamp
-                days = pd.date_range(start_date, end_date, freq="D")
-                return pd.DatetimeIndex([pd.Timestamp(d.date()) + pd.Timedelta(hours=16) for d in days])
-        
-        self.calendar = AllDatesCalendar("NYSE")
+        self.calendar = TestDailyMarketCalendar(
+            calendar_name="NYSE",
+            mode="all",
+            default_start="2020-01-01",
+            default_end="2020-01-10",
+            default_hour=16,
+        )
         self.bt = NewBacktester(
             data=self.data_interface,
             calendar=self.calendar
@@ -767,7 +721,13 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         # Use mock loader instead of SimpleDateLoader
         mock_data = {"X": df}
         self.data_interface = MockDataInterface(mock_data)
-        self.calendar = MockDailyMarketCalendar("NYSE")
+        self.calendar = TestDailyMarketCalendar(
+            calendar_name="NYSE",
+            mode="odd",
+            default_start="2020-01-13",
+            default_end="2020-01-18",
+            default_hour=16,
+        )
         self.bt = NewBacktester(
             data=self.data_interface,
             calendar=self.calendar
@@ -852,7 +812,13 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         data_interface = MockDataInterface(loader.mock_data)
         backtester = NewBacktester(
             data=data_interface,
-            calendar=MockDailyMarketCalendar("NYSE")
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="odd",
+                default_start="2020-01-01",
+                default_end="2020-01-10",
+                default_hour=16,
+            ),
         )
         strat = SimpleTestStrategy(['A', 'B'])
         # NewBacktester doesn't have require_all_history parameter, so it starts at the earliest available data date
@@ -874,7 +840,13 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         data_interface = MockDataInterface(loader.mock_data)
         backtester = NewBacktester(
             data=data_interface,
-            calendar=MockDailyMarketCalendar("NYSE")
+            calendar=TestDailyMarketCalendar(
+                calendar_name="NYSE",
+                mode="odd",
+                default_start="2020-01-01",
+                default_end="2020-01-10",
+                default_hour=16,
+            ),
         )
         strat = SimpleTestStrategy(['A', 'B'])
         # With require_all_history=False, the backtest should begin at the earliest ticker date
