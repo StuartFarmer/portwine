@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Import components to be tested
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
@@ -256,7 +256,7 @@ class TestBacktester(unittest.TestCase):
         # Create backktester with test calendar
         from portwine.backtester.core import DailyMarketCalendar
         
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         self.data_interface = MockDataInterface(self.price_data)
         
         # Create a calendar that returns all dates for TestBacktester
@@ -268,7 +268,7 @@ class TestBacktester(unittest.TestCase):
             default_hour=16,
         )
         
-        self.backtester = NewBacktester(
+        self.backtester = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -487,7 +487,7 @@ class TestBacktester(unittest.TestCase):
         staggered_data_interface = MockDataInterface(staggered_data)
         
         # Create a calendar that returns all dates for this test
-        staggered_backtester = NewBacktester(
+        staggered_backtester = Backtester(
             data=staggered_data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",
@@ -509,14 +509,14 @@ class TestBacktester(unittest.TestCase):
         # Should have all dates (will have NaN or 0 allocations for missing tickers)
         self.assertEqual(len(results_without['signals_df']), len(self.dates))
 
-        # Test with require_all_history (NewBacktester doesn't have this parameter, so behavior is the same)
+        # Test with require_all_history (Backtester doesn't have this parameter, so behavior is the same)
         results_with = staggered_backtester.run_backtest(
             strategy=strategy
         )
 
-        # NewBacktester doesn't have require_all_history parameter, so behavior is the same as without
+        # Backtester doesn't have require_all_history parameter, so behavior is the same as without
         self.assertEqual(len(results_with['signals_df']), len(self.dates))
-        # Both results should be identical since NewBacktester doesn't support require_all_history
+        # Both results should be identical since Backtester doesn't support require_all_history
         pd.testing.assert_frame_equal(results_with['signals_df'], results_without['signals_df'])
 
     def test_dynamic_strategy(self):
@@ -558,7 +558,7 @@ class TestBacktester(unittest.TestCase):
         # Check that we have results for all dates
         self.assertEqual(len(results['signals_df']), len(self.dates))
 
-        # The NewBacktester doesn't forward-fill missing data, so we should have NaN values
+        # The Backtester doesn't forward-fill missing data, so we should have NaN values
         # where GOOG has missing data
         goog_returns = results['tickers_returns']['GOOG']
         # Check that we have NaN values on the missing days (days 6 and 7, indices 5 and 6)
@@ -642,7 +642,7 @@ class TestRequireAllHistory(unittest.TestCase):
             default_end="2020-01-10",
             default_hour=16,
         )
-        self.bt = NewBacktester(
+        self.bt = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -686,7 +686,7 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
             default_end="2020-01-10",
             default_hour=16,
         )
-        self.bt = NewBacktester(
+        self.bt = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -728,7 +728,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
             default_end="2020-01-18",
             default_hour=16,
         )
-        self.bt = NewBacktester(
+        self.bt = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -810,7 +810,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         loader.set_data('BENCH', pd.DataFrame(base, index=idx_bench))
 
         data_interface = MockDataInterface(loader.mock_data)
-        backtester = NewBacktester(
+        backtester = Backtester(
             data=data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",
@@ -821,7 +821,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
             ),
         )
         strat = SimpleTestStrategy(['A', 'B'])
-        # NewBacktester doesn't have require_all_history parameter, so it starts at the earliest available data date
+        # Backtester doesn't have require_all_history parameter, so it starts at the earliest available data date
         result = backtester.run_backtest(
             strategy=strat,
             benchmark='BENCH'
@@ -838,7 +838,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         loader.set_data('B', pd.DataFrame(base, index=idx_full))
         loader.set_data('BENCH', pd.DataFrame(base, index=idx_bench))
         data_interface = MockDataInterface(loader.mock_data)
-        backtester = NewBacktester(
+        backtester = Backtester(
             data=data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",

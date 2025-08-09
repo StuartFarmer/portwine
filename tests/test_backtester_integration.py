@@ -8,7 +8,7 @@ import shutil
 from unittest.mock import Mock
 
 # Import components to be tested
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.strategies.base import StrategyBase
 from portwine.loaders import MarketDataLoader, AlternativeMarketDataLoader
 from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
@@ -264,7 +264,7 @@ class TestBacktesterIntegration(unittest.TestCase):
             }
 
         # Create backtester using shared test calendar (all days, midnight timestamps)
-        self.backtester = NewBacktester(
+        self.backtester = Backtester(
             self.data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",
@@ -493,7 +493,7 @@ class TestBacktesterIntegration(unittest.TestCase):
                 'volume': data['volume'].values
             }
         
-        bt = NewBacktester(
+        bt = Backtester(
             mock_data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",

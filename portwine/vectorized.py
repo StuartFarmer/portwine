@@ -505,7 +505,7 @@ class NumpyVectorizedBacktester:
         else:
             W = weights_matrix
             
-        # Calculate strategy returns - treat NaNs in returns as 0 to match NewBacktester semantics
+        # Calculate strategy returns - treat NaNs in returns as 0 to match Backtester semantics
         if W.shape[1] > 0:
             returns_no_nan = np.where(np.isnan(returns_matrix), 0.0, returns_matrix)
             strat_rets = np.sum(returns_no_nan * W, axis=1)

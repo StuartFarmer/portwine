@@ -13,7 +13,7 @@ from portwine.vectorized import (
     NumpyVectorizedBacktester,
     SubsetStrategy
 )
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.strategies import StrategyBase
 from portwine.data.interface import DataInterface
 
@@ -607,7 +607,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         self.numpy_momentum_strategy = SubsetStrategy(self.tickers, 'momentum')
         
         # Create backtesters
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         self.data_interface = MockRestrictedDataInterface(self.data_dict)
         
         # Create a simple calendar for testing
@@ -618,7 +618,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         
         self.calendar = MockCalendar()
         
-        self.original_backtester = NewBacktester(
+        self.original_backtester = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -816,7 +816,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         large_strategy = LargeOriginalStrategy(large_tickers)
         
         # Create backtesters
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         data_interface = MockRestrictedDataInterface(data_dict)
         
         # Create a simple calendar for testing
@@ -827,7 +827,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         
         calendar = MockCalendar()
         
-        large_backtester = NewBacktester(
+        large_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -891,7 +891,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         numpy_strategy = SubsetStrategy(large_tickers, 'equal')
         
         # Create backtesters
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         data_interface = MockRestrictedDataInterface(data_dict)
         
         # Create a simple calendar for testing
@@ -902,7 +902,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         
         calendar = MockCalendar()
         
-        original_backtester = NewBacktester(
+        original_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -960,7 +960,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         numpy_strategy = SubsetStrategy(subset_tickers, 'equal')
         
         # Create backtesters
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         data_interface = MockRestrictedDataInterface(data_dict)
         
         # Create a simple calendar for testing
@@ -971,7 +971,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         
         calendar = MockCalendar()
         
-        original_backtester = NewBacktester(
+        original_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )

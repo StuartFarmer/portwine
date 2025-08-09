@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Import components to be tested
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
@@ -312,7 +312,7 @@ class TestBacktester(unittest.TestCase):
         # Create mock data interface with sample data
         self.data_interface = MockDataInterface()
         for ticker, data in self.price_data.items():
-            # Convert DataFrame to dict format expected by NewBacktester
+            # Convert DataFrame to dict format expected by Backtester
             self.data_interface.mock_data[ticker] = {
                 'close': data['close'].values,
                 'open': data['open'].values,
@@ -323,7 +323,7 @@ class TestBacktester(unittest.TestCase):
 
         # Create backktester with test calendar
         from portwine.backtester.core import DailyMarketCalendar
-        self.backtester = NewBacktester(
+        self.backtester = Backtester(
             self.data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",
@@ -752,7 +752,7 @@ class TestRequireAllHistory(unittest.TestCase):
             }
         }
         
-        self.bt = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        self.bt = Backtester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
         self.strat = SimpleTestStrategy(["A", "B"])
 
     def test_require_all_history_false_keeps_full_length(self):
@@ -809,7 +809,7 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
             }
         }
         
-        self.bt = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        self.bt = Backtester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
     def test_default_benchmark_equal_weight(self):
         strat = SimpleTestStrategy(["A", "B"])
@@ -862,7 +862,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
             }
         }
         
-        self.bt = NewBacktester(
+        self.bt = Backtester(
             data=self.data_interface,
             calendar=TestDailyMarketCalendar(
                 calendar_name="NYSE",
@@ -1041,7 +1041,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
             }
         }
 
-        backtester = NewBacktester(data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        backtester = Backtester(data_interface, calendar=MockDailyMarketCalendar("NYSE"))
         strat = SimpleTestStrategy(['A', 'B'])
         
         # Define a simple benchmark function
@@ -1079,7 +1079,7 @@ class TestBacktesterWithCalendar(unittest.TestCase):
                 'volume': np.ones(10)
             }
         }
-        backtester = NewBacktester(data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        backtester = Backtester(data_interface, calendar=MockDailyMarketCalendar("NYSE"))
         strat = SimpleTestStrategy(['A', 'B'])
         
         # Define a simple benchmark function

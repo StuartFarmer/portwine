@@ -6,7 +6,7 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, List, Set
 
 # Import components to be tested
-from portwine.backtester.core import NewBacktester, DailyMarketCalendar, validate_dates
+from portwine.backtester.core import Backtester, DailyMarketCalendar, validate_dates
 from tests.calendar_utils import TestDailyMarketCalendar
 from portwine.data.interface import DataInterface, RestrictedDataInterface
 from portwine.strategies.base import StrategyBase
@@ -194,8 +194,8 @@ class MockStrategy(StrategyBase):
         return self.step_return.copy()
 
 
-class TestNewBacktester(unittest.TestCase):
-    """Test cases for NewBacktester class"""
+class TestBacktester(unittest.TestCase):
+    """Test cases for Backtester class"""
     
     def setUp(self):
         """Set up test fixtures"""
@@ -208,8 +208,8 @@ class TestNewBacktester(unittest.TestCase):
         # Create mock strategy
         self.mock_strategy = MockStrategy(['AAPL', 'GOOGL'])
     
-        # Create NewBacktester instance
-        self.backtester = NewBacktester(self.mock_data_interface, self.mock_calendar)
+        # Create Backtester instance
+        self.backtester = Backtester(self.mock_data_interface, self.mock_calendar)
     
         # Define a simple benchmark function for testing
         def equal_weight_benchmark(ret_df):
@@ -218,7 +218,7 @@ class TestNewBacktester(unittest.TestCase):
         self.benchmark_func = equal_weight_benchmark
     
     def test_initialization(self):
-        """Test NewBacktester initialization"""
+        """Test Backtester initialization"""
         # Test that initialization works correctly
         self.assertIs(self.backtester.data, self.mock_data_interface)
         self.assertIs(self.backtester.calendar, self.mock_calendar)
@@ -410,7 +410,7 @@ class TestNewBacktester(unittest.TestCase):
         self.assertEqual(mock_universe.set_datetime.call_count, 3)  # 3 days
         self.assertEqual(mock_universe.get_constituents.call_count, 3)
         
-        # Note: The NewBacktester now uses RestrictedDataInterface for the strategy,
+        # Note: The Backtester now uses RestrictedDataInterface for the strategy,
         # so we don't check the get_calls tracking since it's not available
     
     def test_run_backtest_empty_calendar(self):
@@ -543,7 +543,7 @@ class TestNewBacktester(unittest.TestCase):
         )
         
         # Verify data was retrieved correctly
-        # Note: The NewBacktester now uses RestrictedDataInterface for the strategy,
+        # Note: The Backtester now uses RestrictedDataInterface for the strategy,
         # so we don't check the get_calls tracking since it's not available
         
         # Verify the result is a dictionary of DataFrames

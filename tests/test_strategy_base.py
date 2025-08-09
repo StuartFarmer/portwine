@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 from datetime import datetime
 from portwine.strategies.base import StrategyBase
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.data.interface import DataInterface
 from unittest.mock import Mock
 
@@ -155,7 +155,7 @@ class TestBacktesterIntegration(unittest.TestCase):
         loader = FakeLoader()
         data_interface = MockDataInterface(loader.dfs)
         calendar = MockDailyMarketCalendar("NYSE")
-        bt = NewBacktester(
+        bt = Backtester(
             data=data_interface,
             calendar=calendar
         )

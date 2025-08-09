@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 from unittest.mock import Mock
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
@@ -144,7 +144,7 @@ class MockRestrictedDataInterface(MultiDataInterface):
         self.mock_barchart_loader.next = mock_next
         self.mock_fred_loader.next = mock_next
         
-        # Add data_loader property for compatibility with NewBacktester
+        # Add data_loader property for compatibility with Backtester
         self.data_loader = self.mock_data_loader
 
     def set_current_timestamp(self, dt):
@@ -321,17 +321,17 @@ class TestBacktesterWithAltData(unittest.TestCase):
         self.market_loader = MockMarketDataLoader(self.regular_data)
         self.alt_loader = MockAlternativeDataLoader(self.alt_data)
         
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         # Include both regular and alternative data
         combined_data = {**self.regular_data, **self.alt_data}
         self.data_interface = MockRestrictedDataInterface(combined_data)
         self.calendar = MockDailyMarketCalendar("NYSE")
         
-        self.backtester = NewBacktester(
+        self.backtester = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
-        self.market_only_backtester = NewBacktester(
+        self.market_only_backtester = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -468,13 +468,13 @@ class TestAltDataDateFiltering(unittest.TestCase):
         self.market_loader = MockMarketDataLoader(self.market_data)
         self.alt_loader = MockAlternativeDataLoader(self.alt_data)
         
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         # Include both market and alternative data
         combined_data = {**self.market_data, **self.alt_data}
         self.data_interface = MockRestrictedDataInterface(combined_data)
         self.calendar = MockBusinessDayCalendar("NYSE")
         
-        self.backtester = NewBacktester(
+        self.backtester = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )
@@ -600,13 +600,13 @@ class TestOutputsExcludeAltTickers(unittest.TestCase):
         # Use the mock loader with only 'A' data
         self.loader = MockMarketDataLoader({"A": price_A})
         
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         # Include both regular and alternative data
         combined_data = {"A": price_A, "ALT:X": price_A}  # Use same data for alt ticker
         self.data_interface = MockRestrictedDataInterface(combined_data)
         self.calendar = MockDailyMarketCalendar("NYSE")
         
-        self.bt = NewBacktester(
+        self.bt = Backtester(
             data=self.data_interface,
             calendar=self.calendar
         )

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import Mock
 
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.strategies.base import StrategyBase
 from portwine.data.interface import RestrictedDataInterface
 
@@ -238,7 +238,7 @@ class TestIntradayBacktester(unittest.TestCase):
                 'volume': data['volume'].values
             }
         
-        self.bt = NewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        self.bt = Backtester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
     def test_overnight_intraday_signals_raw(self):
         strat = OvernightIntradayStrategy(['TEST'])
@@ -299,7 +299,7 @@ class TestIntradayBacktester(unittest.TestCase):
             weights = np.ones(n_tickers) / n_tickers
             return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
         
-        # default shift_signals=True (handled by NewBacktester)
+        # default shift_signals=True (handled by Backtester)
         res = self.bt.run_backtest(
             strat,
             start_date='2025-04-14',
@@ -380,13 +380,13 @@ class TestIntradayReturnCalculations(unittest.TestCase):
             }
         
         # Create a custom backtester that uses the mock data interface directly
-        class CustomNewBacktester(NewBacktester):
+        class CustomBacktester(Backtester):
             def __init__(self, data_interface, calendar):
                 self.data = data_interface
                 self.restricted_data = data_interface  # Use the mock interface directly
                 self.calendar = calendar
         
-        self.bt = CustomNewBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
+        self.bt = CustomBacktester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
         # precompute the four percent returns:
         # first bar: 09:30 -> no prior bar -> pct_change = NaN -> filled to 0

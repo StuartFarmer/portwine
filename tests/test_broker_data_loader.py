@@ -8,7 +8,7 @@ from portwine.execution import ExecutionBase
 from portwine.brokers.mock import MockBroker
 from portwine.loaders.base import MarketDataLoader
 from portwine.loaders.broker import BrokerDataLoader
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.strategies.base import StrategyBase
 from portwine.data.interface import DataInterface
 from unittest.mock import Mock
@@ -153,12 +153,12 @@ class TestBacktesterBrokerLoaderIntegration(unittest.TestCase):
         # Strategy and backtester
         strat = BrokerIntegrationStrategy()
         
-        # Convert data to the format expected by NewBacktester
+        # Convert data to the format expected by Backtester
         mock_data = {"FAKE": df, "BROKER:ACCOUNT": {"equity": initial_equity}}
         data_interface = MockDataInterface(mock_data)
         calendar = MockDailyMarketCalendar("NYSE")
         
-        bt = NewBacktester(
+        bt = Backtester(
             data=data_interface,
             calendar=calendar
         )

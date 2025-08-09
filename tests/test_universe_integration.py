@@ -9,7 +9,7 @@ import os
 from datetime import date, datetime
 from portwine.universe import Universe, CSVUniverse
 from portwine.strategies.base import StrategyBase
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.loaders.eodhd import EODHDMarketDataLoader
 from portwine.data.interface import DataInterface
 from unittest.mock import Mock
@@ -301,7 +301,7 @@ class TestUniverseIntegration:
         # Create backtester
         data_interface = MockDataInterface(mock_data)
         calendar = MockDailyMarketCalendar("NYSE")
-        backtester = NewBacktester(
+        backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -388,7 +388,7 @@ class TestUniverseIntegration:
         }
         data_interface = MockDataInterface(mock_data)
         calendar = MockDailyMarketCalendar("NYSE")
-        backtester = NewBacktester(
+        backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -460,7 +460,7 @@ class TestUniverseIntegration:
         }
         data_interface = MockDataInterface(mock_data)
         calendar = MockDailyMarketCalendar("NYSE")
-        backtester = NewBacktester(
+        backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -516,7 +516,7 @@ class TestUniverseIntegration:
         }
         data_interface = MockDataInterface(mock_data)
         calendar = MockDailyMarketCalendar("NYSE")
-        backtester = NewBacktester(
+        backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )

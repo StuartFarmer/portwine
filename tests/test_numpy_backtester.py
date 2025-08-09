@@ -13,7 +13,7 @@ from portwine.vectorized import (
     NumpyVectorizedBacktester,
     SubsetStrategy
 )
-from portwine.backtester.core import NewBacktester
+from portwine.backtester.core import Backtester
 from portwine.strategies import StrategyBase
 from portwine.data.interface import DataInterface
 
@@ -643,7 +643,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
             default_end=self.end_date,
             default_hour=None,
         )
-        self.original_backtester = NewBacktester(
+        self.original_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -837,7 +837,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
             default_end="2020-12-31",
             default_hour=None,
         )
-        large_original_backtester = NewBacktester(
+        large_original_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -898,7 +898,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
             default_end="2020-12-31",
             default_hour=None,
         )
-        original_backtester = NewBacktester(
+        original_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
@@ -951,7 +951,7 @@ class TestComparisonWithOriginalBacktester(unittest.TestCase):
         # Create backtesters
         data_interface = MockDataInterface(loader.data_dict)
         calendar = MockDailyMarketCalendar("NYSE")
-        original_backtester = NewBacktester(
+        original_backtester = Backtester(
             data=data_interface,
             calendar=calendar
         )
