@@ -181,8 +181,11 @@ class Backtester:
         self.data = data
         # Pass all loaders to RestrictedDataInterface if data is MultiDataInterface
         if isinstance(data, MultiDataInterface):
-            # MultiDataInterface case
-            self.restricted_data = RestrictedDataInterface(data.loaders)
+            # If caller already provided a RestrictedDataInterface (or subclass), reuse it
+            if isinstance(data, RestrictedDataInterface):
+                self.restricted_data = data
+            else:
+                self.restricted_data = RestrictedDataInterface(data.loaders)
         else:
             # DataInterface case
             self.restricted_data = RestrictedDataInterface({None: data.data_loader})

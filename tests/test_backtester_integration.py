@@ -10,7 +10,7 @@ from unittest.mock import Mock
 # Import components to be tested
 from portwine.backtester.core import Backtester
 from portwine.strategies.base import StrategyBase
-from portwine.loaders import MarketDataLoader, AlternativeMarketDataLoader
+from portwine.loaders import MarketDataLoader
 from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
 from portwine.analyzers.correlation import CorrelationAnalyzer
 from portwine.data.interface import DataInterface

@@ -6,170 +6,36 @@ import numpy as np
 from portwine.backtester.core import Backtester
 from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
-from portwine.loaders.base import MarketDataLoader
 from portwine.data.interface import DataInterface
 from unittest.mock import Mock
 from typing import Dict, List
+from tests.helpers import MockDataStore
 
 
 class MockDataInterface(DataInterface):
-    """Mock data interface for testing purposes"""
-    
-    def __init__(self, mock_data=None, exists_data=None):
-        # Create a mock data loader
-        self.mock_data_loader = Mock()
-        super().__init__(self.mock_data_loader)
-        self.mock_data = mock_data or {}
+    """DataInterface backed by MockDataStore for tests."""
+
+    def __init__(self, mock_data: Dict[str, pd.DataFrame] | None = None, exists_data=None):
         self.exists_data = exists_data or {}
+        default_payload = {"open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1000000}
+        store = MockDataStore(default_ohlcv=default_payload)
+        if mock_data:
+            store.load_bulk(mock_data)
+        super().__init__(store)
         self.current_timestamp = None
         self.set_timestamp_calls = []
         self.get_calls = []
-        
-        # Configure the mock data loader to return proper data
-        def mock_next(tickers, timestamp):
-            result = {}
-            for ticker in tickers:
-                if ticker in self.mock_data:
-                    # Return single values for the current timestamp
-                    data = self.mock_data[ticker]
-                    if isinstance(data['close'], np.ndarray):
-                        # Get the value for the current timestamp index
-                        if self.current_timestamp is not None:
-                            # Convert timestamp to index position
-                            if hasattr(self.current_timestamp, 'item'):  # numpy datetime64
-                                dt_python = pd.Timestamp(self.current_timestamp)
-                            else:
-                                dt_python = pd.Timestamp(self.current_timestamp)
-                            
-                            # Find the index for this timestamp
-                            dates = pd.date_range('2020-01-01', '2020-01-10', freq='D')
-                            try:
-                                idx = dates.get_loc(dt_python)
-                                result[ticker] = {
-                                    'close': float(data['close'][idx]),
-                                    'open': float(data['open'][idx]),
-                                    'high': float(data['high'][idx]),
-                                    'low': float(data['low'][idx]),
-                                    'volume': float(data['volume'][idx])
-                                }
-                            except (KeyError, IndexError):
-                                # Fallback to first value if index not found
-                                result[ticker] = {
-                                    'close': float(data['close'][0]),
-                                    'open': float(data['open'][0]),
-                                    'high': float(data['high'][0]),
-                                    'low': float(data['low'][0]),
-                                    'volume': float(data['volume'][0])
-                                }
-                        else:
-                            # Fallback to first value if no timestamp set
-                            result[ticker] = {
-                                'close': float(data['close'][0]),
-                                'open': float(data['open'][0]),
-                                'high': float(data['high'][0]),
-                                'low': float(data['low'][0]),
-                                'volume': float(data['volume'][0])
-                            }
-                    else:
-                        # Already single values
-                        result[ticker] = data
-                else:
-                    # Return default OHLCV data
-                    result[ticker] = {
-                        'open': 100.0,
-                        'high': 105.0,
-                        'low': 95.0,
-                        'close': 102.0,
-                        'volume': 1000000
-                    }
-            return result
-        
-        self.mock_data_loader.next = mock_next
-    
+
     def exists(self, ticker: str, start_date: str, end_date: str) -> bool:
-        """Mock exists method"""
-        return self.exists_data.get(ticker, True)
-    
+        # Allow tests to force existence behavior; otherwise defer to store
+        if ticker in self.exists_data:
+            return self.exists_data[ticker]
+        return self.data_loader.exists(ticker, start_date, end_date)
+
     def set_current_timestamp(self, timestamp):
-        """Mock set_current_timestamp method"""
         self.current_timestamp = timestamp
         self.set_timestamp_calls.append(timestamp)
         super().set_current_timestamp(timestamp)
-    
-    def get(self, tickers: List[str], dt) -> Dict[str, Dict]:
-        """Mock get method"""
-        self.get_calls.append((tickers, dt))
-        result = {}
-        for ticker in tickers:
-            if ticker in self.mock_data:
-                data = self.mock_data[ticker]
-                if isinstance(data['close'], np.ndarray):
-                    # Get the value for the current timestamp index
-                    if self.current_timestamp is not None:
-                        # Convert timestamp to index position
-                        if hasattr(self.current_timestamp, 'item'):  # numpy datetime64
-                            dt_python = pd.Timestamp(self.current_timestamp)
-                        else:
-                            dt_python = pd.Timestamp(self.current_timestamp)
-                        
-                        # Find the index for this timestamp
-                        dates = pd.date_range('2020-01-01', '2020-01-10', freq='D')
-                        try:
-                            idx = dates.get_loc(dt_python)
-                            result[ticker] = {
-                                'close': float(data['close'][idx]),
-                                'open': float(data['open'][idx]),
-                                'high': float(data['high'][idx]),
-                                'low': float(data['low'][idx]),
-                                'volume': float(data['volume'][idx])
-                            }
-                        except (KeyError, IndexError):
-                            # Fallback to first value if index not found
-                            result[ticker] = {
-                                'close': float(data['close'][0]),
-                                'open': float(data['open'][0]),
-                                'high': float(data['high'][0]),
-                                'low': float(data['low'][0]),
-                                'volume': float(data['volume'][0])
-                            }
-                    else:
-                        # Fallback to first value if no timestamp set
-                        result[ticker] = {
-                            'close': float(data['close'][0]),
-                            'open': float(data['open'][0]),
-                            'high': float(data['high'][0]),
-                            'low': float(data['low'][0]),
-                            'volume': float(data['volume'][0])
-                        }
-                else:
-                    # Already single values
-                    result[ticker] = data
-            else:
-                # Return default OHLCV data
-                result[ticker] = {
-                    'open': 100.0,
-                    'high': 105.0,
-                    'low': 95.0,
-                    'close': 102.0,
-                    'volume': 1000000
-                }
-        return result
-
-class MockMarketDataLoader(MarketDataLoader):
-    """Mock market data loader for testing purposes"""
-
-    def __init__(self, mock_data=None):
-        super().__init__()
-        self.mock_data = mock_data or {}
-
-    def load_ticker(self, ticker):
-        """Return pre-defined mock data for a ticker"""
-        return self.mock_data.get(ticker)
-
-    def set_data(self, ticker, data):
-        """Set mock data for a ticker"""
-        self.mock_data[ticker] = data
-
 
 class SimpleTestStrategy(StrategyBase):
     """Simple strategy implementation for testing"""
@@ -256,6 +122,14 @@ class MockDailyMarketCalendar:
             start_date = '2020-01-01'
         if end_date is None:
             end_date = '2020-01-10'
+        # If start_date has a time component, align the first calendar point to that exact timestamp
+        start_ts = pd.Timestamp(start_date)
+        end_ts = pd.Timestamp(end_date)
+        if start_ts.time() != pd.Timestamp('00:00').time():
+            days = pd.date_range(start_ts.normalize(), end_ts.normalize(), freq='D')
+            # Replace first element with the exact start_ts
+            result = [start_ts] + [d for d in days[1:]]
+            return pd.DatetimeIndex(result).to_numpy()
         return pd.date_range(start_date, end_date, freq='D').to_numpy()
 
 
@@ -309,17 +183,10 @@ class TestBacktester(unittest.TestCase):
             'volume': [2000000] * 10
         }, index=self.dates)
 
-        # Create mock data interface with sample data
+        # Create data interface with sample data via MockDataStore
         self.data_interface = MockDataInterface()
-        for ticker, data in self.price_data.items():
-            # Convert DataFrame to dict format expected by Backtester
-            self.data_interface.mock_data[ticker] = {
-                'close': data['close'].values,
-                'open': data['open'].values,
-                'high': data['high'].values,
-                'low': data['low'].values,
-                'volume': data['volume'].values
-            }
+        for ticker, df in self.price_data.items():
+            self.data_interface.data_loader.load_dataframe(ticker, df)
 
         # Create backktester with test calendar
         from portwine.backtester.core import DailyMarketCalendar

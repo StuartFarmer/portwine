@@ -3,40 +3,35 @@ import pandas as pd
 import numpy as np
 from unittest.mock import Mock
 from portwine.data.interface import MultiDataInterface, RestrictedDataInterface
+from tests.helpers import MockDataStore
 
 
-class MockLoader:
-    """Mock loader that returns data for specific tickers"""
+class MockStore(MockDataStore):
     def __init__(self, available_tickers):
-        self.available_tickers = available_tickers
-    
-    def next(self, tickers, timestamp):
-        result = {}
-        for ticker in tickers:
-            if ticker in self.available_tickers:
-                result[ticker] = {
-                    'open': 100.0,
-                    'high': 105.0,
-                    'low': 95.0,
-                    'close': 102.0,
-                    'volume': 1000000
-                }
-            # Don't include tickers that don't exist (matches real MarketDataLoader behavior)
-        return result
+        super().__init__()
+        # Load a constant OHLCV series for each available ticker
+        for t in available_tickers:
+            self.load_date_dict(t, {"2020-01-01": {
+                'open': 100.0,
+                'high': 105.0,
+                'low': 95.0,
+                'close': 102.0,
+                'volume': 1000000
+            }})
 
 
 class TestMultiDataInterface(unittest.TestCase):
     """Comprehensive test suite for MultiDataInterface"""
     
     def setUp(self):
-        # Create mock loaders
-        self.market_loader = MockLoader(['AAPL', 'MSFT'])
-        self.alt_loader = MockLoader(['GDP', 'FEDFUNDS'])  # Note: just the symbol part
+        # Create mock stores
+        self.market_store = MockStore(['AAPL', 'MSFT'])
+        self.alt_store = MockStore(['GDP', 'FEDFUNDS'])  # Note: just the symbol part
         
-        # Create MultiDataInterface with loaders
+        # Create MultiDataInterface with stores
         self.loaders = {
-            None: self.market_loader,  # Default loader for regular tickers
-            'FRED': self.alt_loader,   # FRED loader for alternative data
+            None: self.market_store,  # Default store for regular tickers
+            'FRED': self.alt_store,   # FRED store for alternative data
         }
         self.data_interface = MultiDataInterface(self.loaders)
         self.data_interface.set_current_timestamp(pd.Timestamp('2020-01-01'))
@@ -88,14 +83,14 @@ class TestRestrictedDataInterface(unittest.TestCase):
     """Test RestrictedDataInterface functionality"""
     
     def setUp(self):
-        # Create mock loaders
-        self.market_loader = MockLoader(['AAPL', 'MSFT'])
-        self.alt_loader = MockLoader(['GDP', 'FEDFUNDS'])  # Note: just the symbol part
+        # Create mock stores
+        self.market_store = MockStore(['AAPL', 'MSFT'])
+        self.alt_store = MockStore(['GDP', 'FEDFUNDS'])  # Note: just the symbol part
         
         # Create RestrictedDataInterface
         self.loaders = {
-            None: self.market_loader,
-            'FRED': self.alt_loader,
+            None: self.market_store,
+            'FRED': self.alt_store,
         }
         self.data_interface = RestrictedDataInterface(self.loaders)
         self.data_interface.set_current_timestamp(pd.Timestamp('2020-01-01'))

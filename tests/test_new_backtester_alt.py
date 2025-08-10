@@ -7,145 +7,95 @@ from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 from portwine.data.interface import MultiDataInterface
+from tests.helpers import MockDataStore
 
 class MockRestrictedDataInterface(MultiDataInterface):
-    """Mock RestrictedDataInterface for testing"""
+    """Restricted-like interface using MockDataStore backends per prefix."""
     def __init__(self, mock_data=None):
-        # Create mock data loaders for different prefixes
-        self.mock_data_loader = Mock()
-        self.mock_alt_loader = Mock()
-        self.mock_econ_loader = Mock()
-        self.mock_barchart_loader = Mock()
-        self.mock_fred_loader = Mock()
-        
-        # Set up loaders dictionary with all the prefixes used in tests
+        mock_data = mock_data or {}
+        # Create per-prefix stores
+        self.market_store = MockDataStore()
+        self.barchart_store = MockDataStore()
+        self.econ_store = MockDataStore()
+        self.alt_store = MockDataStore()
+        self.fred_store = MockDataStore()
+
+        # Split input data into the appropriate stores
+        market_bulk = {}
+        barchart_bulk = {}
+        econ_bulk = {}
+        alt_bulk = {}
+        fred_bulk = {}
+        for key, df in mock_data.items():
+            if isinstance(key, str) and ':' in key:
+                prefix, symbol = key.split(':', 1)
+                if prefix == 'BARCHARTINDEX':
+                    barchart_bulk[symbol] = df
+                elif prefix == 'ECON':
+                    econ_bulk[symbol] = df
+                elif prefix == 'ALT':
+                    alt_bulk[symbol] = df
+                elif prefix == 'FRED':
+                    fred_bulk[symbol] = df
+                else:
+                    # Unknown prefix -> treat as market
+                    market_bulk[key] = df
+            else:
+                market_bulk[key] = df
+
+        self.market_store.load_bulk(market_bulk)
+        self.barchart_store.load_bulk(barchart_bulk)
+        self.econ_store.load_bulk(econ_bulk)
+        self.alt_store.load_bulk(alt_bulk)
+        self.fred_store.load_bulk(fred_bulk)
+
         loaders = {
-            None: self.mock_data_loader,
-            'BARCHARTINDEX': self.mock_barchart_loader,
-            'ECON': self.mock_econ_loader,
-            'ALT': self.mock_alt_loader,
-            'FRED': self.mock_fred_loader
+            None: self.market_store,
+            'BARCHARTINDEX': self.barchart_store,
+            'ECON': self.econ_store,
+            'ALT': self.alt_store,
+            'FRED': self.fred_store,
         }
         super().__init__(loaders)
-        self.mock_data = mock_data or {}
         self.current_timestamp = None
         self.restricted_tickers = []
         self.get_calls = []
-        
-        # Configure the mock data loader to return proper data
-        def mock_next(tickers, timestamp):
-            result = {}
-            for ticker in tickers:
-                if ticker in self.mock_data:
-                    data = self.mock_data[ticker]
-                    if self.current_timestamp is not None:
-                        # Return data for the current timestamp
-                        dt_python = pd.Timestamp(self.current_timestamp)
-                        if hasattr(data, 'index'):
-                            try:
-                                idx = data.index.get_loc(dt_python)
-                                result[ticker] = {
-                                    'close': float(data['close'].iloc[idx]),
-                                    'open': float(data['open'].iloc[idx]),
-                                    'high': float(data['high'].iloc[idx]),
-                                    'low': float(data['low'].iloc[idx]),
-                                    'volume': float(data['volume'].iloc[idx])
-                                }
-                            except (KeyError, IndexError):
-                                result[ticker] = {
-                                    'close': 100.0,
-                                    'open': 100.0,
-                                    'high': 105.0,
-                                    'low': 95.0,
-                                    'volume': 1000000
-                                }
-                        else:
-                            result[ticker] = {
-                                'close': 100.0,
-                                'open': 100.0,
-                                'high': 105.0,
-                                'low': 95.0,
-                                'volume': 1000000
-                            }
-                    else:
-                        result[ticker] = {
-                            'close': 100.0,
-                            'open': 100.0,
-                            'high': 105.0,
-                            'low': 95.0,
-                            'volume': 1000000
-                        }
-                else:
-                    result[ticker] = {
-                        'close': 100.0,
-                        'open': 100.0,
-                        'high': 105.0,
-                        'low': 95.0,
-                        'volume': 1000000
-                    }
-            return result
-        
-        # Configure all loaders to use the same mock_next function
-        def mock_next(tickers, timestamp):
-            result = {}
-            for ticker in tickers:
-                if ticker in self.mock_data:
-                    data = self.mock_data[ticker]
-                    if self.current_timestamp is not None:
-                        # Return data for the current timestamp
-                        dt_python = pd.Timestamp(self.current_timestamp)
-                        if hasattr(data, 'index'):
-                            try:
-                                idx = data.index.get_loc(dt_python)
-                                result[ticker] = {
-                                    'close': float(data['close'].iloc[idx]),
-                                    'open': float(data['open'].iloc[idx]),
-                                    'high': float(data['high'].iloc[idx]),
-                                    'low': float(data['low'].iloc[idx]),
-                                    'volume': float(data['volume'].iloc[idx])
-                                }
-                            except (KeyError, IndexError):
-                                result[ticker] = {
-                                    'close': 100.0,
-                                    'open': 100.0,
-                                    'high': 105.0,
-                                    'low': 95.0,
-                                    'volume': 1000000
-                                }
-                        else:
-                            result[ticker] = {
-                                'close': 100.0,
-                                'open': 100.0,
-                                'high': 105.0,
-                                'low': 95.0,
-                                'volume': 1000000
-                            }
-                    else:
-                        result[ticker] = {
-                            'close': 100.0,
-                            'open': 100.0,
-                            'high': 105.0,
-                            'low': 95.0,
-                            'volume': 1000000
-                        }
-                else:
-                    result[ticker] = {
-                        'close': 100.0,
-                        'open': 100.0,
-                        'high': 105.0,
-                        'low': 95.0,
-                        'volume': 1000000
-                    }
-            return result
-        
-        self.mock_data_loader.next = mock_next
-        self.mock_alt_loader.next = mock_next
-        self.mock_econ_loader.next = mock_next
-        self.mock_barchart_loader.next = mock_next
-        self.mock_fred_loader.next = mock_next
-        
-        # Add data_loader property for compatibility with Backtester
-        self.data_loader = self.mock_data_loader
+
+    def exists(self, ticker, start_date, end_date):
+        # Parse prefix and symbol
+        if ':' in ticker:
+            prefix, symbol = ticker.split(':', 1)
+        else:
+            prefix, symbol = None, ticker
+        store = self.loaders.get(prefix)
+        if store is None:
+            return False
+        # For alternative prefixes, presence is enough
+        if prefix in {'BARCHARTINDEX', 'ECON', 'ALT', 'FRED'}:
+            if hasattr(store, 'identifiers'):
+                return symbol in set(store.identifiers() or [])
+            # Fallback probes
+            if hasattr(store, 'get'):
+                for probe in [pd.Timestamp('2020-01-01')]:
+                    if store.get(symbol, probe) is not None:
+                        return True
+            return False
+        # Use store.exists if available for market data
+        if hasattr(store, 'exists'):
+            try:
+                return store.exists(symbol, start_date, end_date)
+            except TypeError:
+                return store.exists(symbol)
+        # Fallback: try a few probe timestamps
+        if hasattr(store, 'get'):
+            for probe in [
+                pd.Timestamp('2020-01-01'),
+                pd.Timestamp('2020-06-01'),
+                pd.Timestamp('2021-01-01'),
+            ]:
+                if store.get(symbol, probe) is not None:
+                    return True
+        return False
 
     def set_current_timestamp(self, dt):
         self.current_timestamp = dt
@@ -155,30 +105,22 @@ class MockRestrictedDataInterface(MultiDataInterface):
 
     def __getitem__(self, ticker):
         self.get_calls.append(ticker)
-        if ticker in self.mock_data:
-            data = self.mock_data[ticker]
-            if self.current_timestamp is not None:
-                # Return data for the current timestamp
-                dt_python = pd.Timestamp(self.current_timestamp)
-                if hasattr(data, 'index'):
-                    try:
-                        idx = data.index.get_loc(dt_python)
-                        return {
-                            'close': data['close'].iloc[idx],
-                            'open': data['open'].iloc[idx],
-                            'high': data['high'].iloc[idx],
-                            'low': data['low'].iloc[idx],
-                            'volume': data['volume'].iloc[idx]
-                        }
-                    except KeyError:
-                        return None
-                else:
-                    return data
-            return data
-        return None
+        # Resolve store by prefix
+        if ':' in ticker:
+            prefix, symbol = ticker.split(':', 1)
+        else:
+            prefix, symbol = None, ticker
+        store = self.loaders.get(prefix)
+        if store is None:
+            raise KeyError(ticker)
+        if self.current_timestamp is None:
+            raise ValueError("Current timestamp not set")
+        point = store.get(symbol, pd.Timestamp(self.current_timestamp))
+        if point is None:
+            raise KeyError(ticker)
+        return point
 
-    def exists(self, ticker, start_date, end_date):
-        return ticker in self.mock_data
+    # exists implemented above
 
 class MockDailyMarketCalendar:
     """Test-specific DailyMarketCalendar that mimics data-driven behavior"""

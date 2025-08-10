@@ -9,110 +9,42 @@ from portwine.strategies.base import StrategyBase
 from portwine.loaders.base import MarketDataLoader
 from portwine.data.interface import DataInterface
 from unittest.mock import Mock
+from tests.helpers import MockDataStore
 
 class MockDataInterface(DataInterface):
-    """Mock DataInterface for testing"""
+    """DataInterface backed by MockDataStore for testing."""
     def __init__(self, mock_data=None):
-        self.mock_data = mock_data or {}
+        store = MockDataStore()
+        if mock_data:
+            store.load_bulk(mock_data)
+        super().__init__(store)
         self.current_timestamp = None
-        
-        # Create a proper mock loader instead of using Mock()
-        class MockLoader:
-            def __init__(self, mock_data):
-                self.mock_data = mock_data
-                
-            def next(self, tickers, ts):
-                """Mock next method that returns data for the given timestamp."""
-                result = {}
-                for ticker in tickers:
-                    if ticker in self.mock_data:
-                        data = self.mock_data[ticker]
-                        # Find the data at or before the given timestamp
-                        if not data.empty:
-                            # Find the closest date at or before ts
-                            mask = data.index <= ts
-                            if mask.any():
-                                latest_idx = data.index[mask].max()
-                                row = data.loc[latest_idx]
-                                result[ticker] = {
-                                    'open': float(row['open']),
-                                    'high': float(row['high']),
-                                    'low': float(row['low']),
-                                    'close': float(row['close']),
-                                    'volume': float(row['volume'])
-                                }
-                            else:
-                                result[ticker] = None
-                        else:
-                            result[ticker] = None
-                    else:
-                        result[ticker] = None
-                return result
-                
-            def fetch_data(self, tickers):
-                """Mock fetch_data method."""
-                return {t: self.mock_data.get(t) for t in tickers if t in self.mock_data}
-        
-        self.data_loader = MockLoader(self.mock_data)
-        
+
     def set_current_timestamp(self, dt):
         self.current_timestamp = dt
-        
+
     def __getitem__(self, ticker):
-        if ticker in self.mock_data:
-            data = self.mock_data[ticker]
-            if self.current_timestamp is not None:
-                # Convert timestamp to date-only for data lookup
-                dt_python = pd.Timestamp(self.current_timestamp)
-                
-                if hasattr(data, 'index'):
-                    try:
-                        # Find the closest date at or before the current timestamp
-                        mask = data.index <= dt_python
-                        if mask.any():
-                            latest_idx = data.index[mask].max()
-                            close_val = data['close'].loc[latest_idx]
-                            # Check if the value is NaN
-                            if pd.isna(close_val):
-                                return None
-                            else:
-                                return {
-                                    'close': float(close_val),
-                                    'open': float(data['open'].loc[latest_idx]),
-                                    'high': float(data['high'].loc[latest_idx]),
-                                    'low': float(data['low'].loc[latest_idx]),
-                                    'volume': float(data['volume'].loc[latest_idx])
-                                }
-                        else:
-                            # No data found at or before the timestamp
-                            raise KeyError(f"No data found for ticker: {ticker}")
-                    except KeyError:
-                        # If exact date not found, raise KeyError
-                        raise KeyError(f"No data found for ticker: {ticker}")
-                else:
-                    raise KeyError(f"No data found for ticker: {ticker}")
-            else:
-                raise KeyError(f"No data found for ticker: {ticker}")
-        else:
-            raise KeyError(f"No data found for ticker: {ticker}")
-        
+        return super().__getitem__(ticker)
+
     def exists(self, ticker, start_date, end_date):
-        return ticker in self.mock_data
+        return self.data_loader.exists(ticker, start_date, end_date)
 
 class MockMarketDataLoader(MarketDataLoader):
-    """Mock market data loader for testing purposes"""
+    """Deprecated in tests: now backed by MockDataStore for compatibility."""
 
     def __init__(self, mock_data=None):
         super().__init__()
+        self._store = MockDataStore()
         self.mock_data = mock_data or {}
+        if mock_data:
+            self._store.load_bulk(mock_data)
 
     def load_ticker(self, ticker):
-        """Return pre-defined mock data for a ticker"""
         return self.mock_data.get(ticker)
 
     def set_data(self, ticker, data):
-        """Set mock data for a ticker"""
         self.mock_data[ticker] = data
+        self._store.load_dataframe(ticker, data)
 
 
 class SimpleTestStrategy(StrategyBase):

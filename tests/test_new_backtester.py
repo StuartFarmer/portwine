@@ -11,67 +11,32 @@ from tests.calendar_utils import TestDailyMarketCalendar
 from portwine.data.interface import DataInterface, RestrictedDataInterface
 from portwine.strategies.base import StrategyBase
 from portwine.universe import Universe
+from tests.helpers import MockDataStore
 
 
 class MockDataInterface(DataInterface):
-    """Mock data interface for testing purposes"""
-    
+    """DataInterface backed by MockDataStore for tests."""
+
     def __init__(self, mock_data=None, exists_data=None):
-        # Create a mock data loader
-        self.mock_data_loader = Mock()
-        super().__init__(self.mock_data_loader)
-        self.mock_data = mock_data or {}
+        default_payload = {"open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1000000}
+        store = MockDataStore(default_ohlcv=default_payload)
+        if mock_data:
+            store.load_bulk(mock_data)
+        super().__init__(store)
         self.exists_data = exists_data or {}
         self.current_timestamp = None
         self.set_timestamp_calls = []
         self.get_calls = []
-        
-        # Configure the mock data loader to return proper data
-        def mock_next(tickers, timestamp):
-            result = {}
-            for ticker in tickers:
-                if ticker in self.mock_data:
-                    result[ticker] = self.mock_data[ticker]
-                else:
-                    # Return default OHLCV data
-                    result[ticker] = {
-                        'open': 100.0,
-                        'high': 105.0,
-                        'low': 95.0,
-                        'close': 102.0,
-                        'volume': 1000000
-                    }
-            return result
-        
-        self.mock_data_loader.next = mock_next
-    
+
     def exists(self, ticker: str, start_date: str, end_date: str) -> bool:
-        """Mock exists method"""
-        return self.exists_data.get(ticker, True)
-    
+        if ticker in self.exists_data:
+            return self.exists_data[ticker]
+        return self.data_loader.exists(ticker, start_date, end_date)
+
     def set_current_timestamp(self, timestamp):
-        """Mock set_current_timestamp method"""
         self.current_timestamp = timestamp
         self.set_timestamp_calls.append(timestamp)
         super().set_current_timestamp(timestamp)
-    
-    def get(self, tickers: List[str], dt) -> Dict[str, Dict]:
-        """Mock get method"""
-        self.get_calls.append((tickers, dt))
-        result = {}
-        for ticker in tickers:
-            if ticker in self.mock_data:
-                result[ticker] = self.mock_data[ticker]
-            else:
-                # Return default OHLCV data
-                result[ticker] = {
-                    'open': 100.0,
-                    'high': 105.0,
-                    'low': 95.0,
-                    'close': 102.0,
-                    'volume': 1000000
-                }
-        return result
 
 
 class MockRestrictedDataInterface(RestrictedDataInterface):

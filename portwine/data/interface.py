@@ -7,18 +7,22 @@ These classes are the interfaces that strategies use to access data. They can al
 
 The DataInterface class is the base class for all data interfaces. It is used to access data for a single ticker.
 
-The MultiDataInterface class is used to access data for multiple tickers. It is used to access data for different data sources using prefixes.
+The MultiDataInterface class is used to access data for multiple data sources using prefixes. Each source is a store-like object
+that implements the DataStore API (e.g., `get`, `add`, etc.). An optional DataSource (read-through cache orchestrator) can be
+used anywhere a store is accepted as long as it conforms to the same API.
 
-The RestrictedDataInterface class is used to access data for a subset of tickers. It is used to access data for a subset of tickers.
+The RestrictedDataInterface class is used to access data for a subset of tickers.
 
-The API is as follows:
-    1. Provide a loader (which handles the caching, loading, etc.)
+API summary:
+    1. Provide a store-like object implementing the DataStore API
     2. Set the current timestamp
-    3. Use the __getitem__ method to access data for a ticker
+    3. Use the __getitem__ method to access data for a ticker at the current timestamp via `store.get(symbol, dt)`
 """
 
 class DataInterface:
     def __init__(self, data_loader):
+        # `data_loader` may be a legacy loader (with `next`) or a store-like object (with `get`).
+        # Keep attribute name for backwards-compatibility with existing call-sites.
         self.data_loader = data_loader
         self.current_timestamp = None
 
@@ -45,44 +49,41 @@ class DataInterface:
         if self.current_timestamp is None:
             raise ValueError("Current timestamp not set. Call set_current_timestamp() first.")
         
-        # Get data for this ticker at the current timestamp
-        data = self.data_loader.next([ticker], self.current_timestamp)
-        
-        if ticker not in data or data[ticker] is None:
+        point = self.data_loader.get(ticker, self.current_timestamp)
+        if point is None:
             raise KeyError(f"No data found for ticker: {ticker}")
-        
-        return data[ticker]
+        return point
 
 class MultiDataInterface:
     """
-    A data interface that supports multiple data loaders with prefixes.
+    A data interface that supports multiple data stores with prefixes.
     
     Allows access to different data sources using prefix notation:
-    - 'AAPL' -> uses the default market data loader
-    - 'INDEX:SPY' -> uses the 'INDEX' loader
-    - 'ECON:GDP' -> uses the 'ECON' loader
+    - 'AAPL' -> uses the default market data store
+    - 'INDEX:SPY' -> uses the 'INDEX' store
+    - 'ECON:GDP' -> uses the 'ECON' store
     
-    The default loader (None prefix) is always the market data loader.
+    The default store (None prefix) is always the market data store.
     """
     
     def __init__(self, loaders: Dict[Optional[str], Any]):
         """
-        Initialize with a dictionary of loaders.
+        Initialize with a dictionary of stores.
         
         Args:
-            loaders: Dictionary mapping prefixes to data loaders.
-                    Use None as key for the default market data loader.
-                    Example: {None: market_loader, 'INDEX': index_loader, 'ECON': fred_loader}
+            loaders: Dictionary mapping prefixes to data stores.
+                    Use None as key for the default market data store.
+                    Example: {None: market_store, 'INDEX': index_store, 'ECON': econ_store}
         """
         self.loaders = loaders
         self.current_timestamp = None
         
-        # Validate that we have a default loader (None key)
+        # Validate that we have a default store (None key)
         if None not in loaders:
-            raise ValueError("Must provide a default loader with None as key")
+            raise ValueError("Must provide a default store with None as key")
     
     def set_current_timestamp(self, timestamp: datetime):
-        """Set the current timestamp for all loaders."""
+        """Set the current timestamp for all stores."""
         self.current_timestamp = timestamp
     
     def _parse_ticker(self, ticker: str) -> tuple[Optional[str], str]:
@@ -93,7 +94,7 @@ class MultiDataInterface:
             ticker: Ticker string like 'AAPL' or 'INDEX:SPY'
             
         Returns:
-            tuple: (prefix, symbol) where prefix is None for default loader
+            tuple: (prefix, symbol) where prefix is None for default store
         """
         if ':' in ticker:
             prefix, symbol = ticker.split(':', 1)
@@ -106,15 +107,15 @@ class MultiDataInterface:
         Access data for a ticker using bracket notation.
         
         Supports both direct ticker access and prefixed access:
-        - interface['AAPL'] -> uses default market data loader
-        - interface['INDEX:SPY'] -> uses INDEX loader
-        - interface['ECON:GDP'] -> uses ECON loader
+        - interface['AAPL'] -> uses default market data store
+        - interface['INDEX:SPY'] -> uses INDEX store
+        - interface['ECON:GDP'] -> uses ECON store
         
         Args:
             ticker: The ticker symbol, optionally with prefix
             
         Returns:
-            dict: Data dictionary (format depends on the loader)
+            dict: Data dictionary (format depends on the store)
             
         Raises:
             ValueError: If current_timestamp is not set
@@ -126,30 +127,26 @@ class MultiDataInterface:
         
         prefix, symbol = self._parse_ticker(ticker)
         
-        # Get the appropriate loader
+        # Get the appropriate store
         if prefix not in self.loaders:
             raise ValueError(f"Unknown prefix '{prefix}' for ticker '{ticker}'. "
                            f"Available prefixes: {list(self.loaders.keys())}")
+        store = self.loaders[prefix]
+        point = store.get(symbol, self.current_timestamp)
         
-        loader = self.loaders[prefix]
-        
-        # Get data for this ticker at the current timestamp
-        data = loader.next([symbol], self.current_timestamp)
-        
-        if symbol not in data or data[symbol] is None:
+        if point is None:
             raise KeyError(f"No data found for ticker: {ticker}")
-        
-        return data[symbol]
+        return point
     
     def get_loader(self, prefix: Optional[str] = None):
         """
-        Get a specific loader by prefix.
+        Get a specific store by prefix.
         
         Args:
-            prefix: The prefix to get the loader for. None for default loader.
+            prefix: The prefix to get the store for. None for default store.
             
         Returns:
-            The data loader for the specified prefix
+            The data store for the specified prefix
         """
         if prefix not in self.loaders:
             raise ValueError(f"Unknown prefix '{prefix}'. "
@@ -161,7 +158,7 @@ class MultiDataInterface:
         Get list of available prefixes.
         
         Returns:
-            List of available prefixes (None represents the default loader)
+            List of available prefixes (None represents the default store)
         """
         return list(self.loaders.keys())
     
@@ -224,34 +221,15 @@ class RestrictedDataInterface(MultiDataInterface):
     
     def keys(self):
         """Return available tickers as a dictionary-like keys view."""
-        # Get all available tickers from all loaders
+        # Get all available tickers from all stores
         all_tickers = set()
-        for prefix, loader in self.loaders.items():
-            if hasattr(loader, 'get_available_tickers'):
-                try:
-                    tickers = loader.get_available_tickers()
-                    if tickers is not None:
-                        all_tickers.update(tickers)
-                except (TypeError, AttributeError):
-                    pass
-            elif hasattr(loader, 'data_dict'):
-                # For mock loaders that have data_dict
-                all_tickers.update(loader.data_dict.keys())
-            elif hasattr(loader, 'mock_data'):
-                # For mock loaders that have mock_data
-                all_tickers.update(loader.mock_data.keys())
-            elif hasattr(loader, '_data_cache'):
-                # For base MarketDataLoader
-                all_tickers.update(loader._data_cache.keys())
-            elif hasattr(loader, 'next'):
-                # For loaders that have a next method, try to get tickers from the data interface
-                # This is a fallback for mock loaders
-                try:
-                    # Try to get tickers from the data interface's mock_data
-                    if hasattr(self, 'mock_data'):
-                        all_tickers.update(self.mock_data.keys())
-                except (TypeError, AttributeError):
-                    pass
+        for prefix, store in self.loaders.items():
+            try:
+                tickers = store.identifiers()
+            except AttributeError:
+                tickers = None
+            if tickers:
+                all_tickers.update(tickers)
         
         # Apply restrictions if any
         restricted_tickers = set()

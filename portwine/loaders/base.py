@@ -86,7 +86,12 @@ class MarketDataLoader:
             return None
             
         # Convert timestamp to numpy datetime64 for comparison
-        ts_np = np.datetime64(ts)
+        # Handle timezone-aware timestamps by converting to UTC first to avoid numpy warnings
+        if ts.tzinfo is not None:
+            ts_utc = ts.tz_convert('UTC')
+            ts_np = np.datetime64(ts_utc.replace(tzinfo=None))
+        else:
+            ts_np = np.datetime64(ts)
         
         # OPTIMIZATION: Use numpy searchsorted instead of pandas (much faster)
         pos = np.searchsorted(date_array, ts_np, side="right") - 1

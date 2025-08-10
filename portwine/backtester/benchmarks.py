@@ -29,6 +29,8 @@ def benchmark_markowitz(
             w = np.ones(n) / n
         else:
             cov = win.cov().values
+            # Ensure covariance is symmetric/Hermitian for quad_form
+            cov = (cov + cov.T) / 2.0
             w_var = cp.Variable(n, nonneg=True)
             prob = cp.Problem(cp.Minimize(cp.quad_form(w_var, cov)), [cp.sum(w_var) == 1])
             try:
@@ -75,10 +77,33 @@ def get_benchmark_type(benchmark: str | Callable, market_data_loader: MarketData
         if ':' in benchmark:
             return BenchmarkTypes.INVALID
         
-        # Try market_data_loader first (for backward compatibility)
+        # Try market_data_loader first (for backward compatibility). Support DataStore-like loaders too.
         if market_data_loader is not None:
-            if market_data_loader.fetch_data([benchmark]).get(benchmark) is not None:
-                return BenchmarkTypes.TICKER
+            try:
+                # Preferred old-style loader API
+                if hasattr(market_data_loader, "fetch_data"):
+                    fetched = market_data_loader.fetch_data([benchmark])
+                    if fetched.get(benchmark) is not None:
+                        return BenchmarkTypes.TICKER
+                # DataStore-style API: exists/identifiers/get
+                elif hasattr(market_data_loader, "exists"):
+                    if market_data_loader.exists(benchmark):
+                        return BenchmarkTypes.TICKER
+                elif hasattr(market_data_loader, "identifiers"):
+                    if benchmark in set(market_data_loader.identifiers() or []):
+                        return BenchmarkTypes.TICKER
+                elif hasattr(market_data_loader, "get"):
+                    # Probe a few dates
+                    for probe in [
+                        pd.Timestamp('2020-01-01'),
+                        pd.Timestamp('2020-06-01'),
+                        pd.Timestamp('2021-01-01'),
+                    ]:
+                        if market_data_loader.get(benchmark, probe) is not None:
+                            return BenchmarkTypes.TICKER
+            except Exception:
+                # Fall through to interface probe
+                pass
         
         # Try data_interface if available
         if data_interface is not None:

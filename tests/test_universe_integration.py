@@ -12,6 +12,7 @@ from portwine.strategies.base import StrategyBase
 from portwine.backtester.core import Backtester
 from portwine.loaders.eodhd import EODHDMarketDataLoader
 from portwine.data.interface import DataInterface
+from tests.helpers import MockDataStore
 from unittest.mock import Mock
 
 class MockDailyMarketCalendar:
@@ -37,78 +38,22 @@ class MockDailyMarketCalendar:
 
 
 class MockDataInterface(DataInterface):
-    """Mock DataInterface for testing"""
+    """DataInterface backed by MockDataStore for testing"""
     def __init__(self, mock_data=None):
-        self.mock_data = mock_data or {}
+        store = MockDataStore()
+        if mock_data:
+            store.load_bulk(mock_data)
+        super().__init__(store)
         self.current_timestamp = None
-        
-        # Create a proper mock loader instead of using Mock()
-        class MockLoader:
-            def __init__(self, mock_data):
-                self.mock_data = mock_data
-                
-            def next(self, tickers, ts):
-                """Mock next method that returns data for the given timestamp."""
-                result = {}
-                for ticker in tickers:
-                    if ticker in self.mock_data:
-                        data = self.mock_data[ticker]
-                        # Find the data at or before the given timestamp
-                        if not data.empty:
-                            # Find the closest date at or before ts
-                            mask = data.index <= ts
-                            if mask.any():
-                                latest_idx = data.index[mask].max()
-                                row = data.loc[latest_idx]
-                                result[ticker] = {
-                                    'open': float(row['open']),
-                                    'high': float(row['high']),
-                                    'low': float(row['low']),
-                                    'close': float(row['close']),
-                                    'volume': float(row['volume'])
-                                }
-                            else:
-                                result[ticker] = None
-                        else:
-                            result[ticker] = None
-                    else:
-                        result[ticker] = None
-                return result
-                
-            def fetch_data(self, tickers):
-                """Mock fetch_data method."""
-                return {t: self.mock_data.get(t) for t in tickers if t in self.mock_data}
-        
-        self.data_loader = MockLoader(self.mock_data)
-        
+
     def set_current_timestamp(self, dt):
         self.current_timestamp = dt
-        
+
     def __getitem__(self, ticker):
-        if ticker in self.mock_data:
-            data = self.mock_data[ticker]
-            if self.current_timestamp is not None:
-                # Return data for the current timestamp
-                dt_python = pd.Timestamp(self.current_timestamp)
-                if hasattr(data, 'index'):
-                    try:
-                        idx = data.index.get_loc(dt_python)
-                        return {
-                            'close': data['close'].iloc[idx],
-                            'open': data['open'].iloc[idx],
-                            'high': data['high'].iloc[idx],
-                            'low': data['low'].iloc[idx],
-                            'volume': data['volume'].iloc[idx]
-                        }
-                    except KeyError:
-                        return None
-                else:
-                    return data
-            return data
-        return None
-        
+        return super().__getitem__(ticker)
+
     def exists(self, ticker, start_date, end_date):
-        return ticker in self.mock_data
+        return self.data_loader.exists(ticker, start_date, end_date)
 
 
 class TestUniverseIntegration:

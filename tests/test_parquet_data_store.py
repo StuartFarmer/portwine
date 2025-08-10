@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
 from collections import OrderedDict
+import numpy as np
 
-from portwine.data.store import ParquetDataStore
+from portwine.data.stores.parquet import ParquetDataStore
 
 
 class TestParquetDataStore(unittest.TestCase):
@@ -616,8 +617,27 @@ class TestParquetDataStore(unittest.TestCase):
         
         # Verify it returns None
         self.assertIsNone(result)
+
+    def test_get_accepts_numpy_datetime64(self):
+        """
+        Test: get accepts numpy.datetime64 inputs
+        How: Add data for a date, call get with np.datetime64
+        Expected: Returns correct dict
+        """
+        # Add data
+        data = {datetime(2023, 1, 5): {"open": 105.0, "close": 106.0}}
+        self.store.add("AAPL", data)
+
+        # Use numpy datetime64
+        dt_np = np.datetime64('2023-01-05')
+        result = self.store.get("AAPL", dt_np)
+
+        # Verify correct record is returned
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["open"], 105.0)
+        self.assertEqual(result["close"], 106.0)
     
-    def test_get_returns_ordereddict_with_datetime_keys(self):
+    def test_get_all_returns_ordereddict_with_datetime_keys(self):
         """
         Test: get returns OrderedDict with datetime keys
         How: Call get with existing identifier
@@ -630,8 +650,8 @@ class TestParquetDataStore(unittest.TestCase):
         }
         self.store.add("AAPL", data)
         
-        # Call get
-        result = self.store.get("AAPL", datetime(2023, 1, 1), datetime(2023, 1, 2))
+        # Call get_all
+        result = self.store.get_all("AAPL", datetime(2023, 1, 1), datetime(2023, 1, 2))
         
         # Verify it returns OrderedDict
         self.assertIsInstance(result, OrderedDict)
@@ -639,8 +659,31 @@ class TestParquetDataStore(unittest.TestCase):
         # Verify keys are datetime objects
         for key in result.keys():
             self.assertIsInstance(key, datetime)
+
+    def test_get_all_accepts_numpy_datetime64(self):
+        """
+        Test: get_all accepts numpy.datetime64 inputs for start and end
+        How: Add data across multiple dates, call get_all with np.datetime64
+        Expected: Returns OrderedDict of correct length and keys are datetime
+        """
+        data = {
+            datetime(2023, 1, 1): {"open": 100.0},
+            datetime(2023, 1, 2): {"open": 101.0},
+            datetime(2023, 1, 3): {"open": 102.0},
+        }
+        self.store.add("AAPL", data)
+
+        start_np = np.datetime64('2023-01-02')
+        end_np = np.datetime64('2023-01-03')
+        result = self.store.get_all("AAPL", start_np, end_np)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 2)
+        keys = list(result.keys())
+        self.assertEqual(keys[0], datetime(2023, 1, 2))
+        self.assertEqual(keys[1], datetime(2023, 1, 3))
     
-    def test_get_returns_data_in_chronological_order(self):
+    def test_get_all_returns_data_in_chronological_order(self):
         """
         Test: get returns data in chronological order (earliest to latest)
         How: Add data with dates in random order, then call get
@@ -654,8 +697,8 @@ class TestParquetDataStore(unittest.TestCase):
         }
         self.store.add("AAPL", data)
         
-        # Call get
-        result = self.store.get("AAPL", datetime(2023, 1, 1), datetime(2023, 1, 3))
+        # Call get_all
+        result = self.store.get_all("AAPL", datetime(2023, 1, 1), datetime(2023, 1, 3))
         
         # Verify it's in chronological order
         dates = list(result.keys())
@@ -666,7 +709,7 @@ class TestParquetDataStore(unittest.TestCase):
         # Verify it's monotonic increasing
         self.assertTrue(all(dates[i] <= dates[i+1] for i in range(len(dates)-1)))
     
-    def test_get_filters_by_start_date(self):
+    def test_get_all_filters_by_start_date(self):
         """
         Test: get filters data by start_date
         How: Add data for dates 2023-01-01 to 2023-01-10, call get with start_date=2023-01-05
@@ -679,8 +722,8 @@ class TestParquetDataStore(unittest.TestCase):
             data[date] = {"open": 100.0 + i, "close": 101.0 + i}
         self.store.add("AAPL", data)
         
-        # Call get with start_date
-        result = self.store.get("AAPL", datetime(2023, 1, 5))
+        # Call get_all with start_date only
+        result = self.store.get_all("AAPL", datetime(2023, 1, 5))
         
         # Verify only data from 2023-01-05 onwards is returned
         dates = list(result.keys())
@@ -692,7 +735,7 @@ class TestParquetDataStore(unittest.TestCase):
         # Verify first date is 2023-01-05
         self.assertEqual(dates[0], datetime(2023, 1, 5))
     
-    def test_get_filters_by_end_date(self):
+    def test_get_all_filters_by_end_date(self):
         """
         Test: get filters data by end_date
         How: Add data for dates 2023-01-01 to 2023-01-10, call get with end_date=2023-01-05
@@ -705,8 +748,8 @@ class TestParquetDataStore(unittest.TestCase):
             data[date] = {"open": 100.0 + i, "close": 101.0 + i}
         self.store.add("AAPL", data)
         
-        # Call get with end_date
-        result = self.store.get("AAPL", datetime(2023, 1, 1), datetime(2023, 1, 5))
+        # Call get_all with end_date
+        result = self.store.get_all("AAPL", datetime(2023, 1, 1), datetime(2023, 1, 5))
         
         # Verify only data up to 2023-01-05 is returned
         dates = list(result.keys())
@@ -718,7 +761,7 @@ class TestParquetDataStore(unittest.TestCase):
         # Verify last date is 2023-01-05
         self.assertEqual(dates[-1], datetime(2023, 1, 5))
     
-    def test_get_filters_by_both_start_and_end_date(self):
+    def test_get_all_filters_by_both_start_and_end_date(self):
         """
         Test: get filters data by both start_date and end_date
         How: Add data for dates 2023-01-01 to 2023-01-10, call get with start_date=2023-01-03, end_date=2023-01-07
@@ -731,8 +774,8 @@ class TestParquetDataStore(unittest.TestCase):
             data[date] = {"open": 100.0 + i, "close": 101.0 + i}
         self.store.add("AAPL", data)
         
-        # Call get with both start and end dates
-        result = self.store.get("AAPL", datetime(2023, 1, 3), datetime(2023, 1, 7))
+        # Call get_all with both start and end dates
+        result = self.store.get_all("AAPL", datetime(2023, 1, 3), datetime(2023, 1, 7))
         
         # Verify only data in the specified range is returned
         dates = list(result.keys())
@@ -745,7 +788,7 @@ class TestParquetDataStore(unittest.TestCase):
         self.assertEqual(dates[0], datetime(2023, 1, 3))
         self.assertEqual(dates[-1], datetime(2023, 1, 7))
     
-    def test_get_uses_latest_date_when_end_date_is_none(self):
+    def test_get_all_uses_latest_date_when_end_date_is_none(self):
         """
         Test: get uses latest available date when end_date is None
         How: Add data for dates 2023-01-01 to 2023-01-10, call get with end_date=None
@@ -758,8 +801,8 @@ class TestParquetDataStore(unittest.TestCase):
             data[date] = {"open": 100.0 + i, "close": 101.0 + i}
         self.store.add("AAPL", data)
         
-        # Call get with end_date=None
-        result = self.store.get("AAPL", datetime(2023, 1, 1))
+        # Call get_all with end_date=None
+        result = self.store.get_all("AAPL", datetime(2023, 1, 1))
         
         # Verify all data is returned
         self.assertEqual(len(result), 10)
@@ -768,7 +811,7 @@ class TestParquetDataStore(unittest.TestCase):
         dates = list(result.keys())
         self.assertEqual(dates[-1], datetime(2023, 1, 10))
     
-    def test_get_returns_none_when_no_data_in_range(self):
+    def test_get_all_returns_none_when_no_data_in_range(self):
         """
         Test: get returns None when no data exists in specified range
         How: Add data for dates 2023-01-01 to 2023-01-10, call get with start_date=2023-01-15
@@ -781,13 +824,13 @@ class TestParquetDataStore(unittest.TestCase):
             data[date] = {"open": 100.0 + i, "close": 101.0 + i}
         self.store.add("AAPL", data)
         
-        # Call get with start_date after available data
-        result = self.store.get("AAPL", datetime(2023, 1, 15))
+        # Call get_all with start_date after available data
+        result = self.store.get_all("AAPL", datetime(2023, 1, 15))
         
         # Verify it returns None
         self.assertIsNone(result)
     
-    def test_get_handles_edge_case_start_date_equals_end_date(self):
+    def test_get_all_handles_edge_case_start_date_equals_end_date(self):
         """
         Test: get handles edge case where start_date equals end_date
         How: Add data, call get with start_date=end_date
@@ -801,8 +844,8 @@ class TestParquetDataStore(unittest.TestCase):
         }
         self.store.add("AAPL", data)
         
-        # Call get with start_date equals end_date
-        result = self.store.get("AAPL", datetime(2023, 1, 2), datetime(2023, 1, 2))
+        # Call get_all with start_date equals end_date
+        result = self.store.get_all("AAPL", datetime(2023, 1, 2), datetime(2023, 1, 2))
         
         # Verify only one date is returned
         self.assertEqual(len(result), 1)
@@ -811,7 +854,7 @@ class TestParquetDataStore(unittest.TestCase):
         self.assertEqual(list(result.keys())[0], datetime(2023, 1, 2))
         self.assertEqual(list(result.values())[0]["open"], 101.0)
     
-    def test_get_handles_edge_case_start_date_after_end_date(self):
+    def test_get_all_handles_edge_case_start_date_after_end_date(self):
         """
         Test: get handles edge case where start_date is after end_date
         How: Add data, call get with start_date > end_date
@@ -825,8 +868,8 @@ class TestParquetDataStore(unittest.TestCase):
         }
         self.store.add("AAPL", data)
         
-        # Call get with start_date after end_date
-        result = self.store.get("AAPL", datetime(2023, 1, 3), datetime(2023, 1, 1))
+        # Call get_all with start_date after end_date
+        result = self.store.get_all("AAPL", datetime(2023, 1, 3), datetime(2023, 1, 1))
         
         # Verify it returns None (no data in invalid range)
         self.assertIsNone(result)
