@@ -20,13 +20,14 @@ from portwine.data.interface import DataInterface
 class MockRestrictedDataInterface(DataInterface):
     """Mock RestrictedDataInterface for testing"""
     def __init__(self, mock_data=None):
-        # Create a mock data loader
-        self.data_loader = Mock()
-        super().__init__(self.data_loader)
+        # Don't call super().__init__ with a Mock object
         self.mock_data = mock_data or {}
         self.current_timestamp = None
         self.restricted_tickers = []
         self.get_calls = []
+        
+        # Create a proper mock data loader that implements the expected interface
+        self.data_loader = Mock()
         
         # Configure the mock data loader to return proper data
         def mock_next(tickers, timestamp):
@@ -82,6 +83,59 @@ class MockRestrictedDataInterface(DataInterface):
             return result
         
         self.data_loader.next = mock_next
+        
+        # Add a get method that the DataInterface expects
+        def mock_get(ticker, timestamp):
+            if ticker in self.mock_data:
+                data = self.mock_data[ticker]
+                if timestamp is not None:
+                    dt_python = pd.Timestamp(timestamp)
+                    if hasattr(data, 'index'):
+                        try:
+                            idx = data.index.get_loc(dt_python)
+                            return {
+                                'close': float(data['close'].iloc[idx]),
+                                'open': float(data['open'].iloc[idx]),
+                                'high': float(data['high'].iloc[idx]),
+                                'low': float(data['low'].iloc[idx]),
+                                'volume': float(data['volume'].iloc[idx])
+                            }
+                        except (KeyError, IndexError):
+                            return {
+                                'close': 100.0,
+                                'open': 100.0,
+                                'high': 105.0,
+                                'low': 95.0,
+                                'volume': 1000000
+                            }
+                    else:
+                        return {
+                            'close': 100.0,
+                            'open': 100.0,
+                            'high': 105.0,
+                            'low': 95.0,
+                            'volume': 1000000
+                        }
+                return {
+                    'close': 100.0,
+                    'open': 100.0,
+                    'high': 105.0,
+                    'low': 95.0,
+                    'volume': 1000000
+                }
+            return None
+        
+        self.data_loader.get = mock_get
+        
+        # Add fetch_data method for compatibility
+        def mock_fetch_data(tickers):
+            result = {}
+            for ticker in tickers:
+                if ticker in self.mock_data:
+                    result[ticker] = self.mock_data[ticker]
+            return result
+        
+        self.data_loader.fetch_data = mock_fetch_data
 
     def set_current_timestamp(self, dt):
         self.current_timestamp = dt

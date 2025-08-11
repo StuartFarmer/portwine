@@ -530,7 +530,7 @@ class TestBacktester(unittest.TestCase):
             )
 
     def test_nonexistent_ticker(self):
-        """Test backtest with non-existent tickers"""
+        """Test backtest with non-existent tickers raises ValueError"""
         # Strategy with non-existent ticker
         strategy = SimpleTestStrategy(tickers=['NONEXISTENT'])
 
@@ -540,18 +540,17 @@ class TestBacktester(unittest.TestCase):
             weights = np.ones(n_tickers) / n_tickers
             return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
 
-        # Run backtest - the mock data interface provides default data for non-existent tickers
-        # So this should work without raising an error
-        results = self.backtester.run_backtest(
-            strategy=strategy,
-            start_date='2020-01-01',
-            end_date='2020-01-10',
-            benchmark=equal_weight_benchmark
-        )
+        # Run backtest - should now raise ValueError because NONEXISTENT ticker doesn't exist
+        with self.assertRaises(ValueError) as context:
+            self.backtester.run_backtest(
+                strategy=strategy,
+                start_date='2020-01-01',
+                end_date='2020-01-10',
+                benchmark=equal_weight_benchmark
+            )
         
-        # Verify that results are present
-        self.assertIn('benchmark_returns', results)
-        self.assertEqual(len(results['benchmark_returns']), len(self.dates))
+        # Verify the error message
+        self.assertIn("Data for ticker NONEXISTENT does not exist", str(context.exception))
 
     def test_invalid_benchmark(self):
         """Test backtest with invalid benchmark"""
@@ -600,9 +599,8 @@ class TestRequireAllHistory(unittest.TestCase):
     def setUp(self):
         dates = pd.date_range("2020-01-01", periods=10, freq="D")
         
-        # Create mock data interface
-        self.data_interface = MockDataInterface()
-        self.data_interface.mock_data = {
+        # Create mock data interface with data
+        mock_data = {
             'A': {
                 'close': np.array(range(1, 11)),
                 'open': np.array(range(1, 11)),
@@ -619,6 +617,8 @@ class TestRequireAllHistory(unittest.TestCase):
             }
         }
         
+        self.data_interface = MockDataInterface(mock_data)
+        
         self.bt = Backtester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
         self.strat = SimpleTestStrategy(["A", "B"])
 
@@ -628,6 +628,8 @@ class TestRequireAllHistory(unittest.TestCase):
             n_tickers = len(ret_df.columns)
             weights = np.ones(n_tickers) / n_tickers
             return pd.DataFrame(ret_df.dot(weights), columns=['benchmark_returns'])
+        
+
         
         res = self.bt.run_backtest(
             self.strat, 
@@ -657,9 +659,8 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
     def setUp(self):
         dates = pd.date_range("2020-01-01", periods=10, freq="D")
         
-        # Create mock data interface
-        self.data_interface = MockDataInterface()
-        self.data_interface.mock_data = {
+        # Create mock data interface with data
+        mock_data = {
             'A': {
                 'close': np.array(range(1, 11)),
                 'open': np.array(range(1, 11)),
@@ -675,6 +676,8 @@ class TestBenchmarkDefaultAndInvalid(unittest.TestCase):
                 'volume': np.array([100] * 10)
             }
         }
+        
+        self.data_interface = MockDataInterface(mock_data)
         
         self.bt = Backtester(self.data_interface, calendar=MockDailyMarketCalendar("NYSE"))
 
@@ -717,17 +720,19 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         # Build 2020-01-13 to 2020-01-18 price data for 'X'
         dates = pd.date_range("2020-01-13", "2020-01-18", freq="D")
         
-        # Create mock data interface
-        self.data_interface = MockDataInterface()
-        self.data_interface.mock_data = {
-            'X': {
-                'close': np.array(range(len(dates))),
-                'open': np.array(range(len(dates))),
-                'high': np.array(range(len(dates))),
-                'low': np.array(range(len(dates))),
-                'volume': np.array([1.0] * len(dates))
-            }
+        # Create mock data for 'X' ticker
+        mock_data = {
+            'X': pd.DataFrame({
+                'close': range(len(dates)),
+                'open': range(len(dates)),
+                'high': range(len(dates)),
+                'low': range(len(dates)),
+                'volume': [1.0] * len(dates)
+            }, index=dates)
         }
+        
+        # Create mock data interface with the data properly loaded
+        self.data_interface = MockDataInterface(mock_data=mock_data)
         
         self.bt = Backtester(
             data=self.data_interface,
@@ -889,25 +894,26 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         # Verify that benchmark returns are present (using default)
         self.assertIn('benchmark_returns', res)
     def test_require_all_history_cuts_before_benchmark_start(self):
-        # Create mock data interface
-        data_interface = MockDataInterface()
-        data_interface.mock_data = {
-            'A': {
+        # Create mock data for tickers A and B
+        dates = pd.date_range("2020-01-01", "2020-01-10", freq="D")
+        mock_data = {
+            'A': pd.DataFrame({
                 'close': np.ones(10),
                 'open': np.ones(10),
                 'high': np.ones(10),
                 'low': np.ones(10),
                 'volume': np.ones(10)
-            },
-            'B': {
+            }, index=dates),
+            'B': pd.DataFrame({
                 'close': np.ones(10),
                 'open': np.ones(10),
                 'high': np.ones(10),
                 'low': np.ones(10),
                 'volume': np.ones(10)
-            }
+            }, index=dates)
         }
 
+        data_interface = MockDataInterface(mock_data=mock_data)
         backtester = Backtester(data_interface, calendar=MockDailyMarketCalendar("NYSE"))
         strat = SimpleTestStrategy(['A', 'B'])
         
@@ -928,24 +934,25 @@ class TestBacktesterWithCalendar(unittest.TestCase):
         self.assertEqual(signals.index.min(), pd.Timestamp("2020-01-01"))
 
     def test_without_require_all_history_includes_earliest_ticker(self):
-        # Create mock data interface
-        data_interface = MockDataInterface()
-        data_interface.mock_data = {
-            'A': {
+        # Create mock data for tickers A and B
+        dates = pd.date_range("2020-01-01", "2020-01-10", freq="D")
+        mock_data = {
+            'A': pd.DataFrame({
                 'close': np.ones(10),
                 'open': np.ones(10),
                 'high': np.ones(10),
                 'low': np.ones(10),
                 'volume': np.ones(10)
-            },
-            'B': {
+            }, index=dates),
+            'B': pd.DataFrame({
                 'close': np.ones(10),
                 'open': np.ones(10),
                 'high': np.ones(10),
                 'low': np.ones(10),
                 'volume': np.ones(10)
-            }
+            }, index=dates)
         }
+        data_interface = MockDataInterface(mock_data=mock_data)
         backtester = Backtester(data_interface, calendar=MockDailyMarketCalendar("NYSE"))
         strat = SimpleTestStrategy(['A', 'B'])
         

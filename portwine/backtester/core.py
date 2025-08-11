@@ -11,7 +11,6 @@ from portwine.backtester.benchmarks import STANDARD_BENCHMARKS, BenchmarkTypes, 
 from portwine.logger import Logger
 
 import pandas_market_calendars as mcal
-from portwine.data.providers.loader_adapters import MarketDataLoader
 
 from pandas_market_calendars import MarketCalendar
 import datetime
@@ -261,6 +260,37 @@ class Backtester:
                 raise ValueError(f"Data for ticker {ticker} does not exist for the given date range.")
         return True
     
+    def _normalize_signals(self, raw_signals, expected_tickers: List[str]) -> Dict[str, float]:
+        """Normalize signals to a dict[str, float] regardless of input type.
+
+        Accepts dict, pandas Series, or numpy array. Any missing tickers are assigned 0.0.
+        Extra tickers in input are ignored.
+        """
+        # Fast-path dict
+        if isinstance(raw_signals, dict):
+            # Filter and fill missing
+            out: Dict[str, float] = {}
+            for t in expected_tickers:
+                out[t] = float(raw_signals.get(t, 0.0))
+            return out
+
+        # Pandas Series
+        if isinstance(raw_signals, pd.Series):
+            out = {}
+            # .get for possibly missing entries, fill 0.0
+            for t in expected_tickers:
+                val = raw_signals[t] if t in raw_signals.index else 0.0
+                out[t] = float(val)
+            return out
+
+        # Numpy array
+        if isinstance(raw_signals, np.ndarray):
+            if raw_signals.ndim != 1 or raw_signals.shape[0] != len(expected_tickers):
+                raise ValueError("Signal array shape does not match number of tickers")
+            return {t: float(raw_signals[i]) for i, t in enumerate(expected_tickers)}
+
+        raise TypeError(f"Unsupported signal type: {type(raw_signals)}")
+
     def validate_signals(self, sig: Dict[str, float], dt: pd.Timestamp, current_universe_tickers: List[str]) -> bool:
         # Check for over-allocation: total weights >1
         total_weight = sum(sig.values())
@@ -389,12 +419,16 @@ class Backtester:
 
             # Convert numpy.datetime64 to Python datetime for strategy compatibility
             dt_datetime = pd.Timestamp(dt).to_pydatetime()
-            sig = strategy.step(dt_datetime, self.restricted_data)
+            raw_sig = strategy.step(dt_datetime, self.restricted_data)
             
-            self.validate_signals(sig, dt, current_universe_tickers)
+            # Validate raw signals before normalization to catch invalid tickers
+            self.validate_signals(raw_sig, dt, current_universe_tickers)
+            
+            # Normalize signals to dict using only current universe market tickers
+            normalized_sig = self._normalize_signals(raw_sig, regular_tickers)
             
             # Use BacktestResult to handle signal and close price updates
-            result.add_signals(i, sig)
+            result.add_signals(i, normalized_sig)
             result.add_close_prices(i, self.restricted_data)
         
         # Calculate returns and strategy returns using BacktestResult
@@ -438,12 +472,13 @@ class Backtester:
         benchmark_returns = []
         
         for dt in datetime_index:
-            # Set the current timestamp to get benchmark data via the interface wrapper
-            self.restricted_data.set_current_timestamp(dt)
+            # Set the current timestamp to get benchmark data via the main data interface
+            # Use the main data interface, not the restricted one, to access benchmark data
+            self.data.set_current_timestamp(dt)
             
             try:
-                # Get benchmark data for this timestamp using the DataInterface
-                benchmark_data = self.restricted_data[benchmark_ticker]
+                # Get benchmark data for this timestamp using the main DataInterface
+                benchmark_data = self.data[benchmark_ticker]
                 if benchmark_data is None:
                     benchmark_returns.append(0.0)
                 else:

@@ -166,6 +166,25 @@ class TestBacktester(unittest.TestCase):
         """Set up test fixtures"""
         # Create mock data interface (DataInterface, not RestrictedDataInterface)
         self.mock_data_interface = MockDataInterface()
+        
+        # Add some test data to the mock data store so _compute_effective_end_date can work
+        test_data = {
+            'AAPL': pd.DataFrame({
+                'open': [100.0] * 365,
+                'high': [105.0] * 365,
+                'low': [95.0] * 365,
+                'close': [102.0] * 365,
+                'volume': [1000000] * 365
+            }, index=pd.date_range('2023-01-01', periods=365, freq='D')),
+            'GOOGL': pd.DataFrame({
+                'open': [200.0] * 365,
+                'high': [210.0] * 365,
+                'low': [190.0] * 365,
+                'close': [204.0] * 365,
+                'volume': [2000000] * 365
+            }, index=pd.date_range('2023-01-01', periods=365, freq='D'))
+        }
+        self.mock_data_interface.data_loader.load_bulk(test_data)
     
         # Create test calendar (shared impl configured for 2023)
         self.mock_calendar = MockDailyMarketCalendar()
@@ -289,9 +308,10 @@ class TestBacktester(unittest.TestCase):
         # Run backtest without dates
         result = self.backtester.run_backtest(self.mock_strategy, benchmark=self.benchmark_func)
         
-        # Verify calendar was called with None dates
+        # Verify calendar was called with computed dates (not None)
         self.assertEqual(len(self.mock_calendar.get_datetime_index_calls), 1)
-        self.assertEqual(self.mock_calendar.get_datetime_index_calls[0], (None, None))
+        # The backtester computes dates from data when none are provided
+        self.assertEqual(self.mock_calendar.get_datetime_index_calls[0], ('2023-01-01', '2023-12-31'))
         
         # Verify result is a dictionary of DataFrames
         self.assertIsInstance(result, dict)

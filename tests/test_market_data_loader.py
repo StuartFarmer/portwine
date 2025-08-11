@@ -18,6 +18,10 @@ class DummyLoader(MarketDataLoader):
         self.load_calls.append(ticker)
         df = self.data_map.get(ticker)
         return df.copy() if df is not None else None
+    
+    def _get_provider(self, ticker: str):
+        """Dummy implementation to avoid NotImplementedError."""
+        return None
 
 
 class MarketDataLoaderTests(unittest.TestCase):

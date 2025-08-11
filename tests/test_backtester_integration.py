@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import tempfile
 import os
 import shutil
-from unittest.mock import Mock
 
 # Import components to be tested
 from portwine.backtester.core import Backtester
@@ -15,93 +14,7 @@ from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
 from portwine.analyzers.correlation import CorrelationAnalyzer
 from portwine.data.interface import DataInterface
 from tests.calendar_utils import TestDailyMarketCalendar
-
-class MockRestrictedDataInterface(DataInterface):
-    def __init__(self, mock_data=None):
-        # Create a mock data loader
-        self.data_loader = Mock()
-        super().__init__(self.data_loader)
-        self.mock_data = mock_data or {}
-        self.set_timestamp_calls = []
-        self.get_calls = []
-        self.current_timestamp = None
-        
-        # Configure the mock data loader to return proper data
-        def mock_next(tickers, timestamp):
-            result = {}
-            for ticker in tickers:
-                if ticker in self.mock_data:
-                    data = self.mock_data[ticker]
-                    if self.current_timestamp is not None:
-                        dt_python = pd.Timestamp(self.current_timestamp)
-                        dates = pd.date_range('2020-01-01', '2020-01-10', freq='D')
-                        try:
-                            idx = dates.get_loc(dt_python)
-                            result[ticker] = {
-                                'close': float(data['close'][idx]),
-                                'open': float(data['open'][idx]),
-                                'high': float(data['high'][idx]),
-                                'low': float(data['low'][idx]),
-                                'volume': float(data['volume'][idx])
-                            }
-                        except (KeyError, IndexError):
-                            result[ticker] = {
-                                'close': 100.0,
-                                'open': 100.0,
-                                'high': 105.0,
-                                'low': 95.0,
-                                'volume': 1000000
-                            }
-                    else:
-                        result[ticker] = {
-                            'close': 100.0,
-                            'open': 100.0,
-                            'high': 105.0,
-                            'low': 95.0,
-                            'volume': 1000000
-                        }
-                else:
-                    result[ticker] = {
-                        'close': 100.0,
-                        'open': 100.0,
-                        'high': 105.0,
-                        'low': 95.0,
-                        'volume': 1000000
-                    }
-            return result
-        
-        self.data_loader.next = mock_next
-
-    def set_current_timestamp(self, dt):
-        self.set_timestamp_calls.append(dt)
-        self.current_timestamp = dt
-
-    def set_restricted_tickers(self, tickers, prefix=None):
-        self.restricted_tickers = tickers
-
-    def __getitem__(self, ticker):
-        self.get_calls.append(ticker)
-        if ticker in self.mock_data:
-            data = self.mock_data[ticker]
-            if self.current_timestamp is not None:
-                dt_python = pd.Timestamp(self.current_timestamp)
-                dates = pd.date_range('2020-01-01', '2020-01-10', freq='D')  # Hardcoded for test
-                try:
-                    idx = dates.get_loc(dt_python)
-                    return {
-                        'close': data['close'][idx],
-                        'open': data['open'][idx],
-                        'high': data['high'][idx],
-                        'low': data['low'][idx],
-                        'volume': data['volume'][idx]
-                    }
-                except KeyError:
-                    return None
-            return data
-        return None
-
-    def exists(self, ticker, start_date, end_date):
-        return ticker in self.mock_data
+from tests.test_backtester import MockDataInterface
 
 ## Use shared, configurable test calendar
 
@@ -252,16 +165,12 @@ class TestBacktesterIntegration(unittest.TestCase):
         for ticker, data in self.price_data.items():
             self.loader.save_ticker_data(ticker, data)
 
-        # Create mock data interface
-        self.data_interface = MockRestrictedDataInterface()
+        # Create proper mock data interface with the test data
+        mock_data = {}
         for ticker, data in self.price_data.items():
-            self.data_interface.mock_data[ticker] = {
-                'close': data['close'].values,
-                'open': data['open'].values,
-                'high': data['high'].values,
-                'low': data['low'].values,
-                'volume': data['volume'].values
-            }
+            mock_data[ticker] = data
+        
+        self.data_interface = MockDataInterface(mock_data=mock_data)
 
         # Create backtester using shared test calendar (all days, midnight timestamps)
         self.backtester = Backtester(
@@ -483,15 +392,11 @@ class TestBacktesterIntegration(unittest.TestCase):
                 return result
 
         # 2) Create mock data interface for the alternative data test
-        mock_data_interface = MockRestrictedDataInterface()
+        mock_data = {}
         for ticker, data in self.price_data.items():
-            mock_data_interface.mock_data[ticker] = {
-                'close': data['close'].values,
-                'open': data['open'].values,
-                'high': data['high'].values,
-                'low': data['low'].values,
-                'volume': data['volume'].values
-            }
+            mock_data[ticker] = data
+        
+        mock_data_interface = MockDataInterface(mock_data=mock_data)
         
         bt = Backtester(
             mock_data_interface,

@@ -89,6 +89,13 @@ class ProviderBasedLoader:
             warnings.warn(f"Failed to load data for {ticker}: {e}")
             return None
     
+    def load_ticker(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        Public method to load data for a ticker.
+        This is the main interface method that subclasses should override.
+        """
+        raise NotImplementedError("Subclasses must implement load_ticker")
+    
     def get(self, ticker: str, timestamp: datetime) -> Optional[Dict[str, float]]:
         """
         Get data for a ticker at a specific timestamp.
@@ -166,7 +173,7 @@ class ProviderBasedLoader:
         fetched = {}
         for ticker in tickers:
             if ticker not in self._data_cache:
-                df = self._load_ticker(ticker)
+                df = self.load_ticker(ticker)
                 if df is not None:
                     self._data_cache[ticker] = df
                     self._create_numpy_cache(ticker, df)
@@ -213,6 +220,31 @@ class ProviderBasedLoader:
             
         return self._numpy_cache[ticker][pos]
     
+    def _get_bar_at_or_before(self, df: pd.DataFrame, ts: pd.Timestamp) -> Optional[pd.Series]:
+        """
+        Get the bar at or immediately before the given timestamp.
+        This method works with pandas DataFrames and returns pandas Series.
+        """
+        if df.empty:
+            return None
+            
+        # Convert timestamp to pandas Timestamp if needed
+        if not isinstance(ts, pd.Timestamp):
+            ts = pd.Timestamp(ts)
+            
+        # Handle timezone conversion
+        if ts.tzinfo is not None:
+            ts_utc = ts.tz_convert('UTC')
+            ts = ts_utc.replace(tzinfo=None)
+        
+        # Find the position of the timestamp
+        pos = df.index.get_indexer([ts], method='ffill')[0]
+        
+        if pos < 0:
+            return None
+            
+        return df.iloc[pos]
+    
     def next(self, tickers: List[str], ts: pd.Timestamp) -> Dict[str, Optional[Dict[str, float]]]:
         """
         Get data for tickers at or immediately before timestamp.
@@ -236,8 +268,7 @@ class ProviderBasedLoader:
                     }
                 else:
                     result[ticker] = None
-            else:
-                result[ticker] = None
+            # Don't add ticker to result if df is None (ticker not found)
         return result
 
 

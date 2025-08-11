@@ -46,8 +46,11 @@ class NoisyDataStore(DataStore):
         self.noise_multiplier = noise_multiplier
         self.volatility_window = volatility_window
         
+        # Create a local random number generator for reproducibility
         if seed is not None:
-            np.random.seed(seed)
+            self.rng = np.random.RandomState(seed)
+        else:
+            self.rng = np.random.RandomState()
     
     def _calculate_volatility_from_data(self, data: OrderedDict) -> float:
         """
@@ -101,7 +104,7 @@ class NoisyDataStore(DataStore):
         for key in ['open', 'high', 'low', 'close']:
             if key in noisy_point:
                 # Scale noise by the price value to maintain proportional noise
-                noise = np.random.normal(0, noise_scale * noisy_point[key])
+                noise = self.rng.normal(0, noise_scale * noisy_point[key])
                 noisy_point[key] = noisy_point[key] + noise
         
         # Ensure OHLC consistency: high >= max(open, close), low <= min(open, close)

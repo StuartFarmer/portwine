@@ -60,7 +60,8 @@ class TestParquetDataStore(unittest.TestCase):
     def test_initialization(self):
         """Test store initialization."""
         self.assertTrue(os.path.exists(self.test_dir))
-        self.assertEqual(self.store.data_dir, self.test_dir)
+        # ParquetDataStore stores data_dir as a Path object, so convert to string for comparison
+        self.assertEqual(str(self.store.data_dir), self.test_dir)
     
     def test_add_data(self):
         """Test adding data to the store."""
