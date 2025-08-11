@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from ..provider import DataProvider
+from .base import DataProvider
 
 
 class EODHDProvider(DataProvider):
