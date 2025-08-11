@@ -6,7 +6,7 @@ from unittest.mock import Mock, MagicMock
 from collections import OrderedDict
 
 from portwine.data.stores.adapter import MarketDataLoaderAdapter
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class MockMarketDataLoader:

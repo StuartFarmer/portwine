@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Dict, Optional, Any, List
 import pandas as pd
+import pandas as pd
 
 """
 These classes are the interfaces that strategies use to access data. They can also be used to access data for other purposes, such as backtesting.
@@ -53,6 +54,67 @@ class DataInterface:
         if point is None:
             raise KeyError(f"No data found for ticker: {ticker}")
         return point
+
+    # ---------- Earliest-date discovery helpers ----------
+    def _earliest_for_symbol(self, symbol: str) -> Optional[pd.Timestamp]:
+        store = self.data_loader
+        # Preferred: dedicated earliest() on store
+        try:
+            earliest_dt = getattr(store, "earliest")(symbol)
+            if earliest_dt is not None:
+                return pd.to_datetime(earliest_dt)
+        except AttributeError:
+            pass
+        except Exception:
+            pass
+
+        # Fallback for legacy loaders: fetch_data and read index.min()
+        try:
+            df_map = getattr(store, "fetch_data")([symbol])
+            df = df_map.get(symbol)
+            if df is not None and not df.empty:
+                return pd.to_datetime(df.index.min())
+        except Exception:
+            pass
+
+        # Fallback to get_all across full history if available (may be expensive)
+        try:
+            get_all = getattr(store, "get_all")
+            from datetime import datetime as _dt
+            data = get_all(symbol, _dt(1900, 1, 1), None)
+            if data:
+                first_key = next(iter(data.keys()))
+                return pd.to_datetime(first_key)
+        except Exception:
+            pass
+
+        return None
+
+    def earliest_any_date(self, tickers: List[str]) -> str:
+        dates: List[pd.Timestamp] = []
+        for t in tickers:
+            dt = self._earliest_for_symbol(t)
+            if dt is not None:
+                dates.append(dt)
+        if not dates:
+            raise ValueError("Cannot determine earliest date: no data found for any requested tickers")
+        return min(dates).strftime('%Y-%m-%d')
+
+    def earliest_common_date(self, tickers: List[str]) -> str:
+        dates: List[pd.Timestamp] = []
+        missing: List[str] = []
+        for t in tickers:
+            dt = self._earliest_for_symbol(t)
+            if dt is None:
+                missing.append(t)
+            else:
+                dates.append(dt)
+        if missing:
+            raise ValueError(f"Cannot determine earliest common date; missing data for: {missing}")
+        if not dates:
+            raise ValueError("Cannot determine earliest common date: no dates computed")
+        # Common means all tickers have data from this date forward → choose latest of their earliest
+        return max(dates).strftime('%Y-%m-%d')
 
 class MultiDataInterface:
     """
@@ -137,6 +199,71 @@ class MultiDataInterface:
         if point is None:
             raise KeyError(f"No data found for ticker: {ticker}")
         return point
+
+    # ---------- Earliest-date discovery for multi-source ----------
+    def _earliest_for_symbol_on_store(self, prefix: Optional[str], symbol: str) -> Optional[pd.Timestamp]:
+        if prefix not in self.loaders:
+            return None
+        store = self.loaders[prefix]
+
+        # Preferred: dedicated earliest() on store
+        try:
+            earliest_dt = getattr(store, "earliest")(symbol)
+            if earliest_dt is not None:
+                return pd.to_datetime(earliest_dt)
+        except AttributeError:
+            pass
+        except Exception:
+            pass
+
+        # Fallback for legacy loaders: fetch_data and read index.min()
+        try:
+            df_map = getattr(store, "fetch_data")([symbol])
+            df = df_map.get(symbol)
+            if df is not None and not df.empty:
+                return pd.to_datetime(df.index.min())
+        except Exception:
+            pass
+
+        # Fallback to get_all across full history if available (may be expensive)
+        try:
+            get_all = getattr(store, "get_all")
+            from datetime import datetime as _dt
+            data = get_all(symbol, _dt(1900, 1, 1), None)
+            if data:
+                first_key = next(iter(data.keys()))
+                return pd.to_datetime(first_key)
+        except Exception:
+            pass
+
+        return None
+
+    def earliest_any_date(self, tickers: List[str]) -> str:
+        dates: List[pd.Timestamp] = []
+        for t in tickers:
+            prefix, symbol = self._parse_ticker(t)
+            dt = self._earliest_for_symbol_on_store(prefix, symbol)
+            if dt is not None:
+                dates.append(dt)
+        if not dates:
+            raise ValueError("Cannot determine earliest date: no data found for any requested tickers")
+        return min(dates).strftime('%Y-%m-%d')
+
+    def earliest_common_date(self, tickers: List[str]) -> str:
+        dates: List[pd.Timestamp] = []
+        missing: List[str] = []
+        for t in tickers:
+            prefix, symbol = self._parse_ticker(t)
+            dt = self._earliest_for_symbol_on_store(prefix, symbol)
+            if dt is None:
+                missing.append(t)
+            else:
+                dates.append(dt)
+        if missing:
+            raise ValueError(f"Cannot determine earliest common date; missing data for: {missing}")
+        if not dates:
+            raise ValueError("Cannot determine earliest common date: no dates computed")
+        return max(dates).strftime('%Y-%m-%d')
     
     def get_loader(self, prefix: Optional[str] = None):
         """

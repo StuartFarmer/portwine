@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 from datetime import datetime
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class DummyLoader(MarketDataLoader):
     """

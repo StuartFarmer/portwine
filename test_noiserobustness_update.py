@@ -26,7 +26,7 @@ def test_adapter_creation():
     
     try:
         from portwine.analyzers.noiserobustness import MarketDataLoaderAdapter
-        from portwine.loaders.base import MarketDataLoader
+        from portwine.data.providers.loader_adapters import MarketDataLoader
         
         # Create a mock loader
         class MockLoader(MarketDataLoader):
@@ -49,7 +49,7 @@ def test_analyzer_creation():
     
     try:
         from portwine.analyzers.noiserobustness import NoiseRobustnessAnalyzer
-        from portwine.loaders.base import MarketDataLoader
+        from portwine.data.providers.loader_adapters import MarketDataLoader
         
         # Create a mock loader
         class MockLoader(MarketDataLoader):

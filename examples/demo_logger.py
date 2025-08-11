@@ -12,7 +12,7 @@ import time
 import logging
 from pathlib import Path
 
-from portwine.logging import Logger
+from portwine.logger import Logger
 from rich import print as rprint
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table

@@ -10,7 +10,7 @@ from datetime import date, datetime
 from portwine.universe import Universe, CSVUniverse
 from portwine.strategies.base import StrategyBase
 from portwine.backtester.core import Backtester
-from portwine.loaders.eodhd import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 from portwine.data.interface import DataInterface
 from tests.helpers import MockDataStore
 from unittest.mock import Mock

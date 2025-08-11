@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union, Any
 from collections import OrderedDict
 import warnings
+import os
 
 from .base import DataProvider
 from .alpaca import AlpacaProvider
@@ -36,6 +37,10 @@ class ProviderBasedLoader:
         self._numpy_cache = {}
         self._date_cache = {}
         self._provider_cache = {}
+        # Add data_loader attribute for compatibility with DataInterface
+        self.data_loader = self
+        # Add current_timestamp attribute for compatibility with DataInterface
+        self.current_timestamp = None
     
     def _get_provider(self, ticker: str) -> Optional[DataProvider]:
         """
@@ -83,6 +88,75 @@ class ProviderBasedLoader:
         except Exception as e:
             warnings.warn(f"Failed to load data for {ticker}: {e}")
             return None
+    
+    def get(self, ticker: str, timestamp: datetime) -> Optional[Dict[str, float]]:
+        """
+        Get data for a ticker at a specific timestamp.
+        This method makes the loader compatible with the new DataInterface system.
+        
+        Args:
+            ticker: The ticker symbol
+            timestamp: The timestamp to get data for
+            
+        Returns:
+            dict: OHLCV data dictionary or None if no data found
+        """
+        # Convert timestamp to pandas Timestamp if needed
+        if not isinstance(timestamp, pd.Timestamp):
+            ts = pd.Timestamp(timestamp)
+        else:
+            ts = timestamp
+            
+        # Use the existing next method logic
+        result = self.next([ticker], ts)
+        return result.get(ticker)
+    
+    def exists(self, ticker: str, start_date: str, end_date: str) -> bool:
+        """
+        Check if data exists for a ticker in the given date range.
+        This method is required by the backtester for validation.
+        
+        Args:
+            ticker: The ticker symbol
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            
+        Returns:
+            bool: True if data exists, False otherwise
+        """
+        try:
+            # Convert dates to datetime objects
+            start_dt = pd.Timestamp(start_date)
+            end_dt = pd.Timestamp(end_date)
+            
+            # Fetch data for the ticker
+            df = self.fetch_data([ticker]).get(ticker)
+            if df is None or df.empty:
+                return False
+            
+            # Check if we have data in the date range
+            ticker_dates = df.index
+            if len(ticker_dates) == 0:
+                return False
+            
+            # Check if any dates fall within the range
+            mask = (ticker_dates >= start_dt) & (ticker_dates <= end_dt)
+            return mask.any()
+            
+        except Exception:
+            return False
+    
+    def set_current_timestamp(self, timestamp: datetime) -> None:
+        """
+        Set the current timestamp for data access.
+        This method is required by the DataInterface system.
+        
+        Args:
+            timestamp: The timestamp to set
+        """
+        # This method is required by DataInterface but not used by legacy loaders
+        # The legacy loaders use the timestamp passed to next() method
+        pass
     
     def fetch_data(self, tickers: List[str]) -> Dict[str, pd.DataFrame]:
         """
@@ -191,18 +265,62 @@ class AlpacaMarketDataLoader(ProviderBasedLoader):
 
 class EODHDMarketDataLoader(ProviderBasedLoader):
     """
-    Adapter for EODHD data that uses EODHDProvider internally.
+    Adapter for EODHD data that loads CSV files from disk.
+    Maintains backward compatibility with the original API.
     """
     
-    def __init__(self, api_key: str):
+    def __init__(self, data_path: str, exchange_code: str = "US"):
         super().__init__()
-        self.api_key = api_key
+        self.data_path = data_path
+        self.exchange_code = exchange_code
     
     def _get_provider(self, ticker: str) -> Optional[DataProvider]:
-        """Get EODHD provider for any ticker."""
-        if 'eodhd' not in self._provider_cache:
-            self._provider_cache['eodhd'] = EODHDProvider(self.api_key)
-        return self._provider_cache['eodhd']
+        """This loader doesn't use external providers - it loads from disk."""
+        return None
+    
+    def _load_ticker(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        Override _load_ticker to use the disk-based load_ticker method.
+        This ensures fetch_data works correctly.
+        """
+        return self.load_ticker(ticker)
+    
+    def load_ticker(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        Load data for a single ticker from CSV file.
+        This method maintains backward compatibility with the original loader API.
+        """
+        if not self.data_path:
+            return None
+            
+        file_path = os.path.join(self.data_path, f"{ticker}.{self.exchange_code}.csv")
+        if not os.path.isfile(file_path):
+            print(f"Warning: CSV file not found for {ticker}: {file_path}")
+            return None
+
+        try:
+            df = pd.read_csv(file_path, parse_dates=['date'], index_col='date')
+            # Calculate adjusted prices if columns exist
+            if 'adjusted_close' in df.columns and 'close' in df.columns:
+                adj_ratio = df['adjusted_close'] / df['close']
+                df['open'] = df['open'] * adj_ratio
+                df['high'] = df['high'] * adj_ratio
+                df['low'] = df['low'] * adj_ratio
+                df['close'] = df['adjusted_close']
+            
+            # Ensure required columns exist
+            required_cols = ['open', 'high', 'low', 'close', 'volume']
+            if all(col in df.columns for col in required_cols):
+                df = df[required_cols]
+                df.sort_index(inplace=True)
+                return df
+            else:
+                print(f"Warning: Missing required columns in {file_path}")
+                return None
+                
+        except Exception as e:
+            print(f"Warning: Failed to load CSV for {ticker}: {e}")
+            return None
 
 
 class PolygonMarketDataLoader(ProviderBasedLoader):

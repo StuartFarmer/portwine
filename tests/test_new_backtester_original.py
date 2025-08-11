@@ -6,7 +6,7 @@ import numpy as np
 from portwine.backtester.core import Backtester
 from portwine.backtester.benchmarks import InvalidBenchmarkError
 from portwine.strategies.base import StrategyBase
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 from portwine.data.interface import DataInterface
 from unittest.mock import Mock
 from tests.helpers import MockDataStore

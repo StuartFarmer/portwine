@@ -6,7 +6,7 @@ from typing import Dict, Union, Iterable
 
 import pandas as pd
 
-from portwine.data.store import DataStore
+from portwine.data.stores.base import DataStore
 
 
 class MockDataStore(DataStore):

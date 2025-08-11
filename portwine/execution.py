@@ -16,10 +16,10 @@ from datetime import datetime
 import pandas as pd
 import pandas_market_calendars as mcal
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.brokers.base import BrokerBase, Order
-from portwine.logging import Logger, log_position_table, log_weight_table, log_order_table
+from portwine.logger import Logger, log_position_table, log_weight_table, log_order_table
 from rich.progress import track, Progress, SpinnerColumn, TimeElapsedColumn, TextColumn
 from portwine.scheduler import daily_schedule
 

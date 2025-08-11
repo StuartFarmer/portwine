@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 
 from portwine.execution import ExecutionBase
 from portwine.brokers.mock import MockBroker
-from portwine.loaders.base import MarketDataLoader
-from portwine.loaders.broker import BrokerDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
+from portwine.data.providers.loader_adapters import BrokerDataLoader
 from portwine.backtester.core import Backtester
 from portwine.strategies.base import StrategyBase
 from portwine.data.interface import DataInterface

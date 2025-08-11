@@ -8,8 +8,8 @@ from unittest.mock import patch
 from portwine.execution import ExecutionBase, DataFetchError, PortfolioExceededError
 from portwine.brokers.base import Order, Position, Account, OrderNotFoundError
 from portwine.strategies.base import StrategyBase
-from portwine.loaders.base import MarketDataLoader
-from portwine.loaders.eodhd import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 
 # ---- Shared Dummy classes ----
 

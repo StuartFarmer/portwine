@@ -24,7 +24,7 @@ The adapter classes provide full backward compatibility while using the new prov
 
 ```python
 # OLD (deprecated)
-from portwine.loaders import AlpacaMarketDataLoader
+from portwine.data.providers.loader_adapters import AlpacaMarketDataLoader
 
 # NEW (recommended)
 from portwine.data.providers.loader_adapters import AlpacaMarketDataLoader
@@ -104,7 +104,7 @@ all_data = store.get_all("AAPL", start_date, end_date)
 
 ```python
 # OLD
-from portwine.loaders import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 loader = EODHDMarketDataLoader(api_key="key")
 
 # NEW (Option 1 - Adapter)
@@ -120,7 +120,7 @@ provider = EODHDProvider(api_key="key")
 
 ```python
 # OLD
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class MyCustomLoader(MarketDataLoader):
     def load_ticker(self, ticker):
@@ -141,7 +141,7 @@ class MyCustomLoader(ProviderBasedLoader):
 ### Import Errors
 If you get import errors, make sure you're using the correct import path:
 - ✅ `from portwine.data.providers.loader_adapters import AlpacaMarketDataLoader`
-- ❌ `from portwine.loaders import AlpacaMarketDataLoader` (deprecated)
+- ❌ `from portwine.data.providers.loader_adapters import AlpacaMarketDataLoader` (deprecated)
 
 ### Deprecation Warnings
 Deprecation warnings are expected and indicate that you should migrate. They won't break your code but will become errors in future versions.

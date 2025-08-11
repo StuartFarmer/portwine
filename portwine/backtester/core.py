@@ -8,10 +8,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import logging as _logging
 from tqdm import tqdm
 from portwine.backtester.benchmarks import STANDARD_BENCHMARKS, BenchmarkTypes, InvalidBenchmarkError, get_benchmark_type
-from portwine.logging import Logger
+from portwine.logger import Logger
 
 import pandas_market_calendars as mcal
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 from pandas_market_calendars import MarketCalendar
 import datetime
@@ -67,6 +67,8 @@ class DailyMarketCalendar:
 
         return datetime_index
     
+DEFAULT_CALENDAR = DailyMarketCalendar("NYSE")
+
 def _split_tickers(tickers: set) -> Tuple[List[str], List[str]]:
         """
         Split tickers into regular and alternative data tickers.
@@ -177,7 +179,8 @@ class BacktestResult:
 
 
 class Backtester:
-    def __init__(self, data: DataInterface, calendar: DailyMarketCalendar):
+    # TODO: streamline data interface initialization. we shouldnt be testing all instances and doing different things for each.
+    def __init__(self, data: DataInterface, calendar: DailyMarketCalendar=DEFAULT_CALENDAR):
         self.data = data
         # Pass all loaders to RestrictedDataInterface if data is MultiDataInterface
         if isinstance(data, MultiDataInterface):
@@ -191,6 +194,67 @@ class Backtester:
             self.restricted_data = RestrictedDataInterface({None: data.data_loader})
         self.calendar = calendar
 
+    def _get_default_market_store(self):
+        """Return the default market data store from the data interface."""
+        if isinstance(self.data, MultiDataInterface):
+            return self.data.loaders[None]
+        # DataInterface case
+        return self.data.data_loader
+
+    def _compute_effective_end_date(self, requested_end_date: Optional[str], tickers: List[str]) -> str:
+        """
+        Determine the effective end_date to use for the backtest.
+
+        - If the caller provided an end_date, return it unchanged
+        - Otherwise, query the underlying store for each ticker's latest available
+          timestamp and use the most conservative end date: the earliest of those
+          latest timestamps so that all tickers have data up to end_date
+        """
+        if requested_end_date is not None:
+            return requested_end_date
+
+        store = self._get_default_market_store()
+
+        latest_dates: List[datetime.datetime] = []
+        for symbol in tickers:
+            dt_obj = None
+            # 1) Preferred: DataStore.latest(symbol)
+            try:
+                dt_candidate = store.latest(symbol)  # may raise AttributeError on non-DataStore loaders
+                if dt_candidate is not None:
+                    dt_obj = dt_candidate
+            except AttributeError:
+                dt_obj = None
+            except Exception:
+                dt_obj = None
+
+            # 2) Fallback for legacy loaders: fetch_data + index.max()
+            if dt_obj is None:
+                try:
+                    df_map = store.fetch_data([symbol])
+                    df = df_map.get(symbol)
+                    if df is not None and not df.empty:
+                        dt_candidate = df.index.max()
+                        if dt_candidate is not None:
+                            dt_obj = dt_candidate
+                except Exception:
+                    dt_obj = None
+
+            if dt_obj is None:
+                continue
+
+            # Normalize to datetime for comparison
+            if not isinstance(dt_obj, datetime.datetime):
+                dt_obj = pd.to_datetime(dt_obj).to_pydatetime()
+            latest_dates.append(dt_obj)
+
+        if not latest_dates:
+            raise ValueError("Cannot determine end_date: no latest dates available for any ticker in universe")
+
+        # Conservative choice: limit timeline to the earliest of latest dates across tickers
+        effective_dt = min(latest_dates)
+        return effective_dt.strftime("%Y-%m-%d")
+    
     def validate_data(self, tickers: List[str], start_date: str, end_date: str) -> bool:
         for ticker in tickers:
             if not self.data.exists(ticker, start_date, end_date):
@@ -212,9 +276,7 @@ class Backtester:
                 f"Current universe: {current_universe_tickers}"
             )
 
-    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight"):
-        datetime_index = self.calendar.get_datetime_index(start_date, end_date)
-
+    def run_backtest(self, strategy: StrategyBase, start_date: Union[str, None]=None, end_date: Union[str, None]=None, benchmark: Union[str, Callable, None] = "equal_weight", verbose: bool = False, require_all_history: bool = False):
         # Validate that strategy has tickers
         if not strategy.universe.all_tickers:
             raise ValueError("Strategy has no tickers. Cannot run backtest with empty universe.")
@@ -225,25 +287,54 @@ class Backtester:
         # if not regular_tickers:
         #     raise ValueError("Strategy has no market tickers. Cannot run backtest with only alternative data.")
 
+        # If end_date is None, compute an effective one based on the data store
+        # Use only regular market tickers when determining the end_date
+        end_date = self._compute_effective_end_date(end_date, regular_tickers)
+
+        # If start_date is None, choose earliest-any date across the requested tickers
+        if start_date is None:
+            # Earliest date among any tickers
+            if isinstance(self.data, MultiDataInterface):
+                start_date = self.data.earliest_any_date(regular_tickers)
+            else:
+                start_date = DataInterface(self.data.data_loader).earliest_any_date(regular_tickers)
+        
+        # Now get the datetime index with the determined end_date
+        datetime_index = self.calendar.get_datetime_index(start_date, end_date)
+
+        # Validate data with the determined date range
         self.validate_data(strategy.universe.all_tickers, start_date, end_date)
+
+        # Handle require_all_history logic correctly: use the latest of each ticker's earliest date
+        if require_all_history:
+            if isinstance(self.data, MultiDataInterface):
+                common_start = self.data.earliest_common_date(regular_tickers)
+            else:
+                common_start = DataInterface(self.data.data_loader).earliest_common_date(regular_tickers)
+            if start_date is None or pd.Timestamp(start_date) < pd.Timestamp(common_start):
+                start_date = common_start
+            # Recompute index with updated start_date
+            datetime_index = self.calendar.get_datetime_index(start_date, end_date)
 
         # Classify benchmark type
         # Get the default loader from the data interface
-        if hasattr(self.data, 'data_loader'):
-            # DataInterface case
-            data_loader = self.data.data_loader
-        else:
+
+        # Determine the loader type using isinstance instead of attribute checks
+        if isinstance(self.data, MultiDataInterface):
             # MultiDataInterface case - get the default loader
             data_loader = self.data.loaders[None]
+        else:
+            # DataInterface case
+            data_loader = self.data.data_loader
         bm_type = get_benchmark_type(benchmark, data_loader, self.data)
         
         # Additional validation for ticker benchmarks
+        # TODO: the benchmark file has a function to do this. we should use that.
         if bm_type == BenchmarkTypes.TICKER:
-            # Verify that the ticker actually exists in the data
+            # Verify that the ticker actually exists in the data using the interface wrapper
             try:
-                # Set a dummy timestamp to test if the ticker exists
-                original_timestamp = self.data.current_timestamp
-                
+                original_timestamp = self.restricted_data.current_timestamp
+
                 # Try multiple timestamps to find one that works
                 test_timestamps = [
                     pd.Timestamp('2020-01-01'),
@@ -251,23 +342,25 @@ class Backtester:
                     pd.Timestamp('2020-06-01'),
                     pd.Timestamp('2021-01-01')
                 ]
-                
+
                 ticker_found = False
                 for test_ts in test_timestamps:
                     try:
-                        self.data.set_current_timestamp(test_ts)
-                        self.data[benchmark]  # This will raise KeyError if ticker doesn't exist
+                        self.restricted_data.set_current_timestamp(test_ts)
+                        _ = self.restricted_data[benchmark]  # Raises KeyError if ticker doesn't exist
                         ticker_found = True
                         break
                     except (KeyError, ValueError):
                         continue
-                
-                self.data.set_current_timestamp(original_timestamp)
-                
+
+                # Restore original timestamp
+                if original_timestamp is not None:
+                    self.restricted_data.set_current_timestamp(original_timestamp)
+
                 if not ticker_found:
                     # If ticker doesn't exist, mark as invalid
                     bm_type = BenchmarkTypes.INVALID
-                    
+
             except (KeyError, ValueError):
                 # If ticker doesn't exist, mark as invalid
                 bm_type = BenchmarkTypes.INVALID
@@ -281,7 +374,10 @@ class Backtester:
         regular_tickers, _ = _split_tickers(set(all_tickers))
         result = BacktestResult(datetime_index, sorted(regular_tickers))
         
-        for i, dt in enumerate(datetime_index):
+        # Add progress bar if verbose is True
+        iterator = tqdm(datetime_index, desc="Backtest") if verbose else datetime_index
+        
+        for i, dt in enumerate(iterator):
             strategy.universe.set_datetime(dt)
             current_universe_tickers = strategy.universe.get_constituents(dt)
 
@@ -342,12 +438,12 @@ class Backtester:
         benchmark_returns = []
         
         for dt in datetime_index:
-            # Set the current timestamp to get benchmark data
-            self.data.set_current_timestamp(dt)
+            # Set the current timestamp to get benchmark data via the interface wrapper
+            self.restricted_data.set_current_timestamp(dt)
             
             try:
                 # Get benchmark data for this timestamp using the DataInterface
-                benchmark_data = self.data[benchmark_ticker]
+                benchmark_data = self.restricted_data[benchmark_ticker]
                 if benchmark_data is None:
                     benchmark_returns.append(0.0)
                 else:

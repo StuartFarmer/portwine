@@ -142,7 +142,7 @@ from tqdm import tqdm
 from portwine.logging import Logger
 
 import pandas_market_calendars as mcal
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class InvalidBenchmarkError(Exception):
     """Raised when the requested benchmark is neither a standard name nor a valid ticker."""
@@ -1618,7 +1618,7 @@ from datetime import datetime
 import pandas as pd
 import pandas_market_calendars as mcal
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.brokers.base import BrokerBase, Order
 from portwine.logging import Logger, log_position_table, log_weight_table, log_order_table
@@ -2336,15 +2336,15 @@ sp_dividend_aristocrats = [
 # portwine/loaders/__init__.py
 
 ```py
-from portwine.loaders.base import MarketDataLoader
-from portwine.loaders.eodhd import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 from portwine.loaders.polygon import PolygonMarketDataLoader
-from portwine.loaders.noisy import NoisyMarketDataLoader
+from portwine.data.providers.loader_adapters import NoisyMarketDataLoader
 from portwine.loaders.fred import FREDMarketDataLoader
 from portwine.loaders.barchartindices import BarchartIndicesMarketDataLoader
 from portwine.loaders.alternative import AlternativeMarketDataLoader
 from portwine.loaders.dailytoopenclose import DailyToOpenCloseLoader
-from portwine.loaders.alpaca import AlpacaMarketDataLoader
+from portwine.data.providers.loader_adapters import AlpacaMarketDataLoader
 
 ```
 
@@ -2369,7 +2369,7 @@ import requests
 import pandas as pd
 import pytz
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -2768,7 +2768,7 @@ class AlpacaMarketDataLoader(MarketDataLoader):
 # portwine/loaders/alternative.py
 
 ```py
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class AlternativeMarketDataLoader(MarketDataLoader):
@@ -2891,7 +2891,7 @@ class AlternativeMarketDataLoader(MarketDataLoader):
 ```py
 import os
 import pandas as pd
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class BarchartIndicesMarketDataLoader(MarketDataLoader):
@@ -3164,7 +3164,7 @@ class MarketDataLoader:
 ```py
 from typing import Optional, List, Dict, Any
 import pandas as pd
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 from portwine.brokers.base import BrokerBase
 
 
@@ -3226,7 +3226,7 @@ class BrokerDataLoader(MarketDataLoader):
 ```py
 import pandas as pd
 import numpy as np
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class DailyToOpenCloseLoader(MarketDataLoader):
@@ -3290,7 +3290,7 @@ class DailyToOpenCloseLoader(MarketDataLoader):
 import os
 import pandas as pd
 from typing import Dict, List
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class EODHDMarketDataLoader(MarketDataLoader):
@@ -3388,7 +3388,7 @@ class EODHDMarketDataLoader(MarketDataLoader):
 import os
 import pandas as pd
 from fredapi import Fred
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class FREDMarketDataLoader(MarketDataLoader):
@@ -3870,7 +3870,7 @@ import requests
 import pandas as pd
 import pytz
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 # Configure logging
 logger = logging.getLogger(__name__)

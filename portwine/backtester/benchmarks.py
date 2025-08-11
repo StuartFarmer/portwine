@@ -3,7 +3,7 @@ import numpy as np
 from typing import Callable, Dict, List
 import pandas as pd
 from tqdm import tqdm
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class InvalidBenchmarkError(Exception):
     """Raised when the requested benchmark is neither a standard name nor a valid ticker."""
