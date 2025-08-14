@@ -9,5 +9,6 @@ This package contains various DataStore implementations including:
 from .base import DataStore
 from .parquet import ParquetDataStore
 from .noisy import NoisyDataStore
+from .csvstore import CSVDataStore
 
-__all__ = ['DataStore', 'ParquetDataStore', 'NoisyDataStore']
+__all__ = ['DataStore', 'ParquetDataStore', 'NoisyDataStore', 'CSVDataStore']
