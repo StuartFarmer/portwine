@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Union
 from collections import OrderedDict
 from pathlib import Path
+from functools import lru_cache
 
 import pandas as pd
 import numpy as np
@@ -35,13 +36,15 @@ class CSVDataStore(DataStore):
     with the DataStore interface used throughout the project.
     """
 
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, adjusted: bool = True):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.adjusted = adjusted
 
     def _get_file_path(self, identifier: str) -> Path:
         return self.data_dir / f"{identifier}.csv"
 
+    @lru_cache(maxsize=2048)
     def _load_dataframe(self, identifier: str) -> pd.DataFrame:
         """
         Load a DataFrame from <identifier>.csv.
@@ -54,7 +57,7 @@ class CSVDataStore(DataStore):
             return pd.DataFrame()
 
         try:
-            df = pd.read_csv(file_path, parse_dates=["date"], infer_datetime_format=True)
+            df = pd.read_csv(file_path, parse_dates=["date"])
         except Exception:
             return pd.DataFrame()
 
@@ -68,7 +71,35 @@ class CSVDataStore(DataStore):
         df = df.sort_index()
         # Normalize index name to None for consistency with parquet behavior
         df.index.name = None
+
+        # Optionally adjust OHLCV using adjusted_close
+        if self.adjusted and "adjusted_close" in df.columns and "close" in df.columns:
+            # Compute adjustment factor safely
+            factor = (df["adjusted_close"] / df["close"]).replace([np.inf, -np.inf], np.nan)
+
+            if "open" in df.columns:
+                df["open"] = df["open"] * factor
+            if "high" in df.columns:
+                df["high"] = df["high"] * factor
+            if "low" in df.columns:
+                df["low"] = df["low"] * factor
+            # Close becomes adjusted_close
+            df["close"] = df["adjusted_close"]
+            if "volume" in df.columns:
+                df["volume"] = df["volume"] / factor
+
+            # Rounding: prices to 2 decimals, volume to whole number
+            price_cols = [c for c in ["open", "high", "low", "close"] if c in df.columns]
+            if price_cols:
+                df[price_cols] = df[price_cols].astype(float).round(2)
+            if "volume" in df.columns:
+                # Use nullable integer dtype to preserve NaNs
+                df["volume"] = pd.to_numeric(df["volume"], errors="coerce").round(0).astype("Int64")
         return df
+
+    def _select_output_columns(self, columns):
+        preferred = ["open", "high", "low", "close", "volume"]
+        return [c for c in preferred if c in list(columns)]
 
     def add(self, identifier: str, data: dict, overwrite: bool = False):
         """
@@ -115,12 +146,29 @@ class CSVDataStore(DataStore):
         out_path = self._get_file_path(identifier)
         df_to_save.reset_index().rename(columns={"index": "date"}).to_csv(out_path, index=False)
 
-    def get(self, identifier: str, dt: datetime) -> Union[dict, None]:
+        # Clear cache for this identifier since data changed
+        self._load_dataframe.cache_clear()
+
+    def get(self, identifier: str, dt: datetime, pandas: bool = False) -> Union[dict, None, pd.DataFrame]:
+        """
+        Get a single point-in-time record.
+
+        Args:
+            identifier: ticker/identifier
+            dt: date to fetch
+            pandas: when True, return a DataFrame with the matching row(s)
+        """
         df = self._load_dataframe(identifier)
         if df.empty:
             return None
 
         dt_ts = pd.to_datetime(dt)
+
+        # Use boolean mask to always get a DataFrame when pandas=True
+        if pandas:
+            df_filtered = df.loc[df.index == dt_ts]
+            df_filtered = df_filtered.loc[:, self._select_output_columns(df_filtered.columns)]
+            return df_filtered if not df_filtered.empty else None
 
         try:
             row = df.loc[dt_ts]
@@ -128,10 +176,20 @@ class CSVDataStore(DataStore):
             return None
 
         if isinstance(row, pd.DataFrame):
-            return row.iloc[-1].to_dict()
-        return row.to_dict()
+            row = row.iloc[-1]
+        cols = self._select_output_columns(row.index)
+        return row[cols].to_dict()
 
-    def get_all(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None):
+    def get_all(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None, pandas: bool = False):
+        """
+        Get a date range in chronological order.
+
+        Args:
+            identifier: ticker/identifier
+            start_date: inclusive start
+            end_date: inclusive end (None means latest)
+            pandas: when True, return a DataFrame of the range
+        """
         df = self._load_dataframe(identifier)
         if df.empty:
             return None
@@ -147,17 +205,23 @@ class CSVDataStore(DataStore):
         if df_filtered.empty:
             return None
 
+        if pandas:
+            return df_filtered.loc[:, self._select_output_columns(df_filtered.columns)]
+
         result = OrderedDict()
+        cols = self._select_output_columns(df_filtered.columns)
         for ts, row in df_filtered.iterrows():
             # pandas.Timestamp is a datetime subclass; keep as-is for compatibility
-            result[ts] = row.to_dict()
+            result[ts] = row[cols].to_dict()
         return result
 
     def get_latest(self, identifier: str) -> Union[dict, None]:
         df = self._load_dataframe(identifier)
         if df.empty:
             return None
-        return df.iloc[-1].to_dict()
+        row = df.iloc[-1]
+        cols = self._select_output_columns(row.index)
+        return row[cols].to_dict()
 
     def latest(self, identifier: str) -> Union[datetime, None]:
         df = self._load_dataframe(identifier)
