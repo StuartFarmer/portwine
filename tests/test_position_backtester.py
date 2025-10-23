@@ -210,17 +210,80 @@ def test_position_backtester_initialization():
         assert backtester.restricted_data is not None
 
 
-def test_position_backtester_run_not_implemented():
-    """Test run_backtest raises NotImplementedError (for now)."""
+@pytest.fixture
+def sample_csv_data(tmp_path):
+    """
+    Create sample CSV data for testing.
+
+    Returns:
+        DataInterface with 3 days of 2 tickers
+    """
     from portwine.data.stores.csvstore import CSVDataStore
-    import tempfile
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        store = CSVDataStore(tmp_dir)
-        data = DataInterface(store)
-        backtester = PositionBacktester(data)
+    # Create temp directory
+    data_dir = tmp_path / "test_data"
+    data_dir.mkdir()
 
-        strategy = SimpleStrategy(['AAPL'])
+    # Create AAPL data
+    aapl_data = pd.DataFrame({
+        'date': pd.date_range('2020-01-01', '2020-01-03', freq='D'),
+        'open': [100.0, 102.0, 101.0],
+        'high': [105.0, 106.0, 103.0],
+        'low': [99.0, 101.0, 100.0],
+        'close': [103.0, 104.0, 102.0],
+        'volume': [1000000, 1100000, 1050000]
+    })
+    aapl_data.to_csv(data_dir / "AAPL.csv", index=False)
 
-        with pytest.raises(NotImplementedError):
-            backtester.run_backtest(strategy)
+    # Create MSFT data
+    msft_data = pd.DataFrame({
+        'date': pd.date_range('2020-01-01', '2020-01-03', freq='D'),
+        'open': [200.0, 205.0, 203.0],
+        'high': [210.0, 208.0, 206.0],
+        'low': [198.0, 202.0, 201.0],
+        'close': [206.0, 207.0, 204.0],
+        'volume': [2000000, 2100000, 2050000]
+    })
+    msft_data.to_csv(data_dir / "MSFT.csv", index=False)
+
+    # Create data interface
+    store = CSVDataStore(str(data_dir))
+    data = DataInterface(store)
+
+    return data
+
+
+class BuyAndHoldStrategy(StrategyBase):
+    """Test strategy: buy shares on first day, hold forever."""
+
+    def __init__(self, tickers, shares=10):
+        super().__init__(tickers)
+        self.shares = shares
+        self.bought = False
+
+    def step(self, current_date, daily_data):
+        if not self.bought:
+            self.bought = True
+            # Buy shares of all tickers
+            return {ticker: self.shares for ticker in self.tickers}
+        return {}  # Hold
+
+
+class DailyTradeStrategy(StrategyBase):
+    """Test strategy: buy 5 shares every day."""
+
+    def step(self, current_date, daily_data):
+        return {'AAPL': 5}  # Buy 5 AAPL every day
+
+
+def test_sample_data_fixture(sample_csv_data):
+    """Test that sample data fixture works."""
+    data = sample_csv_data
+
+    # Check we can access data
+    data.set_current_timestamp(pd.Timestamp('2020-01-01'))
+    aapl = data['AAPL']
+
+    assert aapl is not None
+    assert 'close' in aapl
+    assert aapl['close'] == 103.0

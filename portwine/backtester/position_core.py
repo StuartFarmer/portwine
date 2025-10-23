@@ -181,5 +181,85 @@ class PositionBacktester:
         Returns:
             dict: Position-based results
         """
-        # TODO: Implement in next iteration
-        raise NotImplementedError("Coming in next iteration")
+        # 1. Validate strategy has tickers (same as Backtester)
+        if not strategy.universe.all_tickers:
+            raise ValueError("Strategy has no tickers. Cannot run backtest with empty universe.")
+
+        regular_tickers, _ = _split_tickers(set(strategy.universe.all_tickers))
+
+        # 2. Determine date range (same as Backtester)
+        end_date = self._compute_effective_end_date(end_date, regular_tickers)
+
+        if start_date is None:
+            if isinstance(self.data, MultiDataInterface):
+                start_date = self.data.earliest_any_date(regular_tickers)
+            else:
+                start_date = DataInterface(self.data.data_loader).earliest_any_date(regular_tickers)
+
+        # 3. Get datetime index
+        datetime_index = self.calendar.get_datetime_index(start_date, end_date)
+
+        # 4. Handle require_all_history
+        if require_all_history:
+            if isinstance(self.data, MultiDataInterface):
+                common_start = self.data.earliest_common_date(regular_tickers)
+            else:
+                common_start = DataInterface(self.data.data_loader).earliest_common_date(regular_tickers)
+            if start_date is None or pd.Timestamp(start_date) < pd.Timestamp(common_start):
+                start_date = common_start
+            datetime_index = self.calendar.get_datetime_index(start_date, end_date)
+
+        # 5. Initialize result storage
+        result = PositionBacktestResult(datetime_index, sorted(regular_tickers))
+
+        # 6. Main backtest loop
+        iterator = tqdm(datetime_index, desc="Position Backtest") if verbose else datetime_index
+
+        for i, dt in enumerate(iterator):
+            # Update universe
+            strategy.universe.set_datetime(dt)
+            current_universe_tickers = strategy.universe.get_constituents(dt)
+
+            # Set up restricted data interface
+            self.restricted_data.set_current_timestamp(dt)
+            regular_tickers_current, _ = _split_tickers(set(current_universe_tickers))
+            self.restricted_data.set_restricted_tickers(regular_tickers_current, prefix=None)
+
+            # Call strategy
+            dt_datetime = pd.Timestamp(dt).to_pydatetime()
+            actions = strategy.step(dt_datetime, self.restricted_data)
+
+            # TODO: Process actions (next iteration)
+            # For now, just continue loop
+
+        # 7. Calculate results
+        result.update_positions()
+        result.calculate_portfolio_value()
+
+        # 8. Return results (no benchmark yet)
+        return result.to_dict()
+
+    def _compute_effective_end_date(self, end_date, tickers):
+        """Compute effective end date (same logic as Backtester)."""
+        if end_date is not None:
+            return end_date
+
+        # Find latest date across all tickers
+        if isinstance(self.data, MultiDataInterface):
+            data_interface = DataInterface(self.data.loaders[None])
+        else:
+            data_interface = DataInterface(self.data.data_loader)
+
+        latest_dates = []
+        for ticker in tickers:
+            try:
+                latest = data_interface.data_loader.latest(ticker)
+                if latest:
+                    latest_dates.append(latest)
+            except (KeyError, AttributeError):
+                continue
+
+        if not latest_dates:
+            raise ValueError("No data found for any ticker")
+
+        return max(latest_dates)
