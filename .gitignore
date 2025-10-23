@@ -15,3 +15,6 @@ __pycache__/
 .Python
 
 .DS_Store
+
+# MkDocs generated site
+site/
