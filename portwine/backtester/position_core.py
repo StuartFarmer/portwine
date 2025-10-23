@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from portwine.strategies.base import StrategyBase
 from portwine.backtester.benchmarks import BenchmarkTypes, STANDARD_BENCHMARKS, get_benchmark_type
-from portwine.backtester.core import InvalidBenchmarkError, _split_tickers, DailyMarketCalendar
+from portwine.backtester.core import InvalidBenchmarkError, _split_tickers, DEFAULT_CALENDAR
 from portwine.data.interface import DataInterface, MultiDataInterface
 
 
@@ -135,7 +135,51 @@ class PositionBacktester:
     """
     Position-based backtester.
 
-    Similar to Backtester, but interprets strategy output as share quantities
-    rather than portfolio weights.
+    Interprets strategy output as share quantities instead of portfolio weights.
+    Uses same data interfaces and patterns as standard Backtester.
     """
-    pass
+
+    def __init__(self, data_interface, calendar=DEFAULT_CALENDAR):
+        """
+        Initialize position backtester.
+
+        Args:
+            data_interface: DataInterface or MultiDataInterface
+            calendar: DailyMarketCalendar (default: NYSE calendar)
+        """
+        self.data = data_interface
+        self.calendar = calendar
+
+        # Create restricted data interface (same as Backtester)
+        if isinstance(data_interface, MultiDataInterface):
+            from portwine.data.interface import RestrictedDataInterface
+            self.restricted_data = RestrictedDataInterface(data_interface.loaders)
+        else:
+            from portwine.data.interface import RestrictedDataInterface
+            self.restricted_data = RestrictedDataInterface({None: data_interface.data_loader})
+
+    def run_backtest(
+        self,
+        strategy: StrategyBase,
+        start_date: Union[str, None] = None,
+        end_date: Union[str, None] = None,
+        benchmark: Union[str, Callable, None] = None,
+        verbose: bool = False,
+        require_all_history: bool = False
+    ):
+        """
+        Run position-based backtest.
+
+        Args:
+            strategy: StrategyBase instance (interprets output as shares)
+            start_date: Start date (auto-detect if None)
+            end_date: End date (auto-detect if None)
+            benchmark: Benchmark (ticker, function, or None)
+            verbose: Show progress bar
+            require_all_history: Ensure all tickers have data from start
+
+        Returns:
+            dict: Position-based results
+        """
+        # TODO: Implement in next iteration
+        raise NotImplementedError("Coming in next iteration")

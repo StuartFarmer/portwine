@@ -191,3 +191,36 @@ def test_position_result_to_dict():
 
     assert output['portfolio_value'].loc['2020-01-01'] == 1000.0  # 10 × 100
     assert output['portfolio_value'].loc['2020-01-02'] == 2100.0  # 10 × 110 + 5 × 200
+
+
+def test_position_backtester_initialization():
+    """Test PositionBacktester initialization."""
+    # Create minimal data interface (mock)
+    from portwine.data.stores.csvstore import CSVDataStore
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        store = CSVDataStore(tmp_dir)
+        data = DataInterface(store)
+
+        backtester = PositionBacktester(data)
+
+        assert backtester.data is not None
+        assert backtester.calendar is not None
+        assert backtester.restricted_data is not None
+
+
+def test_position_backtester_run_not_implemented():
+    """Test run_backtest raises NotImplementedError (for now)."""
+    from portwine.data.stores.csvstore import CSVDataStore
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        store = CSVDataStore(tmp_dir)
+        data = DataInterface(store)
+        backtester = PositionBacktester(data)
+
+        strategy = SimpleStrategy(['AAPL'])
+
+        with pytest.raises(NotImplementedError):
+            backtester.run_backtest(strategy)
