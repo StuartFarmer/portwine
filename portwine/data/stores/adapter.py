@@ -112,8 +112,13 @@ class MarketDataLoaderAdapter(DataStore):
         return not df.empty
     
     def identifiers(self):
-        """Get all available ticker identifiers"""
-        # This is a bit tricky since MarketDataLoader doesn't expose this
-        # We'll return an empty list for now - this method is rarely used
+        """
+        Get all available ticker identifiers.
+
+        Returns identifiers from the underlying loader if available,
+        otherwise returns an empty list.
+        """
+        if hasattr(self.loader, 'identifiers') and callable(getattr(self.loader, 'identifiers')):
+            return self.loader.identifiers()
         return []
 
