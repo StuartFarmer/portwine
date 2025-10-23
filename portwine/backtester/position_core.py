@@ -229,8 +229,31 @@ class PositionBacktester:
             dt_datetime = pd.Timestamp(dt).to_pydatetime()
             actions = strategy.step(dt_datetime, self.restricted_data)
 
-            # TODO: Process actions (next iteration)
-            # For now, just continue loop
+            # Normalize actions to dict (same as Backtester._normalize_signals)
+            if actions is None:
+                actions = {}
+            elif isinstance(actions, pd.Series):
+                actions = actions.to_dict()
+            elif not isinstance(actions, dict):
+                raise ValueError(f"Strategy returned invalid type: {type(actions)}")
+
+            # Validate actions
+            self.validate_actions(actions, current_universe_tickers)
+
+            # Record actions
+            for ticker, quantity in actions.items():
+                result.add_action(i, ticker, quantity)
+
+            # Record prices (use close price)
+            for ticker in regular_tickers_current:
+                try:
+                    price_data = self.restricted_data[ticker]
+                    close_price = price_data.get('close')
+                    if close_price is not None:
+                        result.add_price(i, ticker, close_price)
+                except (KeyError, ValueError):
+                    # Ticker has no data on this day
+                    pass
 
         # 7. Calculate results
         result.update_positions()
@@ -263,3 +286,24 @@ class PositionBacktester:
             raise ValueError("No data found for any ticker")
 
         return max(latest_dates)
+
+    def validate_actions(self, actions: Dict[str, float], current_universe_tickers: List[str]):
+        """
+        Validate position actions.
+
+        Args:
+            actions: Dict of ticker → quantity
+            current_universe_tickers: Valid tickers for this date
+
+        Raises:
+            ValueError: If actions are invalid
+        """
+        for ticker in actions.keys():
+            if ticker not in current_universe_tickers:
+                raise ValueError(f"Ticker {ticker} not in current universe")
+
+        for ticker, quantity in actions.items():
+            if not isinstance(quantity, (int, float)):
+                raise ValueError(f"Action for {ticker} must be numeric, got {type(quantity)}")
+            if np.isnan(quantity) or np.isinf(quantity):
+                raise ValueError(f"Invalid action for {ticker}: {quantity}")

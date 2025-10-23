@@ -287,3 +287,53 @@ def test_sample_data_fixture(sample_csv_data):
     assert aapl is not None
     assert 'close' in aapl
     assert aapl['close'] == 103.0
+
+
+def test_buy_and_hold_strategy(sample_csv_data):
+    """Test buy-and-hold strategy with position backtester."""
+    strategy = BuyAndHoldStrategy(['AAPL', 'MSFT'], shares=10)
+    backtester = PositionBacktester(sample_csv_data)
+
+    results = backtester.run_backtest(
+        strategy,
+        start_date='2020-01-01',
+        end_date='2020-01-03'
+    )
+
+    # Check results structure
+    assert 'positions_df' in results
+    assert 'actions_df' in results
+    assert 'prices_df' in results
+    assert 'portfolio_value' in results
+
+    # Check we have data (Jan 1 is New Year's Day, market closed)
+    assert len(results['positions_df']) == 2  # 2 trading days (Jan 2, Jan 3)
+    assert len(results['positions_df'].columns) == 2  # 2 tickers
+
+    # Check actions on day 1 (first trading day is Jan 2)
+    assert results['actions_df'].loc['2020-01-02', 'AAPL'] == 10.0
+    assert results['actions_df'].loc['2020-01-02', 'MSFT'] == 10.0
+
+    # Check actions on day 2 (should be zero)
+    assert results['actions_df'].loc['2020-01-03', 'AAPL'] == 0.0
+    assert results['actions_df'].loc['2020-01-03', 'MSFT'] == 0.0
+
+    # Check cumulative positions
+    assert results['positions_df'].loc['2020-01-02', 'AAPL'] == 10.0
+    assert results['positions_df'].loc['2020-01-03', 'AAPL'] == 10.0  # Held
+
+    assert results['positions_df'].loc['2020-01-02', 'MSFT'] == 10.0
+    assert results['positions_df'].loc['2020-01-03', 'MSFT'] == 10.0
+
+    # Check prices recorded (prices from CSV for Jan 2, Jan 3)
+    assert results['prices_df'].loc['2020-01-02', 'AAPL'] == 104.0
+    assert results['prices_df'].loc['2020-01-03', 'AAPL'] == 102.0
+
+    # Check portfolio value
+    # Day 1 (Jan 2): 10 AAPL @ $104 + 10 MSFT @ $207 = $3110
+    expected_day1 = 10 * 104.0 + 10 * 207.0
+    assert results['portfolio_value'].loc['2020-01-02'] == expected_day1
+
+    # Day 2 (Jan 3): 10 AAPL @ $102 + 10 MSFT @ $204 = $3060
+    expected_day2 = 10 * 102.0 + 10 * 204.0
+    assert results['portfolio_value'].loc['2020-01-03'] == expected_day2
