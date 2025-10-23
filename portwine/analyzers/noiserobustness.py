@@ -3,7 +3,11 @@ import matplotlib.pyplot as plt
 import time
 from portwine.analyzers.base import Analyzer
 from portwine.backtester import Backtester
-from portwine.loaders import NoisyMarketDataLoader
+from portwine.backtester.core import DailyMarketCalendar
+from portwine.data.stores.noisy import NoisyDataStore
+from portwine.data.interface import DataInterface
+from portwine.data.stores.adapter import MarketDataLoaderAdapter
+
 
 class NoiseRobustnessAnalyzer(Analyzer):
     """
@@ -23,6 +27,8 @@ class NoiseRobustnessAnalyzer(Analyzer):
         Number of backtest iterations to run per noise level (default: 20)
     volatility_window : int, optional
         Window for rolling volatility calculation (default: 21)
+    calendar_name : str, optional
+        Name of the market calendar to use (default: "NYSE")
     """
 
     def __init__(
@@ -30,12 +36,14 @@ class NoiseRobustnessAnalyzer(Analyzer):
             base_loader,
             noise_levels=None,
             iterations_per_level=20,
-            volatility_window=21
+            volatility_window=21,
+            calendar_name="NYSE"
     ):
         self.base_loader = base_loader
         self.noise_levels = noise_levels if noise_levels is not None else [0.5, 1.0, 1.5, 2.0]
         self.iterations_per_level = iterations_per_level
         self.volatility_window = volatility_window
+        self.calendar_name = calendar_name
         self.results = None
 
     def analyze(self, strategy, benchmark=None, start_date=None,
@@ -84,25 +92,31 @@ class NoiseRobustnessAnalyzer(Analyzer):
             if seed is None:
                 seed = int(time.time() * 1000) % 10000 + iteration
 
-            # Create noise loader with current noise level and seed
-            noisy_loader = NoisyMarketDataLoader(
-                base_loader=self.base_loader,
+            # Create an adapter to make MarketDataLoader compatible with DataStore
+            loader_adapter = MarketDataLoaderAdapter(self.base_loader)
+
+            # Create noise store with current noise level and seed
+            noisy_store = NoisyDataStore(
+                base_store=loader_adapter,
                 noise_multiplier=noise_level,
                 volatility_window=self.volatility_window,
                 seed=seed
             )
 
-            # Create a new backtester with the noisy data
-            backtester = Backtester(market_data_loader=noisy_loader)
+            # Create a data interface from the noisy store
+            noisy_data_interface = DataInterface(noisy_store)
+
+            # Create a market calendar
+            calendar = DailyMarketCalendar(self.calendar_name)
+
+            # Create a new backtester with the noisy data interface
+            backtester = Backtester(data=noisy_data_interface, calendar=calendar)
 
             # Run backtest with noisy data
             backtest_result = backtester.run_backtest(
                 strategy=strategy,
                 benchmark=benchmark,
-                start_date=start_date,
-                shift_signals=shift_signals,
-                require_all_history=require_all_history,
-                verbose=False  # Disable nested verbosity
+                start_date=start_date
             )
 
             return backtest_result

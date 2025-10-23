@@ -1,47 +1,119 @@
 # .gitignore
 
 ```
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# IDEs and editors
-.vscode/
-.idea/
-
-# macOS system files
-.DS_Store
-
-# virtual environments
-.venv/
-venv/
-env/
-ENV/
-
-# Poetry
-poetry.lock
-
-
-# Coverage reports
-htmlcov/
-.coverage
-.coverage.*
-
-# Jupyter Notebook
 .ipynb_checkpoints
-
-# Logs
-*.log
-
-# Build artifacts
-build/
 dist/
-*.egg-info/
+private/
+poetry.lock
+.idea/
+codebase.md
 
+test_data/
+
+# Python bytecode files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+
+.DS_Store
+```
+
+# mkdocs.yml
+
+```yml
+site_name: Portwine Documentation
+site_description: A clean, elegant portfolio backtester
+site_author: Portwine Team
+site_url: https://github.com/StuartFarmer/portwine
+
+repo_name: portwine
+repo_url: https://github.com/StuartFarmer/portwine
+edit_uri: edit/main/docs/
+
+theme:
+  name: readthedocs
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - pymdownx.tabbed
+  - pymdownx.details
+  - pymdownx.emoji
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.saneheaders
+
+plugins:
+  - search
+  - mkdocstrings
+  - mermaid2:
+      arguments:
+        theme: default
+        flowchart:
+          useMaxWidth: false
+          htmlLabels: true
+          curve: basis
+          rankSpacing: 30
+          nodeSpacing: 20
+          width: 800
+          height: 600
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+  - User Guide:
+    - Strategies: user-guide/strategies.md
+    - Backtesting: user-guide/backtesting.md
+    - Data Management: user-guide/data-management.md
+    - Analysis: user-guide/analysis.md
+  # - API Reference:
+  #   - Strategies: api/strategies.md
+  #   - Backtester: api/backtester.md
+  #   - Analyzers: api/analyzers.md
+  #   - Data Loaders: api/data-loaders.md
+  # - Examples:
+  #   - Basic Strategies: examples/basic-strategies.md
+  #   - Advanced Strategies: examples/advanced-strategies.md
+  - Contributing: contributing.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/StuartFarmer/portwine 
 ```
 
 # portwine/__init__.py
@@ -49,4889 +121,9 @@ dist/
 ```py
 from portwine.strategies.base import StrategyBase
 from portwine.backtester import Backtester, BenchmarkTypes, benchmark_equal_weight, benchmark_markowitz
+from portwine.universe import Universe
 
-```
-
-# portwine/analyzers/__init__.py
-
-```py
-# from portwine.analyzers.base import Analyzer
-# from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
-# from portwine.analyzers.gridequitydrawdown import GridEquityDrawdownAnalyzer
-# from portwine.analyzers.montecarlo import MonteCarloAnalyzer
-# from portwine.analyzers.seasonality import SeasonalityAnalyzer
-# from portwine.analyzers.correlation import CorrelationAnalyzer
-# from portwine.analyzers.traintest import TrainTestEquityDrawdownAnalyzer
-# from portwine.analyzers.strategycomparison import StrategyComparisonAnalyzer
-# from portwine.analyzers.studentttest import StudentsTTestAnalyzer
-# from portwine.analyzers.downsidecorrelation import DownsideCorrelationAnalyzer
-
-# portwine/analyzers/__init__.py
-from __future__ import annotations
-
-import importlib
-import inspect
-import pkgutil
-from types import ModuleType
-from typing import List, Dict, Type
-
-from .base import Analyzer        # <-- the abstract base class for all analyzers
-
-
-__all__: List[str] = []            # names we re‑export (populated below)
-__modules_scanned__: Dict[str, ModuleType] = {}   # cache of imported modules
-
-
-def _is_concrete_analyzer(obj: object) -> bool:
-    """
-    True if *obj* is a non‑abstract subclass of ``Analyzer``.
-    """
-    return (
-        inspect.isclass(obj)
-        and issubclass(obj, Analyzer)
-        and obj is not Analyzer
-        and not getattr(obj, "__abstractmethods__", False)
-    )
-
-
-def _eager_scan() -> None:
-    """
-    Import every sibling module once and hoist its concrete ``Analyzer``
-    subclasses into this package’s namespace.
-    """
-    pkg_prefix = __name__ + "."
-    for modinfo in pkgutil.walk_packages(__path__, pkg_prefix):
-        if modinfo.ispkg:
-            continue                                   # skip nested packages
-        module = importlib.import_module(modinfo.name)
-        __modules_scanned__[modinfo.name] = module
-
-        for name, obj in inspect.getmembers(module, _is_concrete_analyzer):
-            globals()[name] = obj                      # re‑export the class
-            __all__.append(name)
-
-
-_eager_scan()
-
-```
-
-# portwine/analyzers/base.py
-
-```py
-class Analyzer:
-    def analyze(self, results, *args, **kwargs):
-        # Analyze method. Should return some sort of dataframe, etc
-        raise NotImplementedError
-
-    def plot(self, results, *args, **kwargs):
-        # Optional visualization method
-        raise NotImplementedError
-
-```
-
-# portwine/analyzers/bootstrap.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from portwine.analyzers.base import Analyzer
-
-class BootstrapAnalyzer(Analyzer):
-    """
-    1) Expects strategy_returns & benchmark_returns of the SAME length.
-    2) For each of n_sims, we build a single random list of overlapping-block starts for both
-       strategy & benchmark, ensuring eqs_strat[i], eqs_bench[i] reflect the same block indices.
-    3) final_returns_strat[i] and final_returns_bench[i] are thus aligned, letting us do a direct
-       distribution-of-differences (strat - bench).
-    4) The .plot(...) method shows:
-       - Top-left: eq paths & mean lines
-       - Top-right: horizontally oriented side-by-side histogram of final returns
-       - Bottom (spanning 2 columns): CDF of (strategy - benchmark) final returns
-    """
-
-    def analyze(self, results, n_sims=1000, n_days=252, block_size=5, seed=42):
-        """
-        Overlapping block bootstrap with alignment:
-          - 'strategy_returns' & 'benchmark_returns' must be same length.
-          - For each path, we pick blocks from the same indices for strategy & bench.
-        Returns:
-          {
-            'eqs_strat': (n_sims,n_days),
-            'eqs_bench': (n_sims,n_days),
-            'final_returns_strat': (n_sims,),
-            'final_returns_bench': (n_sims,)
-          }
-        """
-        strat_full = results.get('strategy_returns', pd.Series(dtype=float)).dropna()
-        bench_full = results.get('benchmark_returns', pd.Series(dtype=float)).dropna()
-
-        if strat_full.empty or bench_full.empty:
-            print("Strategy or benchmark daily returns empty. Aborting.")
-            return {}
-
-        if len(strat_full) != len(bench_full):
-            print(f"Lengths differ: strategy={len(strat_full)}, bench={len(bench_full)}. Must match.")
-            return {}
-
-        L = len(strat_full)
-        if L < block_size:
-            print(f"Not enough data (L={L}) for block_size={block_size}.")
-            return {}
-
-        rng = np.random.default_rng(seed)
-        arr_strat = strat_full.values
-        arr_bench = bench_full.values
-        possible_starts = np.arange(L - block_size + 1)
-
-        eqs_strat = []
-        eqs_bench = []
-
-        for _ in range(n_sims):
-            path_s = []
-            path_b = []
-            while len(path_s) < n_days:
-                start_i = rng.choice(possible_starts)
-                block_s = arr_strat[start_i : start_i + block_size]
-                block_b = arr_bench[start_i : start_i + block_size]
-                path_s.extend(block_s)
-                path_b.extend(block_b)
-
-            path_s = path_s[:n_days]
-            path_b = path_b[:n_days]
-
-            eq_s = np.cumprod(1.0 + np.array(path_s))
-            eq_b = np.cumprod(1.0 + np.array(path_b))
-            eqs_strat.append(eq_s)
-            eqs_bench.append(eq_b)
-
-        eqs_strat = np.array(eqs_strat)  # (n_sims, n_days)
-        eqs_bench = np.array(eqs_bench)
-
-        final_s = eqs_strat[:, -1] - 1.0
-        final_b = eqs_bench[:, -1] - 1.0
-
-        return {
-            'eqs_strat': eqs_strat,
-            'eqs_bench': eqs_bench,
-            'final_returns_strat': final_s,
-            'final_returns_bench': final_b
-        }
-
-    def plot(self, results, n_sims=1000, n_days=252, block_size=5,
-             seed=42, bins=30, alpha_paths=0.08, figsize=(12,10)):
-        """
-        Creates a 2-row figure:
-          Row 0 => 2 columns
-             (0,0): eq paths & mean lines (strategy=blue, bench=orange)
-             (0,1): horizontally oriented side-by-side histogram of final returns
-          Row 1 => single subplot spanning both columns => CDF of (strategy - benchmark)
-        """
-        data = self.analyze(results, n_sims=n_sims, n_days=n_days,
-                            block_size=block_size, seed=seed)
-        if not data:
-            return
-
-        eqs_s = data['eqs_strat']
-        eqs_b = data['eqs_bench']
-        final_s = data['final_returns_strat']
-        final_b = data['final_returns_bench']
-
-        # Create a figure with a 2x2 grid, but bottom row merges columns
-        fig = plt.figure(figsize=figsize)
-        gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.7])
-
-        ax_eq = fig.add_subplot(gs[0,0])
-        ax_hist = fig.add_subplot(gs[0,1])
-        ax_cdf = fig.add_subplot(gs[1,:])
-
-        fig.suptitle(
-            f"Aligned Overlapping Block Bootstrap\n"
-            f"(n_days={n_days}, block_size={block_size}, n_sims={n_sims})",
-            fontsize=13
-        )
-
-        x_axis = np.arange(n_days)
-        # Mean lines
-        mean_bench = eqs_b.mean(axis=0)
-        mean_strat = eqs_s.mean(axis=0)
-        ax_eq.plot(x_axis, mean_bench, color='orange', linewidth=1, label="Benchmark")
-        ax_eq.plot(x_axis, mean_strat, color='blue', linewidth=1, label="Strategy")
-
-        ########################################
-        # TOP-LEFT => eq paths
-        ########################################
-
-        # Plot each path in low alpha
-        for i in range(eqs_s.shape[0]):
-            ax_eq.plot(x_axis, eqs_b[i], color='orange', alpha=alpha_paths, linewidth=0.5)
-
-        for i in range(eqs_s.shape[0]):
-            ax_eq.plot(x_axis, eqs_s[i], color='blue', alpha=alpha_paths, linewidth=0.5)
-
-
-        ax_eq.set_title("Bootstrap eq Paths + Means (Aligned)")
-        ax_eq.set_xlabel("Day index (0..n_days-1)")
-        ax_eq.set_ylabel("Equity (start=1)")
-        ax_eq.legend(loc='best')
-        ax_eq.grid(True)
-
-        ########################################
-        # TOP-RIGHT => horizontally oriented histogram
-        ########################################
-        min_val = min(final_s.min(), final_b.min())
-        max_val = max(final_s.max(), final_b.max())
-        bin_edges = np.linspace(min_val, max_val, bins+1)
-
-        counts_s, _ = np.histogram(final_s, bins=bin_edges)
-        counts_b, _ = np.histogram(final_b, bins=bin_edges)
-
-        # For a horizontal bar chart: x=counts, y=bin center
-        bin_centers = 0.5*(bin_edges[:-1] + bin_edges[1:])
-        bar_height = bin_edges[1:] - bin_edges[:-1]  # each bin's "height" along the y-axis
-        offset = 0.4 * bar_height
-        y_strat = bin_centers - offset/2
-        y_bench = bin_centers + offset/2
-
-        # Strategy bars
-        ax_hist.barh(
-            y_strat, counts_s, height=offset,
-            color='blue', alpha=1, edgecolor='black',
-            label='Strategy'
-        )
-        # Benchmark bars
-        ax_hist.barh(
-            y_bench, counts_b, height=offset,
-            color='orange', alpha=1, edgecolor='black',
-            label='Benchmark'
-        )
-
-        ax_hist.set_title("Side-by-Side Final Returns (Horizontal)")
-        ax_hist.set_xlabel("Count (#Paths)")
-        ax_hist.set_ylabel("Final Return")
-        ax_hist.grid(True)
-        ax_hist.legend(loc='best')
-
-        ########################################
-        # BOTTOM => single subplot for CDF of (final_s - final_b)
-        ########################################
-        final_diff = final_s - final_b
-        sorted_diff = np.sort(final_diff)
-        cdf_vals = np.linspace(0, 1, len(sorted_diff))
-
-        frac_above_zero = 100.0 * np.mean(final_diff > 0)
-
-        ax_cdf.plot(sorted_diff, cdf_vals, color='purple', linewidth=2,
-                    label="CDF: (Strat - Bench)")
-        ax_cdf.axvline(0.0, color='red', linestyle='--',
-                       label=f"0 difference\n(Strategy outperforms ~{frac_above_zero:.1f}%)")
-        ax_cdf.set_title("Distribution of Differences (CDF)")
-        ax_cdf.set_xlabel("(Strategy - Benchmark) Final Return")
-        ax_cdf.set_ylabel("Cumulative Probability")
-        ax_cdf.legend(loc='best')
-        ax_cdf.grid(True)
-
-        plt.tight_layout()
-        plt.show()
-
-```
-
-# portwine/analyzers/correlation.py
-
-```py
-from portwine.analyzers import Analyzer
-import matplotlib.pyplot as plt
-
-class CorrelationAnalyzer(Analyzer):
-    """
-    Computes and plots correlation among the tickers' daily returns.
-
-    Usage:
-      1) correlation_dict = analyzer.analyze(results)
-      2) analyzer.plot(results)
-
-    'results' should be the dictionary from the backtester, containing:
-        'tickers_returns': DataFrame of daily returns for each ticker
-                           (columns = ticker symbols, index = dates)
-    """
-
-    def __init__(self, method='pearson'):
-        """
-        Parameters
-        ----------
-        method : str
-            Correlation method (e.g. 'pearson', 'spearman', 'kendall').
-        """
-        self.method = method
-
-    def analyze(self, results):
-        """
-        Generates a correlation matrix of the daily returns among all tickers.
-
-        Parameters
-        ----------
-        results : dict
-            {
-              'tickers_returns': DataFrame of daily returns per ticker
-              ...
-            }
-
-        Returns
-        -------
-        analysis_dict : dict
-            {
-              'correlation_matrix': DataFrame (square) of correlations
-            }
-        """
-        tickers_returns = results.get('tickers_returns')
-        if tickers_returns is None or tickers_returns.empty:
-            print("Error: 'tickers_returns' missing or empty in results.")
-            return None
-
-        # Compute correlation
-        corr_matrix = tickers_returns.corr(method=self.method)
-
-        return {
-            'correlation_matrix': corr_matrix
-        }
-
-    def plot(self, results):
-        """
-        Plots a heatmap of the correlation matrix.
-
-        Parameters
-        ----------
-        results : dict
-            The same dictionary used in 'analyze', containing 'tickers_returns'.
-        """
-        analysis_dict = self.analyze(results)
-        if analysis_dict is None:
-            print("No correlation data to plot.")
-            return
-
-        corr_matrix = analysis_dict['correlation_matrix']
-        if corr_matrix.empty:
-            print("Correlation matrix is empty. Nothing to plot.")
-            return
-
-        # Plot the correlation matrix as a heatmap
-        fig, ax = plt.subplots(figsize=(8, 6))
-        cax = ax.matshow(corr_matrix, aspect='auto')
-        fig.colorbar(cax)
-
-        # Set tick marks for each ticker
-        tickers = corr_matrix.columns
-        ax.set_xticks(range(len(tickers)))
-        ax.set_yticks(range(len(tickers)))
-        ax.set_xticklabels(tickers, rotation=45, ha='left')
-        ax.set_yticklabels(tickers)
-
-        ax.set_title("Correlation Matrix", pad=20)
-        plt.tight_layout()
-        plt.show()
-
-```
-
-# portwine/analyzers/downsidecorrelation.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from portwine.analyzers import Analyzer
-
-"""
-    Gives a clearer picture if tickers are offsetting downside and 'helpfully' uncorrelated.
-"""
-
-class DownsideCorrelationAnalyzer(Analyzer):
-    """
-    For each ticker T in 'tickers_returns':
-      1) Identify T < 0 days.
-      2) Restrict the DataFrame to just those days.
-      3) For each asset (including T):
-         - MeanWhenTneg => average return on T<0 days
-         - CorrWithTneg => correlation with T's returns on T<0 days
-      4) In the plot, each row is a different focal ticker, with 2 subplots:
-         - Left: bar chart of MeanWhenTneg (T is one pastel color, others are a different pastel color)
-         - Right: bar chart of CorrWithTneg (same palette usage)
-      This yields a more visually appealing, non-jarring color scheme.
-    """
-
-    def __init__(self):
-        pass
-
-    def analyze(self, results):
-        """
-        1) Retrieve 'tickers_returns' from results.
-        2) For each ticker T:
-           - filter T < 0 days
-           - compute the average return (MeanWhenTneg) and correlation (CorrWithTneg)
-             for each asset on those T < 0 days
-        3) stats_all: dict { T => DataFrame [nAssets x 2], index=assets,
-                             columns=['MeanWhenTneg','CorrWithTneg'] }
-        """
-        tickers_df = results.get('tickers_returns')
-        if tickers_df is None or tickers_df.empty:
-            print("Error: 'tickers_returns' missing or empty in results.")
-            return None
-
-        if not isinstance(tickers_df.index, pd.DatetimeIndex):
-            tickers_df.index = pd.to_datetime(tickers_df.index)
-
-        all_tickers = tickers_df.columns.tolist()
-        stats_all = {}
-
-        for focal_ticker in all_tickers:
-            focal_series = tickers_df[focal_ticker].dropna()
-            if focal_series.empty:
-                continue
-
-            # Filter T < 0 days
-            negative_mask = (focal_series < 0)
-            if not negative_mask.any():
-                # No negative days => store empty
-                stats_all[focal_ticker] = pd.DataFrame()
-                continue
-
-            downside_df = tickers_df.loc[negative_mask]
-
-            # For each asset, compute mean & correlation
-            stats_list = []
-            for asset in all_tickers:
-                sub = downside_df[asset].dropna()
-                mean_ret = sub.mean() if len(sub) > 0 else np.nan
-
-                if asset == focal_ticker:
-                    corr_val = 1.0  # with itself
-                else:
-                    corr_val = downside_df[asset].corr(downside_df[focal_ticker])
-
-                stats_list.append({
-                    'Asset': asset,
-                    'MeanWhenTneg': mean_ret,
-                    'CorrWithTneg': corr_val
-                })
-
-            focal_stats_df = pd.DataFrame(stats_list).set_index('Asset')
-            stats_all[focal_ticker] = focal_stats_df
-
-        return {
-            'stats_all': stats_all,
-            'tickers_df': tickers_df
-        }
-
-    def plot(self, results):
-        """
-        Produces a figure with:
-          - One row per ticker T that had negative days
-          - 2 columns =>
-             left subplot: bar chart of MeanWhenTneg (focal T is one pastel color, others another)
-             right subplot: bar chart of CorrWithTneg
-        Includes a figure-level title, with a more visually appealing color palette (Set2).
-        """
-        analysis_dict = self.analyze(results)
-        if not analysis_dict:
-            print("No analysis data. Cannot plot.")
-            return
-
-        stats_all = analysis_dict['stats_all']
-        if not stats_all:
-            print("No stats to plot.")
-            return
-
-        # Filter out empty data
-        real_tickers = [t for t, df in stats_all.items() if not df.empty]
-        n_tickers = len(real_tickers)
-        if n_tickers == 0:
-            print("No tickers had negative days or no data. Nothing to plot.")
-            return
-
-        fig_height = 3.0 * n_tickers
-        fig, axes = plt.subplots(nrows=n_tickers, ncols=2, figsize=(10, fig_height))
-
-        # Add figure-level title
-        fig.suptitle("Downside Correlation Analysis (All Tickers)", fontsize=14)
-
-        # Prepare a pastel palette from "Set2"
-        # We'll pick two distinct pastel colors from the colormap:
-        palette = plt.colormaps.get_cmap("Set2")
-        focal_color = palette(2)   # e.g. pastel green
-        other_color = palette(0)   # e.g. pastel orange
-
-        # If only one ticker => shape(2,) => reshape to shape(1,2)
-        if n_tickers == 1:
-            axes = [axes]
-
-        for row_idx, focal_ticker in enumerate(real_tickers):
-            focal_df = stats_all[focal_ticker]
-            if focal_df.empty:
-                continue
-
-            ax_left = axes[row_idx][0] if n_tickers>1 else axes[0]
-            ax_right = axes[row_idx][1] if n_tickers>1 else axes[1]
-
-            # ============ MeanWhenTneg Subplot ============
-            df_mean = focal_df.sort_values('MeanWhenTneg', ascending=False)
-            x_vals1 = df_mean.index
-            y_vals1 = df_mean['MeanWhenTneg'].values
-
-            # We'll color the focal ticker bar in 'focal_color', others in 'other_color'.
-            bar_colors_mean = []
-            for asset in x_vals1:
-                if asset == focal_ticker:
-                    bar_colors_mean.append(focal_color)
-                else:
-                    bar_colors_mean.append(other_color)
-
-            ax_left.bar(x_vals1, y_vals1, color=bar_colors_mean)
-            ax_left.axhline(y=0, color='k', linewidth=1)
-            ax_left.set_title(f"{focal_ticker} < 0: Mean Return by Asset")
-            ax_left.tick_params(axis='x', rotation=45)
-            ax_left.grid(True, alpha=0.3)
-
-            # ============ CorrWithTneg Subplot ============
-            df_corr = focal_df.sort_values('CorrWithTneg', ascending=False)
-            x_vals2 = df_corr.index
-            y_vals2 = df_corr['CorrWithTneg'].values
-
-            bar_colors_corr = []
-            for asset in x_vals2:
-                if asset == focal_ticker:
-                    bar_colors_corr.append(focal_color)
-                else:
-                    bar_colors_corr.append(other_color)
-
-            ax_right.bar(x_vals2, y_vals2, color=bar_colors_corr)
-            ax_right.axhline(y=0, color='k', linewidth=1)
-            ax_right.set_title(f"{focal_ticker} < 0: Corr by Asset")
-            ax_right.tick_params(axis='x', rotation=45)
-            ax_right.grid(True, alpha=0.3)
-
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
-        plt.show()
-
-```
-
-# portwine/analyzers/drawdownflattener.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from portwine.analyzers import Analyzer
-
-class DrawdownFlattenAnalyzer(Analyzer):
-    """
-    An analyzer that post-processes a strategy's daily returns with a one-day shift
-    drawdown check. If the prior day's (yesterday's) drawdown is worse than 'max_dd',
-    we flatten (scale to zero) today's returns (or partial flatten, if scale_factor>0).
-
-    When you call 'plot(results)', it:
-      1) Runs 'analyze(results)' internally to get the protected returns.
-      2) Creates a single figure with three rows:
-         - (Row 0) Original vs. Flattened equity curves,
-         - (Row 1) The original daily drawdown curve (threshold & breach lines),
-         - (Row 2) A matplotlib table comparing summary stats for Original vs. Flattened,
-                   plus a “Change” column that shows the *percentage difference* for most metrics,
-                   but for MaxDrawdown specifically we invert the logic so that “lower is better.”
-                   We color the "Change" cell light green if it is "good" or red if it is "bad."
-                   We also bold the header row and the first column.
-      3) Displays the figure (no console prints).
-    """
-
-    def __init__(self, max_dd=0.2, scale_factor=0.0):
-        """
-        Parameters
-        ----------
-        max_dd : float
-            Fraction of drawdown that triggers flattening (e.g. 0.2 => 20%).
-        scale_factor : float
-            Fraction of daily returns to keep once threshold is triggered
-            (commonly 0.0 => fully flatten, or 0.5 => half exposure, etc.).
-        """
-        self.max_dd = max_dd
-        self.scale_factor = scale_factor
-
-    def analyze(self, results):
-        """
-        Applies the day-lag drawdown check to daily returns:
-          - We look at yesterday's drawdown in the original equity. If it's <= -max_dd,
-            we flatten (or scale) today's returns by 'scale_factor'.
-          - Once the drawdown recovers above -max_dd, we revert to full exposure the next day.
-
-        Returns a dict or None:
-          {
-            'original_returns' : pd.Series,
-            'flattened_returns': pd.Series,
-            'original_equity'  : pd.Series,
-            'flattened_equity' : pd.Series,
-            'drawdown_series'  : pd.Series (original daily drawdown),
-            'breached_dates'   : list of Timestamps
-          }
-        """
-        if 'strategy_returns' not in results:
-            return None
-
-        original_returns = results['strategy_returns'].copy().dropna()
-        if len(original_returns) < 2:
-            return None
-
-        # 1) Original equity & daily drawdown
-        original_equity = (1.0 + original_returns).cumprod()
-        rolling_peak = original_equity.cummax()
-        drawdown_series = (original_equity - rolling_peak) / rolling_peak  # negative or zero
-
-        # 2) Build flattened returns (one-day shift)
-        dates = original_returns.index
-        flattened_returns = []
-        in_drawdown_mode_yesterday = False
-        dd_breach_dates = []
-
-        # Day 0 => no prior day => normal
-        flattened_returns.append(original_returns.iloc[0])
-
-        # For day i=1..N-1 => check day i-1's drawdown
-        for i in range(1, len(dates)):
-            today_date = dates[i]
-            today_ret = original_returns.iloc[i]
-            y_dd = drawdown_series.iloc[i - 1]
-
-            if in_drawdown_mode_yesterday:
-                flattened_returns.append(self.scale_factor * today_ret)
-            else:
-                flattened_returns.append(today_ret)
-
-            # Now decide if we'll be in dd_mode tomorrow
-            t_dd = drawdown_series.iloc[i]
-            if in_drawdown_mode_yesterday:
-                # if recovered above threshold, normal tomorrow
-                if t_dd > -self.max_dd:
-                    in_drawdown_mode_yesterday = False
-            else:
-                # was not in dd_mode, check if we trigger threshold now
-                if t_dd <= -self.max_dd:
-                    in_drawdown_mode_yesterday = True
-                    dd_breach_dates.append(today_date)
-
-        flattened_returns = pd.Series(flattened_returns, index=dates)
-        flattened_equity = (1.0 + flattened_returns).cumprod()
-
-        return {
-            'original_returns':  original_returns,
-            'flattened_returns': flattened_returns,
-            'original_equity':   original_equity,
-            'flattened_equity':  flattened_equity,
-            'drawdown_series':   drawdown_series,
-            'breached_dates':    dd_breach_dates
-        }
-
-    def _compute_stats(self, daily_returns, ann_factor=252):
-        """
-        Compute summary statistics for a daily returns series:
-          - TotalReturn
-          - CAGR
-          - AnnualVol
-          - Sharpe (CAGR-based)
-          - MaxDrawdown
-        Returns a dict with these keys. If insufficient data, returns NaNs.
-        """
-        dr = daily_returns.dropna()
-        if len(dr) < 2:
-            return dict.fromkeys(["TotalReturn","CAGR","AnnualVol","Sharpe","MaxDrawdown"], np.nan)
-
-        # 1) TotalReturn
-        total_ret = (1.0 + dr).prod() - 1.0
-
-        # 2) MaxDrawdown
-        eq_curve = (1.0 + dr).cumprod()
-        roll_max = eq_curve.cummax()
-        dd_series = (eq_curve - roll_max) / roll_max
-        max_dd = dd_series.min()  # negative or zero
-
-        # 3) CAGR
-        n_days = len(dr)
-        years = n_days / ann_factor if ann_factor else np.nan
-        if years > 0:
-            cagr = (1.0 + total_ret)**(1.0 / years) - 1.0
-        else:
-            cagr = np.nan
-
-        # 4) AnnualVol
-        ann_vol = dr.std() * np.sqrt(ann_factor)
-
-        # 5) Sharpe (CAGR-based)
-        if ann_vol > 1e-9 and not np.isnan(cagr):
-            sharpe = cagr / ann_vol
-        else:
-            sharpe = np.nan
-
-        return {
-            'TotalReturn':  total_ret,
-            'CAGR':         cagr,
-            'AnnualVol':    ann_vol,
-            'Sharpe':       sharpe,
-            'MaxDrawdown':  max_dd
-        }
-
-    def plot(self, results, ann_factor=252):
-        """
-        Builds a figure with 3 rows:
-          Row 0 => Original vs. Flattened equity,
-          Row 1 => Original daily drawdown + threshold & breach lines,
-          Row 2 => Table comparing stats for Original vs. Flattened,
-                   plus a 'Change' column showing percentage difference for most metrics:
-                     diff = (flattened / original -1)*100
-                   BUT for MaxDrawdown, we invert logic because "lower is better," so:
-                     diff = (orig / flattened -1)*100
-                   Then color the cell green if the 'Change' is >0 (improvement), red if <0 (worse).
-        """
-        ddp_results = self.analyze(results)
-        if not ddp_results:
-            return  # nothing to plot
-
-        # (A) Unpack data
-        orig_eq = ddp_results['original_equity']
-        flat_eq = ddp_results['flattened_equity']
-        dd_ser  = ddp_results['drawdown_series']
-        breach_dates = ddp_results['breached_dates']
-
-        # (B) Create figure with 3 rows
-        fig = plt.figure(figsize=(10, 10))
-        gs = fig.add_gridspec(3, 1, height_ratios=[2, 1.5, 1])
-
-        # Row 0 => Original vs. Flattened equity
-        ax_equity = fig.add_subplot(gs[0, 0])
-        ax_equity.plot(orig_eq.index, orig_eq.values, label="Original Equity")
-        ax_equity.plot(flat_eq.index, flat_eq.values, label="Flattened Equity", alpha=0.8)
-        ax_equity.set_title(
-            f"Drawdown Flatten (One-Day Lag)\nmax_dd={self.max_dd:.0%}, scale_factor={self.scale_factor}"
-        )
-        ax_equity.set_xlabel("Date")
-        ax_equity.set_ylabel("Cumulative Return")
-        ax_equity.legend(loc="best")
-        ax_equity.grid(True)
-
-        # Row 1 => daily drawdown
-        ax_dd = fig.add_subplot(gs[1, 0])
-        ax_dd.plot(dd_ser.index, dd_ser.values, label="Original Drawdown", color='blue')
-        ax_dd.axhline(-self.max_dd, color='red', linestyle='--', alpha=0.7,
-                      label=f"Threshold {self.max_dd:.0%}")
-        for d in breach_dates:
-            ax_dd.axvline(d, color='orange', linestyle='--', alpha=0.5)
-        ax_dd.set_title("Daily Drawdown (Original) & Breach Points")
-        ax_dd.set_xlabel("Date")
-        ax_dd.set_ylabel("Drawdown (fraction)")
-        ax_dd.legend(loc="best")
-        ax_dd.grid(True)
-
-        # Row 2 => Stats table
-        ax_table = fig.add_subplot(gs[2, 0])
-        ax_table.axis('off')
-
-        # (C) Compute stats for Original vs. Flattened
-        stats_orig = self._compute_stats(ddp_results['original_returns'], ann_factor=ann_factor)
-        stats_flat = self._compute_stats(ddp_results['flattened_returns'], ann_factor=ann_factor)
-
-        metrics = ["TotalReturn", "CAGR", "AnnualVol", "Sharpe", "MaxDrawdown"]
-        table_header = ["Metric", "Original", "Flattened", "Change"]
-        table_data = [table_header]
-
-        # We'll store numeric differences in a dict so we can color the cells
-        differences = {}
-
-        def pct_fmt(x):
-            return f"{x*100:.2f}%" if pd.notnull(x) else "NaN"
-
-        def ratio_fmt(x):
-            return f"{x:.2f}" if pd.notnull(x) else "NaN"
-
-        def pct_diff_for_metric(m, val_orig, val_flat):
-            """
-            For most metrics, we want: diff = (val_flat / val_orig -1)*100
-            But for MaxDrawdown, we invert logic: diff = (val_orig / val_flat -1)*100
-            because a lower (more negative) drawdown is actually worse.
-            (We interpret negative as less negative => improvement.)
-            If either val_orig or val_flat is near zero, or NaN, we return NaN.
-            """
-            if pd.isnull(val_orig) or pd.isnull(val_flat):
-                return np.nan
-
-            # If either original or flattened is extremely small in absolute value,
-            # we can't do a safe ratio => NaN
-            if abs(val_orig) < 1e-12 or abs(val_flat) < 1e-12:
-                return np.nan
-
-            if m == "MaxDrawdown":
-                # ratio = (orig / flat -1)*100
-                # because "lower absolute drawdown" => improvement
-                # note: both are negative or zero, so we must handle that carefully
-                # e.g. orig = -0.05, flat=-0.06 => ratio = (-0.05 / -0.06 -1)*100 => +16.7 => red
-                # Actually "improvement" means we want the flattened to be less negative, i.e. -0.04 is better than -0.05
-                # We define "improvement" as having a more negative number is actually worse, so if flattened is -0.04 vs orig -0.05 => flatten is better => ratio>0 => green
-                # => ratio = (orig / flat -1)*100
-                return ((val_orig / val_flat) - 1.0)*100.0
-            else:
-                # ratio = (val_flat / val_orig -1)*100
-                return ((val_flat / val_orig) -1.0)*100.0
-
-        # Now build the rows
-        row_index = 1  # b/c row 0 is the header
-        for m in metrics:
-            val_o = stats_orig[m]
-            val_f = stats_flat[m]
-
-            # Format Original & Flattened
-            if m in ["TotalReturn","CAGR","AnnualVol","MaxDrawdown"]:
-                s_orig = pct_fmt(val_o)
-                s_flat = pct_fmt(val_f)
-            else:  # Sharpe
-                s_orig = ratio_fmt(val_o)
-                s_flat = ratio_fmt(val_f)
-
-            # Compute difference ratio
-            diff_val = pct_diff_for_metric(m, val_o, val_f)
-            if pd.notnull(diff_val):
-                diff_str = f"{diff_val:.2f}%"
-            else:
-                diff_str = "NaN"
-
-            table_data.append([m, s_orig, s_flat, diff_str])
-            differences[row_index] = (m, diff_val)
-            row_index += 1
-
-        # (D) Create the table
-        the_table = ax_table.table(
-            cellText=table_data,
-            loc='center',
-            cellLoc='center'
-        )
-        the_table.set_fontsize(10)
-        the_table.scale(1.2, 1.2)
-
-        # (E) Bold the header row (row=0) & the first column (col=0)
-        n_rows = len(table_data)
-        n_cols = len(table_data[0])
-
-        # Bold the header row
-        for col in range(n_cols):
-            the_table[(0, col)].set_text_props(weight='bold')
-
-        # Bold the first column
-        for row in range(n_rows):
-            the_table[(row, 0)].set_text_props(weight='bold')
-
-        # (F) Color the "Change" column (col=3) based on 'differences'
-        for row_idx in range(1, n_rows):  # data rows
-            metric_name, diff_val = differences.get(row_idx, ("", np.nan))
-            cell = the_table[(row_idx, 3)]
-            if pd.isnull(diff_val):
-                continue
-
-            # If diff_val>0 => improvement => green, else red
-            # For MaxDrawdown, we inverted logic above, so a "positive" ratio => means better
-            if diff_val > 0:
-                cell.set_facecolor("#d6f5d6")  # light green
-            elif diff_val < 0:
-                cell.set_facecolor("#f7d6d6")  # light red
-            # if exactly 0 => no color
-
-        fig.tight_layout()
-        plt.show()
-
-```
-
-# portwine/analyzers/edgedecay.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import statsmodels.api as sm
-from portwine.analyzers.base import Analyzer
-
-
-class EdgeDecayAnalyzer(Analyzer):
-    """
-    Determines whether a trading strategy's outperformance factor
-    (strategy_equity / benchmark_equity) is decaying over time.
-
-    Rolling slope is computed by OLS of ln(outperf)[t0..tN] ~ a + b*x,
-    now capturing b (the slope) + p-value. 
-    If slope < 0 and p < 0.05 => significant negative slope => edge decay.
-    """
-
-    def analyze(self, results, rolling_window=60, alpha=0.05):
-        """
-        1) Build strategy & benchmark equity curves from daily returns
-        2) outperformance(t) = strategy_eq(t) / bench_eq(t)
-        3) rolling_slope: slope, p_value, etc. from OLS regression of ln(outperformance)
-           on x=[0..window-1], in each rolling window.
-
-        Returns
-        -------
-        dict:
-          {
-            'strategy_equity': pd.Series,
-            'benchmark_equity': pd.Series,
-            'outperformance': pd.Series,
-            'rolling_stats': pd.DataFrame with columns=[slope, p_value, significance],
-          }
-        """
-        strat_ret = results.get('strategy_returns', pd.Series(dtype=float)).dropna()
-        bench_ret = results.get('benchmark_returns', pd.Series(dtype=float)).dropna()
-        if strat_ret.empty or bench_ret.empty:
-            print("EdgeDecayAnalyzer: Strategy or benchmark daily returns are empty!")
-            return {}
-
-        # Align on common dates
-        common_idx = strat_ret.index.intersection(bench_ret.index)
-        strat_ret = strat_ret.loc[common_idx].sort_index()
-        bench_ret = bench_ret.loc[common_idx].sort_index()
-        if len(strat_ret) < rolling_window:
-            print(f"Not enough data for rolling_window={rolling_window}.")
-            return {}
-
-        # Build equity curves
-        strategy_eq = (1.0 + strat_ret).cumprod()
-        bench_eq = (1.0 + bench_ret).cumprod()
-
-        # Outperformance = strategy_eq / bench_eq
-        bench_eq_clipped = bench_eq.replace(0.0, np.nan).ffill().dropna()
-        bench_eq_aligned = bench_eq_clipped.reindex(strategy_eq.index).ffill().fillna(0)
-        outperf = strategy_eq / bench_eq_aligned
-        outperf = outperf.dropna()
-        if len(outperf) < rolling_window:
-            print(f"Not enough overlapping equity data for rolling_window={rolling_window}.")
-            return {}
-
-        # Compute rolling slope via OLS
-        rolling_stats_df = self._rolling_outperf_slope_ols(outperf, rolling_window)
-
-        return {
-            'strategy_equity': strategy_eq,
-            'benchmark_equity': bench_eq_aligned,
-            'outperformance': outperf,
-            'rolling_stats': rolling_stats_df
-        }
-
-    def plot(self, results, rolling_window=60, alpha=0.05, figsize=(12, 8)):
-        """
-        Plots:
-          1) Outperformance factor (top subplot)
-          2) Rolling slope of ln(outperf) (bottom subplot), colored by significance if p< alpha.
-          3) Adds a trend line to the rolling slope chart to show overall decay trend.
-        """
-        data = self.analyze(results, rolling_window=rolling_window, alpha=alpha)
-        if not data:
-            return
-
-        strat_eq = data['strategy_equity']
-        bench_eq = data['benchmark_equity']
-        outperf = data['outperformance']
-        rolling_stats_df = data['rolling_stats']
-
-        fig, (ax_top, ax_bot) = plt.subplots(nrows=2, ncols=1, figsize=figsize, sharex=True)
-        fig.suptitle(
-            f"Edge Decay Analysis (rolling_window={rolling_window}, alpha={alpha:.2f})",
-            fontsize=13
-        )
-
-        # Top subplot: outperformance factor
-        ax_top.plot(outperf.index, outperf.values,
-                    label="Outperformance = Strategy / Benchmark",
-                    color='blue')
-        ax_top.axhline(1.0, color='gray', linestyle='--', alpha=0.5)
-        ax_top.set_title("Strategy Outperformance Factor")
-        ax_top.set_ylabel("Strat / Bench")
-        ax_top.grid(True)
-        ax_top.legend(loc='best')
-
-        # Fill red/green vs 1.0
-        ax_top.fill_between(
-            outperf.index, outperf.values, 1.0,
-            where=(outperf.values >= 1.0),
-            color='green', alpha=0.1
-        )
-        ax_top.fill_between(
-            outperf.index, outperf.values, 1.0,
-            where=(outperf.values < 1.0),
-            color='red', alpha=0.1
-        )
-
-        # Bottom subplot: slope of ln(outperf)
-        # We'll color by significance
-        slope = rolling_stats_df['slope']
-        pval = rolling_stats_df['p_value']
-        # We'll treat negative slope as potentially decaying
-        # We'll make a line from each point to the next, but change color if p< alpha
-        x_vals = slope.index
-        slopes_np = slope.values
-        pvals_np = pval.values
-
-        # Plot each segment with appropriate coloring
-        for i in range(len(x_vals) - 1):
-            x_seg = x_vals[i:i + 2]
-            y_seg = slopes_np[i:i + 2]
-            p_seg = max(pvals_np[i], pvals_np[i + 1])  # if either is < alpha => we'll color it
-            if p_seg < alpha:
-                color_ = 'red' if y_seg.mean() < 0 else 'green'
-            else:
-                color_ = 'black'
-            ax_bot.plot(x_seg, y_seg, color=color_, linewidth=2)
-
-        # Add trend line through all the rolling slope data points
-        if len(x_vals) > 1:
-            # Convert dates to numerical format for regression
-            x_numeric = np.array([(d - x_vals[0]).total_seconds() for d in x_vals])
-
-            # Fit linear regression on all slope data points
-            # Filter out NaN values
-            mask = ~np.isnan(slopes_np)
-            if np.sum(mask) > 1:  # Need at least 2 points for regression
-                X = sm.add_constant(x_numeric[mask])
-                model = sm.OLS(slopes_np[mask], X).fit()
-
-                # Calculate trend line values
-                trend_x = np.array([x_numeric[mask].min(), x_numeric[mask].max()])
-                trend_y = model.params[0] + model.params[1] * trend_x
-
-                # Convert back to datetime for plotting
-                trend_dates = [x_vals[0] + pd.Timedelta(seconds=float(tx)) for tx in trend_x]
-
-                # Plot the trend line and add label with slope information
-                trend_slope = model.params[1] * 86400  # Convert to daily slope
-                trend_pval = model.pvalues[1]
-                significance = trend_pval < alpha
-                trend_label = f"Overall Trend: {trend_slope:.2e}/day"
-                if significance:
-                    trend_label += f" (p={trend_pval:.3f})*"
-                    trend_color = 'red' if trend_slope < 0 else 'green'
-                else:
-                    trend_label += f" (p={trend_pval:.3f})"
-                    trend_color = 'blue'
-
-                ax_bot.plot(trend_dates, trend_y, color=trend_color, linestyle='-',
-                            linewidth=2, label=trend_label)
-
-        ax_bot.axhline(0.0, color='gray', linestyle='--', alpha=0.5,
-                       label="Slope=0 => no decay")
-        ax_bot.set_title("Rolling Slope of ln(Outperformance) + p-value Sig")
-        ax_bot.set_ylabel("Slope (log outperf / day)")
-        ax_bot.legend(loc='best')
-        ax_bot.grid(True)
-
-        plt.tight_layout()
-        plt.show()
-
-    ###########################################################################
-    # Internal function with OLS each window to get slope + p_value
-    ###########################################################################
-    def _rolling_outperf_slope_ols(self, outperf_series, window):
-        """
-        For each rolling window of length 'window', do:
-          y = ln(outperf[t0..tN])
-          x = 0..(N-1)
-        OLS => y ~ a + b*x => slope = b, pval = p-value of slope.
-        Return a DataFrame with columns: slope, p_value
-        """
-        y_log = np.log(outperf_series.replace([np.inf, -np.inf], np.nan).dropna())
-        if len(y_log) < window:
-            return pd.DataFrame()
-
-        idx_vals = y_log.index.to_numpy()
-        y_vals = y_log.values
-
-        slope_list = []
-        pval_list = []
-        date_list = []
-
-        x_base = np.arange(window)
-
-        for i in range(window, len(y_vals) + 1):
-            seg_y = y_vals[i - window:i]
-            seg_dates = idx_vals[i - window:i]
-            # OLS => seg_y ~ alpha + slope*x_base
-            X = sm.add_constant(x_base)
-            try:
-                model = sm.OLS(seg_y, X).fit()
-                slope_ = model.params[1]
-                pval_ = model.pvalues[1]
-            except:
-                slope_, pval_ = np.nan, np.nan
-
-            slope_list.append(slope_)
-            pval_list.append(pval_)
-            date_list.append(seg_dates[-1])  # label by the last day in window
-
-        df = pd.DataFrame({
-            'slope': slope_list,
-            'p_value': pval_list
-        }, index=pd.to_datetime(date_list))
-        df.index.name = 'date'
-        return df
-```
-
-# portwine/analyzers/equitydrawdown.py
-
-```py
-import numpy as np
-import matplotlib.pyplot as plt
-from portwine.analyzers.base import Analyzer
-
-class EquityDrawdownAnalyzer(Analyzer):
-    """
-    Provides common analysis functionality, including drawdown calculation,
-    summary stats, and plotting.
-    """
-
-    def compute_drawdown(self, equity_series):
-        """
-        Computes percentage drawdown for a given equity curve.
-
-        Parameters
-        ----------
-        equity_series : pd.Series
-            The cumulative equity values over time (e.g., starting at 1.0).
-
-        Returns
-        -------
-        drawdown : pd.Series
-            The percentage drawdown at each point in time.
-        """
-        rolling_max = equity_series.cummax()
-        drawdown = (equity_series - rolling_max) / rolling_max
-        return drawdown
-
-    def analyze_returns(self, daily_returns, ann_factor=252):
-        """
-        Computes summary statistics from daily returns.
-
-        Parameters
-        ----------
-        daily_returns : pd.Series
-            Daily returns of a strategy or benchmark.
-        ann_factor : int
-            Annualization factor, typically 252 for daily data.
-
-        Returns
-        -------
-        stats : dict
-            {
-                'TotalReturn': ...,
-                'CAGR': ...,
-                'AnnualVol': ...,
-                'Sharpe': ...,
-                'MaxDrawdown': ...
-            }
-        """
-        dr = daily_returns.dropna()
-        if len(dr) < 2:
-            return {}
-
-        total_ret = (1 + dr).prod() - 1.0
-        n_days = len(dr)
-        years = n_days / ann_factor
-        cagr = (1 + total_ret) ** (1 / years) - 1.0
-
-        ann_vol = dr.std() * np.sqrt(ann_factor)
-        sharpe = cagr / ann_vol if ann_vol > 1e-9 else 0.0
-
-        eq = (1 + dr).cumprod()
-        dd = self.compute_drawdown(eq)
-        max_dd = dd.min()
-
-        return {
-            'TotalReturn': total_ret,
-            'CAGR': cagr,
-            'AnnualVol': ann_vol,
-            'Sharpe': sharpe,
-            'MaxDrawdown': max_dd,
-        }
-
-    def analyze(self, results, ann_factor=252):
-        strategy_stats = self.analyze_returns(results['strategy_returns'], ann_factor)
-        benchmark_stats = self.analyze_returns(results['benchmark_returns'], ann_factor)
-
-        return {
-            'strategy_stats': strategy_stats,
-            'benchmark_stats': benchmark_stats
-        }
-
-    def plot(self, results, benchmark_label="Benchmark"):
-        """
-        Plots the strategy equity curve (and benchmark if given) plus drawdowns.
-        Also prints summary stats.
-
-        Parameters
-        ----------
-        results : dict
-            Results from the backtest. Will have signals_df, tickers_returns,
-            strategy_returns, benchmark_returns, which are all Pandas DataFrames
-
-        benchmark_label : str
-            Label to use for benchmark in plot legend and summary stats.
-        """
-        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(10, 8), sharex=True)
-
-        strategy_equity_curve = (1.0 + results['strategy_returns']).cumprod()
-        benchmark_equity_curve = (1.0 + results['benchmark_returns']).cumprod()
-
-        # Plot equity curves with specified colors and line widths
-        ax1.plot(
-            strategy_equity_curve.index,
-            strategy_equity_curve.values,
-            label="Strategy",
-            color='mediumblue',   # deeper blue
-            linewidth=1,         # a bit thicker
-            alpha=0.6
-        )
-        ax1.plot(
-            benchmark_equity_curve.index,
-            benchmark_equity_curve.values,
-            label=benchmark_label,
-            color='black',      # black
-            linewidth=0.5,         # a bit thinner
-            alpha=0.5
-        )
-        ax1.set_title("Equity Curve (relative, starts at 1.0)")
-        ax1.legend(loc='best')
-        ax1.grid(True)
-
-        # Fill between the strategy and benchmark lines
-        ax1.fill_between(
-            strategy_equity_curve.index,
-            strategy_equity_curve.values,
-            benchmark_equity_curve.values,
-            where=(strategy_equity_curve.values >= benchmark_equity_curve.values),
-            interpolate=True,
-            color='green',
-            alpha=0.1
-        )
-        ax1.fill_between(
-            strategy_equity_curve.index,
-            strategy_equity_curve.values,
-            benchmark_equity_curve.values,
-            where=(strategy_equity_curve.values < benchmark_equity_curve.values),
-            interpolate=True,
-            color='red',
-            alpha=0.1
-        )
-
-        # Plot drawdowns
-        strat_dd = self.compute_drawdown(strategy_equity_curve) * 100.0
-        bm_dd = self.compute_drawdown(benchmark_equity_curve) * 100.0
-
-        ax2.plot(
-            strat_dd.index,
-            strat_dd.values,
-            label="Strategy DD (%)",
-            color='mediumblue',   # deeper blue
-            linewidth=1,         # a bit thicker
-            alpha=0.6
-        )
-        ax2.plot(
-            bm_dd.index,
-            bm_dd.values,
-            label=f"{benchmark_label} DD (%)",
-            color='black',      # black
-            linewidth=0.5,         # a bit thinner
-            alpha=0.5
-        )
-        ax2.set_title("Drawdown (%)")
-        ax2.legend(loc='best')
-        ax2.grid(True)
-
-        # Fill between drawdown lines: red where strategy is below, green where strategy is above
-        ax2.fill_between(
-            strat_dd.index,
-            strat_dd.values,
-            bm_dd.values,
-            where=(strat_dd.values <= bm_dd.values),
-            interpolate=True,
-            color='red',
-            alpha=0.1
-        )
-        ax2.fill_between(
-            strat_dd.index,
-            strat_dd.values,
-            bm_dd.values,
-            where=(strat_dd.values > bm_dd.values),
-            interpolate=True,
-            color='green',
-            alpha=0.1
-        )
-
-        plt.tight_layout()
-        plt.show()
-
-    def generate_report(self, results, ann_factor=252, benchmark_label="Benchmark"):
-        stats = self.analyze(results, ann_factor)
-
-        strategy_stats = stats['strategy_stats']
-        benchmark_stats = stats['benchmark_stats']
-
-        print("\n=== Strategy Summary ===")
-        for k, v in strategy_stats.items():
-            if k in ["CAGR", "AnnualVol", "MaxDrawdown"]:
-                print(f"{k}: {v:.2%}")
-            elif k == "Sharpe":
-                print(f"{k}: {v:.2f}")
-            else:
-                print(f"{k}: {v:.2%}")
-
-        print(f"\n=== {benchmark_label} Summary ===")
-        for k, v in benchmark_stats.items():
-            if k in ["CAGR", "AnnualVol", "MaxDrawdown"]:
-                print(f"{k}: {v:.2%}")
-            elif k == "Sharpe":
-                print(f"{k}: {v:.2f}")
-            else:
-                print(f"{k}: {v:.2%}")
-
-        # Now show a comparison: percentage difference (Strategy vs. Benchmark).
-        print("\n=== Strategy vs. Benchmark (Percentage Difference) ===")
-        for k in strategy_stats.keys():
-            strat_val = strategy_stats.get(k, None)
-            bench_val = benchmark_stats.get(k, None)
-            if strat_val is None or bench_val is None:
-                print(f"{k}: N/A (missing data)")
-                continue
-
-            if isinstance(strat_val, (int, float)) and isinstance(bench_val, (int, float)):
-                if abs(bench_val) > 1e-15:
-                    diff = (strat_val - bench_val) / abs(bench_val)
-                    print_val = f"{diff * 100:.2f}%"
-                else:
-                    print_val = "N/A (benchmark ~= 0)"
-            else:
-                print_val = "N/A (non-numeric)"
-
-            print(f"{k}: {print_val}")
-
-```
-
-# portwine/analyzers/montecarlo.py
-
-```py
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from portwine.analyzers.base import Analyzer
-
-class MonteCarloAnalyzer(Analyzer):
-    """
-    Runs Monte Carlo simulations on a strategy's returns (with replacement).
-    Allows plotting of all paths plus confidence bands (5%-95%) and a mean path,
-    on a log scale. Can also plot a benchmark curve for comparison.
-    """
-
-    def __init__(self, frequency='ME'):
-        assert frequency in ['ME', 'D'], 'Only supports ME (monthly) or D (daily) frequencies'
-        self.frequency = frequency
-        self.ann_factor = 12 if frequency == 'ME' else 252
-
-    def _compute_drawdown(self, equity):
-        rolling_max = equity.cummax()
-        dd = (equity - rolling_max) / rolling_max
-        return dd
-
-    def _convert_to_monthly(self, daily_returns):
-        if not isinstance(daily_returns.index, pd.DatetimeIndex):
-            daily_returns.index = pd.to_datetime(daily_returns.index)
-        monthly = daily_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
-        return monthly
-
-    def analyze(self, returns):
-        if len(returns) < 2:
-            return {
-                'CumulativeReturn': np.nan,
-                'AnnVol': np.nan,
-                'Sharpe': np.nan,
-                'MaxDrawdown': np.nan
-            }
-
-        cumret = (1 + returns).prod() - 1.0
-        vol = returns.std() * np.sqrt(self.ann_factor)
-        mean_ret = returns.mean()
-        sharpe = (mean_ret / returns.std()) * np.sqrt(self.ann_factor) if returns.std() != 0 else np.nan
-
-        equity = (1 + returns).cumprod()
-        dd = self._compute_drawdown(equity)
-        max_dd = dd.min()
-
-        return {
-            'CumulativeReturn': cumret,
-            'AnnVol': vol,
-            'Sharpe': sharpe,
-            'MaxDrawdown': max_dd
-        }
-
-    def mc_with_replacement(self, ret_series, n_sims=100, random_seed=42):
-        """
-        Example method that bootstraps returns and avoids the repeated insert.
-        """
-        np.random.seed(random_seed)
-        returns_array = ret_series.values
-        n = len(returns_array)
-
-        all_equities = []  # We'll store each path's equity Series or array here
-        sim_stats = []
-
-        for _ in range(n_sims):
-            indices = np.random.choice(range(n), size=n, replace=True)
-            sampled = returns_array[indices]
-            sim_returns = pd.Series(sampled, index=ret_series.index)
-            eq = (1 + sim_returns).cumprod()
-            # Instead of adding a column to a DataFrame in each iteration,
-            # we collect each path for now:
-            all_equities.append(eq)
-            sim_stats.append(self.analyze(sim_returns))
-
-        # Now, combine them all at once. For example:
-        #   1) convert each path to a DataFrame with a single column
-        #   2) pd.concat them horizontally (axis=1)
-        sim_equity = pd.concat(
-            [path.to_frame(name=f"Sim_{i}") for i, path in enumerate(all_equities)],
-            axis=1
-        )
-
-        orig_stats = self.analyze(ret_series)
-        return {
-            'simulated_stats': sim_stats,
-            'simulated_equity_curves': sim_equity,
-            'original_stats': orig_stats
-        }
-
-        # return sim_equity
-
-    def get_periodic_returns(self, results):
-        """
-        Extract or compute the returns to feed into the Monte Carlo simulations.
-
-        By default, tries monthly if freq='ME'. If you already have monthly
-        or daily in 'strategy_daily_returns', you can keep or transform them.
-
-        Parameters
-        ----------
-        results : dict
-            Dictionary from the backtester with keys:
-            {
-                'strategy_daily_returns': pd.Series (index=dates),
-                'equity_curve': pd.Series,
-                ...
-            }
-        freq : str
-            Frequency to convert daily returns (e.g. 'ME' for monthly).
-            If None, uses daily returns as is.
-
-        Returns
-        -------
-        pd.Series
-            Returns at the desired frequency.
-        """
-        daily = results.get('strategy_returns', pd.Series(dtype=float))
-        if daily.empty:
-            print("No strategy_daily_returns found in results.")
-            return pd.Series(dtype=float)
-
-        if self.frequency == 'ME':
-            return self._convert_to_monthly(daily)
-        else:
-            # Return daily as is
-            return daily
-
-    def plot(self, results, title="Monte Carlo Simulations (Log Scale)", figsize=(15, 10)):
-        """
-        Plots all visualizations on a single figure with 5 subplots:
-        - Main plot: Simulated equity paths in black with very low alpha,
-          along with a 5%-95% confidence band in shaded area, plus a mean path,
-          on a log scale, optionally with a benchmark.
-        - Four smaller plots: Histograms showing the distribution of performance metrics:
-          - Cumulative Return
-          - Annual Vol
-          - Sharpe
-          - Max Drawdown
-          and, if 'benchmark_returns' is provided, a vertical line to compare
-          the benchmark's metric in each histogram.
-
-        Parameters
-        ----------
-        results : dict
-            {
-                'benchmark_returns': DataFrame or Series with benchmark returns
-            }
-        title : str
-            Chart title.
-        """
-        # Generate the simulation data
-        periodic_returns = self.get_periodic_returns(results)
-        mc_results = self.mc_with_replacement(periodic_returns, n_sims=200)
-
-        sim_equity = mc_results['simulated_equity_curves']
-        if sim_equity.empty:
-            print("No simulation equity curves to plot.")
-            return
-
-        # Create a single figure with GridSpec for layout control
-        fig = plt.figure(figsize=figsize)
-        gs = fig.add_gridspec(3, 4)  # 3 rows, 4 columns grid
-
-        # Main equity curve plot takes up the top 2 rows
-        ax_main = fig.add_subplot(gs[0:2, :])
-
-        # Plot all paths in black, alpha=0.01
-        ax_main.plot(sim_equity.index, sim_equity.values,
-                     color='black', alpha=0.01, linewidth=0.8)
-
-        # Confidence bands
-        lo5 = sim_equity.quantile(0.05, axis=1)
-        hi95 = sim_equity.quantile(0.95, axis=1)
-        mean_path = sim_equity.mean(axis=1)
-
-        ax_main.fill_between(sim_equity.index, lo5, hi95,
-                             color='blue', alpha=0.2,
-                             label='5%-95% Confidence Band')
-        ax_main.plot(mean_path.index, mean_path.values,
-                     color='red', linewidth=2, label='Mean Path')
-
-        benchmark_equity = None
-        if 'benchmark_returns' in results and results['benchmark_returns'] is not None:
-            benchmark_equity = (1 + results['benchmark_returns']).cumprod()
-
-        # Plot benchmark if provided
-        if benchmark_equity is not None and not benchmark_equity.empty:
-            ax_main.plot(benchmark_equity.index, benchmark_equity.values,
-                         color='green', linewidth=2, label='Benchmark')
-
-        # Log scale
-        ax_main.set_yscale('log')
-        ax_main.set_title(title, fontsize=14)
-        ax_main.set_ylabel("Equity (log scale)")
-        ax_main.legend(loc='best')
-        ax_main.grid(True)
-
-        # Get performance stats for histograms
-        simulated_stats = mc_results.get('simulated_stats', [])
-        if not simulated_stats:
-            # If we have no performance stats, there's nothing more to plot
-            plt.tight_layout()
-            plt.show()
-            return
-
-        # Prepare data for histograms
-        cumulative_returns = [d['CumulativeReturn'] for d in simulated_stats]
-        ann_vols = [d['AnnVol'] for d in simulated_stats]
-        sharpes = [d['Sharpe'] for d in simulated_stats]
-        max_dds = [d['MaxDrawdown'] for d in simulated_stats]
-
-        # If benchmark_returns is provided, compute same stats
-        benchmark_stats = {}
-        if 'benchmark_returns' in results and results['benchmark_returns'] is not None and not results[
-            'benchmark_returns'].empty:
-            benchmark_stats = self.analyze(results['benchmark_returns'])
-
-        # Create the 4 histogram subplots in the bottom row
-        axes = [
-            fig.add_subplot(gs[2, 0]),  # Cumulative Return
-            fig.add_subplot(gs[2, 1]),  # Annual Vol
-            fig.add_subplot(gs[2, 2]),  # Sharpe
-            fig.add_subplot(gs[2, 3])  # Max Drawdown
-        ]
-
-        # 1) Cumulative Return
-        axes[0].hist(cumulative_returns, bins=30, color='blue', alpha=0.7)
-        axes[0].set_title("Cumulative Return", fontsize=10)
-        if 'CumulativeReturn' in benchmark_stats and not np.isnan(benchmark_stats['CumulativeReturn']):
-            cr_bench = benchmark_stats['CumulativeReturn']
-            axes[0].axvline(cr_bench, color='green', linestyle='--',
-                            label=f"Benchmark={cr_bench:.2f}")
-            axes[0].legend(fontsize=8)
-
-        # 2) Annual Vol
-        axes[1].hist(ann_vols, bins=30, color='blue', alpha=0.7)
-        axes[1].set_title("Annual Volatility", fontsize=10)
-        if 'AnnVol' in benchmark_stats and not np.isnan(benchmark_stats['AnnVol']):
-            av_bench = benchmark_stats['AnnVol']
-            axes[1].axvline(av_bench, color='green', linestyle='--',
-                            label=f"Benchmark={av_bench:.2f}")
-            axes[1].legend(fontsize=8)
-
-        # 3) Sharpe
-        axes[2].hist(sharpes, bins=30, color='blue', alpha=0.7)
-        axes[2].set_title("Sharpe Ratio", fontsize=10)
-        if 'Sharpe' in benchmark_stats and not np.isnan(benchmark_stats['Sharpe']):
-            sh_bench = benchmark_stats['Sharpe']
-            axes[2].axvline(sh_bench, color='green', linestyle='--',
-                            label=f"Benchmark={sh_bench:.2f}")
-            axes[2].legend(fontsize=8)
-
-        # 4) Max Drawdown
-        axes[3].hist(max_dds, bins=30, color='blue', alpha=0.7)
-        axes[3].set_title("Max Drawdown", fontsize=10)
-        if 'MaxDrawdown' in benchmark_stats and not np.isnan(benchmark_stats['MaxDrawdown']):
-            dd_bench = benchmark_stats['MaxDrawdown']
-            axes[3].axvline(dd_bench, color='green', linestyle='--',
-                            label=f"Benchmark={dd_bench:.2f}")
-            axes[3].legend(fontsize=8)
-
-        # Adjust layout to ensure all elements fit well
-        plt.tight_layout()
-        plt.subplots_adjust(hspace=0.4, wspace=0.3)
-        plt.show()
-
-```
-
-# portwine/analyzers/optimalleverage.py
-
-```py
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from portwine.analyzers.base import Analyzer
-
-
-def calculate_integral_drawdown(equity_series):
-    """
-    Calculate the integrated drawdown (area under the absolute drawdown curve)
-    for a given equity series.
-
-    Parameters
-    ----------
-    equity_series : pd.Series
-        The cumulative equity curve.
-
-    Returns
-    -------
-    float
-        Integrated drawdown.
-    """
-    rolling_max = equity_series.cummax()
-    drawdown = (equity_series - rolling_max) / rolling_max
-    abs_dd = -drawdown.clip(upper=0)
-    if isinstance(equity_series.index, pd.DatetimeIndex):
-        # Use days difference for integration.
-        x = (equity_series.index - equity_series.index[0]).days
-        integral = np.trapezoid(abs_dd, x=x)
-    else:
-        integral = np.trapezoid(abs_dd, dx=1)
-    return integral
-
-
-def leveraged_integral_drawdown(strategy_returns, leverage=1.0):
-    """
-    Computes the integrated drawdown for a strategy after applying the leverage multiplier.
-
-    Parameters
-    ----------
-    strategy_returns : pd.Series
-        Daily strategy returns.
-    leverage : float
-        The leverage multiplier.
-
-    Returns
-    -------
-    float
-        Integrated drawdown for the leveraged equity curve.
-    """
-    leveraged_returns = strategy_returns * leverage
-    equity_curve = (1 + leveraged_returns).cumprod()
-    return calculate_integral_drawdown(equity_curve)
-
-
-class OptimalLeverageAnalyzer(Analyzer):
-    """
-    This Analyzer produces a three-panel figure:
-
-      Panel 1: Equity Curves
-         - Plots the benchmark equity curve and the leveraged strategy equity curve (using the optimal leverage)
-           in a style similar to the EquityDrawdownAnalyzer.
-
-      Panel 2: Drawdown
-         - Plots the percentage drawdown curves.
-           **Important:** The drawdown is now computed from the leveraged strategy equity curve,
-           so you can see the effect of applying leverage.
-
-      Panel 3: Integrated Drawdown vs. Leverage
-         - Plots the integrated drawdown of the strategy as a function of leverage (using a grid search)
-           along with a horizontal line for the benchmark integrated drawdown.
-         - The x-axis for this panel is the leverage multiplier (not linked to dates).
-    """
-
-    def __init__(self, start_leverage=1.0, end_leverage=3.0, step=0.01, benchmark_label="Benchmark"):
-        self.start_leverage = start_leverage
-        self.end_leverage = end_leverage
-        self.step = step
-        self.benchmark_label = benchmark_label
-
-    def compute_drawdown(self, equity_series):
-        """
-        Computes the percentage drawdown of an equity series.
-
-        Parameters
-        ----------
-        equity_series : pd.Series
-            The cumulative equity curve.
-
-        Returns
-        -------
-        pd.Series
-            The percentage drawdown.
-        """
-        rolling_max = equity_series.cummax()
-        drawdown = (equity_series - rolling_max) / rolling_max
-        return drawdown
-
-    def _grid_search_leverage(self, strategy_returns, benchmark_returns):
-        """
-        Computes integrated drawdown for the leveraged strategy over a grid of leverage values,
-        and compares it with the benchmark integrated drawdown.
-
-        Returns
-        -------
-        dict
-            Contains:
-              - 'leverage_values': np.array of leverage multipliers.
-              - 'leveraged_ids': array of integrated drawdown for each leverage.
-              - 'benchmark_id': Integrated drawdown for the benchmark.
-              - 'optimal_leverage': The leverage value that minimizes the difference.
-              - 'optimal_strategy_id': The integrated drawdown at the optimal leverage.
-        """
-        # Benchmark equity curve and integrated drawdown.
-        benchmark_equity = (1 + benchmark_returns).cumprod()
-        benchmark_id = calculate_integral_drawdown(benchmark_equity)
-
-        leverage_values = np.arange(self.start_leverage, self.end_leverage + self.step, self.step)
-        leveraged_ids = []
-        for L in leverage_values:
-            L_returns = strategy_returns * L
-            equity_curve = (1 + L_returns).cumprod()
-            L_id = calculate_integral_drawdown(equity_curve)
-            leveraged_ids.append(L_id)
-        leveraged_ids = np.array(leveraged_ids)
-
-        diffs = np.abs(leveraged_ids - benchmark_id)
-        opt_index = np.argmin(diffs)
-        optimal_leverage = leverage_values[opt_index]
-        optimal_strategy_id = leveraged_ids[opt_index]
-
-        return {
-            'leverage_values': leverage_values,
-            'leveraged_ids': leveraged_ids,
-            'benchmark_id': benchmark_id,
-            'optimal_leverage': optimal_leverage,
-            'optimal_strategy_id': optimal_strategy_id
-        }
-
-    def analyze(self, results, ann_factor=252):
-        # This Analyzer mainly works in the plotting routine.
-        return results
-
-    def plot(self, results, **kwargs):
-        """
-        Produces a three-panel figure.
-
-        Panel 1: Equity Curves (date x-axis)
-          - Plots the benchmark equity curve and the leveraged strategy equity curve (using optimal leverage).
-
-        Panel 2: Drawdown (date x-axis)
-          - Plots the percentage drawdown curves computed from the leveraged strategy equity curve.
-          - (For reference, benchmark drawdown is also plotted.)
-
-        Panel 3: Integrated Drawdown vs. Leverage (leverage x-axis)
-          - Plots the integrated drawdown for the leveraged strategy for a grid of leverage values, along with a horizontal line for the benchmark.
-          - The optimal leverage is highlighted.
-
-        Returns
-        -------
-        matplotlib.figure.Figure
-            The generated figure.
-        """
-        strategy_returns = results.get('strategy_returns')
-        benchmark_returns = results.get('benchmark_returns')
-        if strategy_returns is None or benchmark_returns is None:
-            raise ValueError("Results must contain both 'strategy_returns' and 'benchmark_returns'.")
-
-        # Compute equity curves.
-        # For Panel 1, we'll show the benchmark and the leveraged strategy (using optimal leverage).
-        grid_res = self._grid_search_leverage(strategy_returns, benchmark_returns)
-        optimal_leverage = grid_res['optimal_leverage']
-        leveraged_returns = strategy_returns * optimal_leverage
-        leveraged_equity = (1 + leveraged_returns).cumprod()
-        benchmark_equity = (1 + benchmark_returns).cumprod()
-
-        # Compute drawdown curves.
-        # Panel 2: Drawdown from the leveraged strategy equity curve.
-        leveraged_dd = self.compute_drawdown(leveraged_equity) * 100.0
-        benchmark_dd = self.compute_drawdown(benchmark_equity) * 100.0
-
-        # Create three separate panels (do not share x-axis across all).
-        fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, ncols=1, figsize=(12, 12), sharex=False)
-
-        # Panel 1: Equity Curves (date x-axis)
-        ax1.plot(benchmark_equity.index, benchmark_equity.values,
-                 label=self.benchmark_label, color='black', linewidth=0.5, alpha=0.5)
-        ax1.plot(leveraged_equity.index, leveraged_equity.values,
-                 label=f"Strategy (Leveraged: {optimal_leverage:.2f}x)", linestyle='-.', color='darkorange',
-                 linewidth=1.5, alpha=0.8)
-        ax1.set_title("Equity Curves (Relative, starts at 1.0)")
-        ax1.legend(loc="best")
-        ax1.grid(True)
-        ax1.fill_between(benchmark_equity.index, leveraged_equity.values, benchmark_equity.values,
-                         where=(leveraged_equity.values >= benchmark_equity.values),
-                         interpolate=True, color='green', alpha=0.1)
-        ax1.fill_between(benchmark_equity.index, leveraged_equity.values, benchmark_equity.values,
-                         where=(leveraged_equity.values < benchmark_equity.values),
-                         interpolate=True, color='red', alpha=0.1)
-
-        # Panel 2: Drawdown Curves (date x-axis) for leveraged strategy.
-        ax2.plot(leveraged_equity.index, leveraged_dd,
-                 label="Strategy Drawdown (%)", color='darkorange', linewidth=1.5, alpha=0.8)
-        ax2.plot(benchmark_equity.index, benchmark_dd,
-                 label=f"{self.benchmark_label} Drawdown (%)", color='black', linewidth=0.5, alpha=0.5)
-        ax2.set_title("Drawdown (%) (Leveraged Strategy)")
-        ax2.legend(loc="best")
-        ax2.grid(True)
-        ax2.fill_between(leveraged_equity.index, leveraged_dd, benchmark_dd,
-                         where=(leveraged_dd <= benchmark_dd),
-                         interpolate=True, color='red', alpha=0.1)
-        ax2.fill_between(leveraged_equity.index, leveraged_dd, benchmark_dd,
-                         where=(leveraged_dd > benchmark_dd),
-                         interpolate=True, color='green', alpha=0.1)
-
-        # Panel 3: Integrated Drawdown vs. Leverage (leverage x-axis, independent axis)
-        ax3.plot(grid_res['leverage_values'], grid_res['leveraged_ids'],
-                 label="Strategy Integrated Drawdown", color='blue', linewidth=2)
-        ax3.axhline(grid_res['benchmark_id'], color='red', linestyle="--", linewidth=2,
-                    label="Benchmark Integrated Drawdown")
-        ax3.plot(grid_res['optimal_leverage'], grid_res['optimal_strategy_id'],
-                 marker='o', markersize=8, color='black',
-                 label=f"Optimal Leverage: {grid_res['optimal_leverage']:.2f}x")
-        ax3.set_title("Integrated Drawdown vs Leverage")
-        ax3.set_xlabel("Leverage")
-        ax3.set_ylabel("Integrated Drawdown")
-        ax3.legend(loc="best")
-        ax3.grid(True)
-
-        plt.tight_layout()
-        plt.show()
-        return fig
-
-```
-
-# portwine/analyzers/performanceattribution.py
-
-```py
-import matplotlib.pyplot as plt
-from portwine.analyzers import Analyzer
-
-class PerformanceAttributionAnalyzer(Analyzer):
-    """
-    This analyzer shows how each ticker contributes to the portfolio's performance,
-    given:
-      - signals_df (the daily portfolio weights for each ticker),
-      - tickers_returns (each ticker's daily returns).
-    """
-
-    def __init__(self):
-        pass
-
-    def analyze(self, results):
-        """
-        Given a results dict with:
-          {
-            'signals_df':      DataFrame of daily weights per ticker,
-            'tickers_returns': DataFrame of daily returns per ticker,
-            'strategy_returns': Series of daily strategy returns (optional),
-            'benchmark_returns': Series of daily benchmark returns (optional)
-          }
-
-        We compute:
-          - daily_contrib:  DataFrame of daily return contributions per ticker
-          - cumulative_contrib: DataFrame of the cumulative sum of these contributions
-          - final_contrib:  final sum (scalar) of each ticker's contribution to total PnL
-
-        Returns an attribution dict:
-          {
-            'daily_contrib':        DataFrame,
-            'cumulative_contrib':   DataFrame,
-            'final_contrib':        Series
-          }
-        """
-        signals_df = results.get('signals_df')
-        tickers_returns = results.get('tickers_returns')
-
-        if signals_df is None or tickers_returns is None:
-            print("Error: 'signals_df' or 'tickers_returns' missing in results.")
-            return None
-
-        # Align indexes & columns to ensure multiplication is valid
-        signals_df, tickers_returns = signals_df.align(tickers_returns, join='inner', axis=1)
-        signals_df, tickers_returns = signals_df.align(tickers_returns, join='inner', axis=0)
-
-        daily_contrib = signals_df * tickers_returns
-        daily_contrib = daily_contrib.fillna(0.0)
-        cumulative_contrib = daily_contrib.cumsum()
-        final_contrib = daily_contrib.sum(axis=0)
-
-        return {
-            'daily_contrib':      daily_contrib,
-            'cumulative_contrib': cumulative_contrib,
-            'final_contrib':      final_contrib
-        }
-
-    def plot(self, results):
-        """
-        Plots both:
-          1) Cumulative contribution per ticker over time
-          2) Final total contribution per ticker
-        as a single figure with two subplots.
-        """
-        attribution = self.analyze(results)
-        if attribution is None:
-            print("No attribution data to plot.")
-            return
-
-        cumulative_contrib = attribution['cumulative_contrib']
-        final_contrib = attribution['final_contrib']
-
-        if cumulative_contrib.empty or final_contrib.empty:
-            print("Attribution data is empty. Nothing to plot.")
-            return
-
-        tickers = cumulative_contrib.columns.tolist()
-
-        # Create one figure with two subplots stacked vertically
-        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(12, 8))
-
-        # 1) Line chart: Cumulative contribution over time
-        for tkr in tickers:
-            ax1.plot(cumulative_contrib.index, cumulative_contrib[tkr], label=tkr)
-        ax1.set_title("Cumulative Contribution per Ticker")
-        ax1.set_xlabel("Date")
-        ax1.set_ylabel("Cumulative Contribution (fraction of initial capital)")
-        ax1.legend(loc='best')
-        ax1.grid(True)
-
-        # 2) Bar chart: Final total contribution
-        final_contrib.plot(kind='bar', ax=ax2, alpha=0.7)
-        ax2.set_title("Final Total Contribution by Ticker")
-        ax2.set_xlabel("Ticker")
-        ax2.set_ylabel("Total Contribution")
-        ax2.grid(axis='y', linestyle='--', alpha=0.5)
-
-        plt.tight_layout()
-        plt.show()
-
-```
-
-# portwine/analyzers/positionsizing.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from portwine.analyzers import Analyzer
-
-class PositionSizingAnalyzer(Analyzer):
-    """
-    A single class that:
-      - Sweeps position sizes from position_size_start up to max_position_size in steps,
-      - Computes performance metrics (CAGR, Sharpe, Sortino, etc.) at each step,
-      - Selects the best position size under the chosen objective,
-      - Produces a single combined plot including:
-         1) Top: Equity curve (best levered) vs. benchmark
-         2) Middle row: position size vs. objective, position size vs. max drawdown
-         3) Bottom row: summary table comparing unlevered vs. best levered stats
-    """
-
-    def __init__(self):
-        """No parameters stored at init.  All are passed to analyze(...) or plot(...)."""
-        pass
-
-    def _compute_stats(self, daily_returns, ann_factor=252):
-        """
-        Compute performance metrics for a given daily returns Series:
-          - TotalReturn, CAGR, AnnualVol, Sharpe, MaxDrawdown, Sortino, Calmar, UlcerIndex, UPI.
-        """
-        dr = daily_returns.dropna()
-        if len(dr) < 2:
-            return {
-                'TotalReturn':  np.nan,
-                'CAGR':         np.nan,
-                'AnnualVol':    np.nan,
-                'Sharpe':       np.nan,
-                'MaxDrawdown':  np.nan,
-                'Sortino':      np.nan,
-                'Calmar':       np.nan,
-                'UlcerIndex':   np.nan,
-                'UPI':          np.nan
-            }
-
-        # 1) Total Return
-        total_ret = (1.0 + dr).prod() - 1.0
-
-        # 2) CAGR
-        n_days = len(dr)
-        years = n_days / ann_factor
-        if years > 0 and (1.0 + total_ret) > 1e-12:
-            try:
-                cagr = (1.0 + total_ret) ** (1.0 / years) - 1.0
-            except:
-                cagr = np.nan
-        else:
-            cagr = np.nan
-
-        # 3) AnnualVol
-        ann_vol = dr.std() * np.sqrt(ann_factor)
-
-        # 4) Sharpe (CAGR / annual_vol)
-        if ann_vol > 1e-9 and not np.isnan(cagr):
-            sharpe = cagr / ann_vol
-        else:
-            sharpe = np.nan
-
-        # 5) Equity curve for drawdown calculations
-        equity_curve = (1.0 + dr).cumprod()
-        rolling_max = equity_curve.cummax()
-        drawdown_series = (equity_curve - rolling_max) / rolling_max
-        max_drawdown = drawdown_series.min()  # negative or zero
-
-        # 6) Sortino
-        negative_returns = dr[dr < 0]
-        if len(negative_returns) > 0:
-            downside_vol = negative_returns.std() * np.sqrt(ann_factor)
-            if downside_vol > 1e-9 and not np.isnan(cagr):
-                sortino = cagr / downside_vol
-            else:
-                sortino = np.nan
-        else:
-            sortino = np.nan
-
-        # 7) Calmar (CAGR / abs(MaxDrawdown))
-        calmar = np.nan
-        if not np.isnan(cagr):
-            dd_abs = abs(max_drawdown)
-            if dd_abs > 1e-9:
-                calmar = cagr / dd_abs
-
-        # 8) Ulcer Index
-        ulcer_index = np.sqrt(np.mean(drawdown_series**2))
-
-        # 9) UPI (CAGR / UlcerIndex)
-        upi = np.nan
-        if ulcer_index > 1e-9 and not np.isnan(cagr):
-            upi = cagr / ulcer_index
-
-        return {
-            'TotalReturn':  total_ret,
-            'CAGR':         cagr,
-            'AnnualVol':    ann_vol,
-            'Sharpe':       sharpe,
-            'MaxDrawdown':  max_drawdown,
-            'Sortino':      sortino,
-            'Calmar':       calmar,
-            'UlcerIndex':   ulcer_index,
-            'UPI':          upi
-        }
-
-    def analyze(self,
-                results,
-                position_size_start=0.1,
-                position_size_step=0.1,
-                max_position_size=10.0,
-                objective='sharpe',
-                stop_drawdown_threshold=1.0,
-                ann_factor=252):
-        """
-        Sweep position size from position_size_start to max_position_size in increments,
-        compute stats, and pick the best under the chosen objective.
-
-        Returns
-        -------
-        {
-           'best_size': float,
-           'best_stats': dict,
-           'all_stats': pd.DataFrame  # indexed by position_size
-        }
-        """
-        if 'strategy_returns' not in results:
-            print("No 'strategy_returns' found in results.")
-            return None
-
-        strategy_returns = results['strategy_returns'].dropna()
-        if strategy_returns.empty:
-            print("Strategy returns is empty.")
-            return None
-
-        records = []
-        current_size = position_size_start
-        objective = objective.lower().strip()
-
-        while current_size <= max_position_size + 1e-9:
-            scaled_ret = strategy_returns * current_size
-            stats = self._compute_stats(scaled_ret, ann_factor)
-            row = {
-                'position_size': current_size,
-                **stats
-            }
-            records.append(row)
-
-            # If max drawdown <= -stop_drawdown_threshold => stop
-            if stats['MaxDrawdown'] <= -stop_drawdown_threshold:
-                break
-
-            current_size += position_size_step
-
-        df_stats = pd.DataFrame(records).set_index('position_size')
-        if df_stats.empty:
-            print("No valid position sizes tested.")
-            return None
-
-        # Identify best row
-        objective_col_map = {
-            'sharpe':       'Sharpe',
-            'sortino':      'Sortino',
-            'cagr':         'CAGR',
-            'max_drawdown': 'MaxDrawdown',
-            'calmar':       'Calmar',
-            'upi':          'UPI'
-        }
-        col_name = objective_col_map.get(objective, 'Sharpe')
-
-        if objective == 'max_drawdown':
-            # We want the "least negative" => idxmax
-            best_idx = df_stats[col_name].idxmax()
-        else:
-            best_idx = df_stats[col_name].idxmax()
-
-        best_size = float(best_idx)
-        best_stats = df_stats.loc[best_size].to_dict()
-
-        return {
-            'best_size':  best_size,
-            'best_stats': best_stats,
-            'all_stats':  df_stats
-        }
-
-    def plot(self,
-             results,
-             position_size_start=0.1,
-             position_size_step=0.1,
-             max_position_size=10.0,
-             objective='sharpe',
-             stop_drawdown_threshold=1.0,
-             ann_factor=252):
-        """
-        Runs analyze(...) with the user-provided parameters, then
-        produces a single figure with:
-         - (Top) Best equity vs. benchmark
-         - (Middle-Left) position_size vs. objective
-         - (Middle-Right) position_size vs. max drawdown
-         - (Bottom) summary table comparing unlevered vs best levered stats
-        """
-
-        # 1) Analyze
-        analysis_results = self.analyze(
-            results=results,
-            position_size_start=position_size_start,
-            position_size_step=position_size_step,
-            max_position_size=max_position_size,
-            objective=objective,
-            stop_drawdown_threshold=stop_drawdown_threshold,
-            ann_factor=ann_factor
-        )
-        if not analysis_results:
-            print("No analysis results; cannot plot.")
-            return
-
-        if 'strategy_returns' not in results:
-            print("No 'strategy_returns' in results; cannot plot.")
-            return
-
-        df_stats = analysis_results.get('all_stats')
-        if df_stats is None or df_stats.empty:
-            print("No stats DataFrame; nothing to plot.")
-            return
-
-        # 2) Prepare data for top equity plot
-        best_size = analysis_results['best_size']
-        strategy_returns = results['strategy_returns'].dropna()
-        scaled_returns = strategy_returns * best_size
-        equity_curve = (1.0 + scaled_returns).cumprod()
-
-        # Possibly benchmark
-        benchmark = results.get('benchmark_returns')
-        bm_ec = None
-        if benchmark is not None and not benchmark.empty:
-            bm_ec = (1.0 + benchmark.fillna(0.0)).cumprod()
-
-        # 3) Layout with 4 rows: top for equity, 2 for mid subplots, 1 for table
-        # We'll reduce the bottom row's ratio so the table doesn't get huge space
-        fig = plt.figure(figsize=(12, 10))
-        grid_ratios = [2,1,1,0.8]  # less space for table row => 0.8
-        gs = fig.add_gridspec(nrows=4, ncols=2, height_ratios=grid_ratios)
-
-        # (A) Top row => equity
-        ax_equity = fig.add_subplot(gs[0, :])
-        ax_equity.plot(equity_curve.index, equity_curve.values,
-                       label=f"Strategy x{best_size:.2f}")
-        if bm_ec is not None:
-            ax_equity.plot(bm_ec.index, bm_ec.values, label="Benchmark", alpha=0.7)
-
-        ax_equity.set_title("Position Sizing Analysis: Best Strategy vs. Benchmark")
-        ax_equity.set_xlabel("Date")
-        ax_equity.set_ylabel("Cumulative Return")
-        ax_equity.legend(loc="best")
-        ax_equity.grid(True)
-
-        # (B) Middle row => objective, dd
-        ax_obj = fig.add_subplot(gs[1, 0])
-        ax_dd = fig.add_subplot(gs[1, 1])
-
-        # objective col
-        objective_col_map = {
-            'sharpe':       'Sharpe',
-            'sortino':      'Sortino',
-            'cagr':         'CAGR',
-            'max_drawdown': 'MaxDrawdown',
-            'calmar':       'Calmar',
-            'upi':          'UPI'
-        }
-        col_name = objective_col_map.get(objective, 'Sharpe')
-
-        ax_obj.plot(df_stats.index, df_stats[col_name], marker='o', linestyle='-')
-        ax_obj.set_title(f"Position Size vs. {col_name}")
-        ax_obj.set_xlabel("Position Size")
-        ax_obj.set_ylabel(col_name)
-        ax_obj.grid(True)
-
-        ax_dd.plot(df_stats.index, df_stats['MaxDrawdown'], marker='o', linestyle='-', color='red')
-        ax_dd.set_title("Position Size vs. Max Drawdown")
-        ax_dd.set_xlabel("Position Size")
-        ax_dd.set_ylabel("Max Drawdown")
-        ax_dd.grid(True)
-
-        # (C) We'll do an additional subplot row for any expansions, or skip it.
-        # Let's put the table in row=3 (the 4th row).
-        ax_table = fig.add_subplot(gs[2:, :])  # spans row=2..3 => 2 rows
-        ax_table.axis('off')
-
-        # 4) Build the table comparing unlevered vs. best levered
-        unlevered_stats = self._compute_stats(strategy_returns, ann_factor)
-        levered_stats = self._compute_stats(scaled_returns, ann_factor)
-
-        show_metrics = [
-            ("TotalReturn",   "Total Return",  True),
-            ("CAGR",          "CAGR",          True),
-            ("Sharpe",        "Sharpe",        False),
-            ("Sortino",       "Sortino",       False),
-            ("MaxDrawdown",   "Max Drawdown",  True),
-            ("Calmar",        "Calmar",        False),
-            ("UlcerIndex",    "Ulcer Index",   False),
-            ("UPI",           "UPI",           False)
-        ]
-        table_data = []
-        col_labels = ["Metric", "Unlevered (1×)", f"Levered (x{best_size:.2f})", "Diff %"]
-
-        for (key, label, is_percent) in show_metrics:
-            unlev_val = unlevered_stats[key]
-            lev_val   = levered_stats[key]
-
-            if is_percent:
-                unlev_str = f"{unlev_val:.2%}" if pd.notnull(unlev_val) else "NaN"
-                lev_str   = f"{lev_val:.2%}"   if pd.notnull(lev_val)   else "NaN"
-                # Diff ratio
-                if pd.notnull(unlev_val) and abs(unlev_val) > 1e-12:
-                    diff_ratio = (lev_val - unlev_val) / abs(unlev_val)
-                else:
-                    diff_ratio = np.nan
-                diff_str = f"{diff_ratio:.2%}" if pd.notnull(diff_ratio) else "NaN"
-            else:
-                unlev_str = f"{unlev_val:.3f}" if pd.notnull(unlev_val) else "NaN"
-                lev_str   = f"{lev_val:.3f}"   if pd.notnull(lev_val)   else "NaN"
-                if pd.notnull(unlev_val) and abs(unlev_val) > 1e-12:
-                    diff_ratio = (lev_val - unlev_val) / abs(unlev_val)
-                else:
-                    diff_ratio = np.nan
-                diff_str = f"{diff_ratio:.2%}" if pd.notnull(diff_ratio) else "NaN"
-
-            table_data.append([label, unlev_str, lev_str, diff_str])
-
-        tbl = ax_table.table(
-            cellText=table_data,
-            colLabels=col_labels,
-            cellLoc='center',
-            # loc='center'
-            loc='upper center'
-        )
-        tbl.auto_set_font_size(False)
-        tbl.set_fontsize(9)
-        tbl.scale(1, 1.2)
-
-        # color the last column if parseable
-        n_data_rows = len(table_data)
-        diff_col_idx = len(col_labels) - 1
-        for row_i in range(n_data_rows):
-            cell = tbl[(row_i+1, diff_col_idx)]  # data rows start at 1
-            raw_str = table_data[row_i][3].strip('%')
-            try:
-                val = float(raw_str)/100
-                if val > 0:
-                    cell.set_facecolor('#d8f3dc')  # light green
-                elif val < 0:
-                    cell.set_facecolor('#ffccd5')  # light red
-            except:
-                pass
-
-        # Tweak layout: we've already used GridSpec with row ratio,
-        # but let's further reduce vertical gaps:
-        fig.tight_layout()
-        # or a small manual subplots_adjust
-        plt.subplots_adjust(hspace=0.3)
-
-        plt.show()
-
-```
-
-# portwine/analyzers/riskcontribution.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from portwine.analyzers import Analyzer
-
-class RiskContributionAnalyzer(Analyzer):
-    """
-    Analyzes each ticker's contribution to overall portfolio risk (variance)
-    under a rolling covariance approach. Useful for observing whether
-    the portfolio approximates a 'risk parity' distribution or if some
-    tickers dominate risk.
-
-    Requirements:
-      - signals_df: DataFrame of daily portfolio weights, [dates x tickers]
-      - tickers_returns: DataFrame of daily returns for each ticker, [dates x tickers]
-      - We compute a rolling covariance matrix using the previous 'cov_window' days
-        for each date. Then for that date:
-           portfolio_variance = w^T * Sigma * w
-           ARC_i = w_i * (Sigma * w)_i      (absolute risk contribution)
-           PRC_i = ARC_i / sum_j( ARC_j )   (percentage risk contribution)
-      - Summation of ARC_i across all tickers = portfolio variance
-      - Summation of PRC_i across all tickers = 1.0 (100%)
-    """
-
-    def __init__(self, cov_window=60):
-        """
-        Parameters
-        ----------
-        cov_window : int
-            Number of past days used to estimate the rolling covariance matrix.
-        """
-        self.cov_window = cov_window
-
-    def analyze(self, results):
-        """
-        Compute rolling risk contributions (absolute and percentage) for each ticker.
-
-        Parameters
-        ----------
-        results : dict
-            {
-              'signals_df': DataFrame of daily portfolio weights,
-              'tickers_returns': DataFrame of daily ticker returns,
-              ...
-            }
-
-        Returns
-        -------
-        risk_dict : dict
-            {
-              'abs_risk_contrib': DataFrame of shape [dates x tickers],
-                  where entry (t, i) is ARC_i(t),
-              'pct_risk_contrib': DataFrame of shape [dates x tickers],
-                  where entry (t, i) is PRC_i(t),
-              'portfolio_vol': Series of shape [dates,],
-                  daily portfolio volatility (annualized if desired),
-              'portfolio_variance': Series of shape [dates,],
-                  daily portfolio variance,
-            }
-        """
-        signals_df = results.get('signals_df')
-        tickers_returns = results.get('tickers_returns')
-        if signals_df is None or tickers_returns is None:
-            print("Error: signals_df or tickers_returns missing.")
-            return None
-
-        # Align columns & rows
-        # We want signals_df and tickers_returns to have the same tickers & date index
-        signals_df, tickers_returns = signals_df.align(
-            tickers_returns, join='inner', axis=1
-        )
-        signals_df, tickers_returns = signals_df.align(
-            tickers_returns, join='inner', axis=0
-        )
-
-        # We'll create DataFrames to store absolute & percentage risk contributions
-        abs_risk_contrib = pd.DataFrame(index=signals_df.index, columns=signals_df.columns, dtype=float)
-        pct_risk_contrib = pd.DataFrame(index=signals_df.index, columns=signals_df.columns, dtype=float)
-        portfolio_variance = pd.Series(index=signals_df.index, dtype=float)
-        portfolio_vol = pd.Series(index=signals_df.index, dtype=float)
-
-        tickers = signals_df.columns.tolist()
-
-        # We'll iterate through the dates, but skip the first 'cov_window' because we
-        # need enough lookback to compute the covariance matrix.
-        for i in range(self.cov_window, len(signals_df)):
-            current_date = signals_df.index[i]
-            # We'll look back cov_window days (excluding current_date).
-            start_idx = i - self.cov_window
-            window_slice = tickers_returns.iloc[start_idx:i]
-
-            # Estimate covariance matrix from the last 'cov_window' days of returns
-            Sigma = window_slice.cov()  # shape [N x N] for N tickers
-
-            # Get the weight vector at current_date
-            w = signals_df.loc[current_date].values  # shape [N,]
-
-            # If there are any NaNs in weights, fill with 0
-            w = np.nan_to_num(w)
-
-            # portfolio variance = w^T * Sigma * w
-            port_var = float(np.dot(w, Sigma.dot(w)))
-            portfolio_variance.loc[current_date] = port_var
-
-            # absolute risk contribution ARC_i = w_i * (Sigma*w)_i
-            # We'll do it in vectorized form:
-            Sigma_w = Sigma.dot(w)  # shape [N,]
-            arc = w * Sigma_w  # shape [N,]
-
-            abs_risk_contrib.loc[current_date] = arc
-
-            # percentage risk contribution prc_i = arc_i / sum_j(arc_j)
-            sum_arc = arc.sum()
-            if abs(sum_arc) < 1e-12:
-                # If portfolio variance is ~0, set PRC to 0
-                pct_risk_contrib.loc[current_date] = 0.0
-            else:
-                pct_risk_contrib.loc[current_date] = arc / sum_arc
-
-            # If you'd like daily *annualized* volatility, do something like:
-            # daily vol = sqrt(port_var), annual vol = sqrt(port_var * 252)
-            # For simplicity, let's keep it daily:
-            daily_vol = np.sqrt(port_var)
-            portfolio_vol.loc[current_date] = daily_vol
-
-        risk_dict = {
-            'abs_risk_contrib': abs_risk_contrib,
-            'pct_risk_contrib': pct_risk_contrib,
-            'portfolio_variance': portfolio_variance,
-            'portfolio_vol': portfolio_vol
-        }
-        return risk_dict
-
-    def plot(self,
-             results,
-             plot_type='pct',
-             snapshot='last_valid',
-             rolling_window=30,
-             title="Risk Contribution Over Time"):
-        """
-        Plot either absolute or percentage risk contributions over time
-        as a stacked area chart, plus a bar chart "snapshot" at a chosen date or
-        averaged over a chosen window.
-
-        Parameters
-        ----------
-        risk_dict : dict
-            Output of self.analyze(), with keys:
-                'abs_risk_contrib': DataFrame [dates x tickers]
-                'pct_risk_contrib': DataFrame [dates x tickers]
-                'portfolio_variance': Series [dates,]
-                'portfolio_vol': Series [dates,]
-        plot_type : str
-            Either 'pct' (percentage) or 'abs' (absolute) risk contribution
-        snapshot : str or pd.Timestamp or 'last_valid' or None
-            Controls which date(s) to show in the final bar chart:
-              - 'last_valid' (default): use the last date with non-NaN data
-              - a date string like "2021-12-31" or a pd.Timestamp
-              - None => skip the snapshot bar chart
-        average_window : int or None
-            If provided (e.g. 30), we compute an average of the last N days
-            leading up to `snapshot` rather than a single date.
-        title : str
-            Chart title for the stacked area chart.
-        """
-
-        risk_dict = self.analyze(results)
-
-        if risk_dict is None:
-            print("No risk data to plot.")
-            return
-
-        if plot_type.lower() == 'pct':
-            df_risk_contrib = risk_dict['pct_risk_contrib']
-            y_label = "Percentage Risk Contribution"
-        else:
-            df_risk_contrib = risk_dict['abs_risk_contrib']
-            y_label = "Absolute Risk Contribution"
-
-        if df_risk_contrib is None or df_risk_contrib.empty:
-            print("Risk contribution data is empty.")
-            return
-
-        # 1) Stacked area chart for entire timeseries
-        fig, ax = plt.subplots(figsize=(10, 6))
-        df_risk_contrib.plot.area(ax=ax, linewidth=0, alpha=0.8)
-        ax.set_title(title)
-        ax.set_ylabel(y_label)
-        ax.set_xlabel("Date")
-        ax.grid(True)
-        # plt.tight_layout()
-        # plt.show()
-
-        # 2) If snapshot is None, skip the bar chart
-        if snapshot is None:
-            return
-
-        # We'll define a helper function to get a valid end_date if needed
-        def get_valid_end_date(df, snap):
-            """
-            If 'snap' == 'last_valid', return the last non-NaN date in df.
-            If snap is a string or timestamp, parse and find the closest date <= snap.
-            Otherwise, return None if invalid.
-            """
-            if snap == 'last_valid':
-                valid_df = df.dropna(how='all')
-                if valid_df.empty:
-                    return None
-                return valid_df.index[-1]  # a Timestamp
-            else:
-                # attempt parse
-                snap_date = pd.to_datetime(snap)
-                # find the closest date in df_risk_contrib <= snap_date
-                valid_dates = df.index[df.index <= snap_date]
-                if len(valid_dates) == 0:
-                    return None
-                return valid_dates[-1]
-
-        if rolling_window and rolling_window > 1:
-            # We want an average over the last N days up to 'snapshot'.
-            end_date = get_valid_end_date(df_risk_contrib, snapshot)
-            if end_date is None:
-                print(f"No valid dates found for snapshot='{snapshot}'. Skipping bar chart.")
-                return
-
-            all_dates = df_risk_contrib.index
-            end_idx = all_dates.get_loc(end_date)
-            start_idx = max(0, end_idx - (rolling_window - 1))
-            window_dates = all_dates[start_idx:end_idx + 1]
-
-            final_vec = df_risk_contrib.loc[window_dates].mean(axis=0)
-            bar_title = f"Average {y_label} over last {rolling_window} days (ending {end_date.date()})"
-
-        else:
-            # Single date snapshot
-            end_date = get_valid_end_date(df_risk_contrib, snapshot)
-            if end_date is None:
-                print(f"No valid dates found for snapshot='{snapshot}'. Skipping bar chart.")
-                return
-
-            final_vec = df_risk_contrib.loc[end_date]
-            bar_title = f"{y_label} at {end_date.date()}"
-
-        # We simply use the rolling mean. This will produce some NaNs for the first
-        # rolling_window - 1 points. We can drop them or let them remain.
-        df_rolling = df_risk_contrib.rolling(rolling_window).mean()
-
-        # If you prefer to skip the leading NaNs, you can do df_rolling = df_rolling.dropna(...)
-        # For demonstration, let's keep them.
-
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        df_rolling.plot.area(ax=ax2, linewidth=0, alpha=0.8)
-        ax2.set_title(f"Rolling {rolling_window}-day Mean of {y_label}")
-        ax2.set_ylabel(y_label)
-        ax2.set_xlabel("Date")
-        ax2.grid(True)
-
-        fig3, ax3 = plt.subplots(figsize=(8, 5))
-        final_vec.plot(kind='bar', ax=ax3, color='blue', alpha=0.7)
-        ax3.set_title(bar_title)
-        ax3.set_ylabel(y_label)
-        ax3.set_xlabel("Tickers")
-        ax3.grid(axis='y', linestyle='--', alpha=0.5)
-
-        plt.tight_layout()
-        plt.show()
-
-```
-
-# portwine/analyzers/seasonality.py
-
-```py
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import calendar
-from scipy import stats
-from statsmodels.stats.multitest import multipletests
-from portwine.analyzers.base import Analyzer
-
-class SeasonalityAnalyzer(Analyzer):
-    """
-    A Seasonality Analyzer that:
-      1) Adds time-based features (day_of_week, month, quarter, year, etc.)
-         and special "turn-of" indicators for month and quarter (±3 days).
-      2) Uses a generic seasonality analysis method to handle day_of_week,
-         month, quarter, year, or any other time grouping.
-      3) Plots each grouping in a temporal (natural) order on the x-axis
-         (e.g., Monday->Sunday, Jan->Dec, Q1->Q4, ascending years, etc.).
-    """
-
-    def analyze(self, results, significance_level=0.05, benchmark_comparison=True):
-        """
-        Performs seasonality analysis on strategy & optional benchmark returns.
-
-        Parameters
-        ----------
-        results : dict
-            Backtester results dict with keys:
-                'strategy_returns': pd.Series
-                'benchmark_returns': pd.Series (optional)
-        significance_level : float
-            Alpha level for statistical tests (default: 0.05).
-        benchmark_comparison : bool
-            Whether to compare strategy against benchmark.
-
-        Returns
-        -------
-        analysis_results : dict
-            {
-                'day_of_week': { 'stats': DataFrame, ... },
-                'month_of_year': { ... },
-                'quarter': { ... },
-                'year': { ... },
-                'turn_of_month': { ... },
-                'turn_of_quarter': { ... }
-            }
-        """
-        strategy_returns = results.get('strategy_returns', pd.Series(dtype=float))
-        benchmark_returns = (results.get('benchmark_returns', pd.Series(dtype=float))
-                             if benchmark_comparison else None)
-
-        # Ensure DatetimeIndex
-        if not isinstance(strategy_returns.index, pd.DatetimeIndex):
-            strategy_returns.index = pd.to_datetime(strategy_returns.index)
-        if benchmark_returns is not None and not isinstance(benchmark_returns.index, pd.DatetimeIndex):
-            benchmark_returns.index = pd.to_datetime(benchmark_returns.index)
-
-        # Build DataFrames with features
-        strat_df = self._add_time_features(strategy_returns)
-        bench_df = self._add_time_features(benchmark_returns) if benchmark_returns is not None else None
-
-        # We define a dictionary mapping each "analysis label" to the column & optional display name
-        time_periods = {
-            'day_of_week': {'group_col': 'day_of_week', 'display_col': 'day_name'},
-            'month_of_year': {'group_col': 'month', 'display_col': 'month_name'},
-            'quarter': {'group_col': 'quarter', 'display_col': None},
-            'year': {'group_col': 'year', 'display_col': None},
-        }
-
-        analysis_results = {}
-
-        # Generic analysis for day_of_week, month_of_year, quarter, year
-        for label, info in time_periods.items():
-            analysis_results[label] = self._analyze_seasonality(
-                df=strat_df,
-                column=info['group_col'],
-                display_name_column=info['display_col'],
-                benchmark_df=bench_df,
-                alpha=significance_level
-            )
-
-        # Turn-of-month and turn-of-quarter
-        analysis_results['turn_of_month'] = self._analyze_turn(
-            strat_df, bench_df, prefix='tom', alpha=significance_level
-        )
-        analysis_results['turn_of_quarter'] = self._analyze_turn(
-            strat_df, bench_df, prefix='toq', alpha=significance_level
-        )
-
-        return analysis_results
-
-    def plot(self, results, analysis_results=None, figsize=(15, 18)):
-        """
-        Plot each seasonal grouping in subplots, with a temporal or natural ordering on the x-axis.
-
-        Parameters
-        ----------
-        results : dict
-            Backtester results dict (see analyze).
-        analysis_results : dict, optional
-            Results from analyze() method (will be computed if None).
-        figsize : tuple
-            Size of the entire figure.
-        """
-        if analysis_results is None:
-            analysis_results = self.analyze(results)
-
-        fig, axes = plt.subplots(nrows=3, ncols=2, figsize=figsize)
-
-        # For each row/col, we define a label & chart title
-        subplot_map = [
-            ('day_of_week', (0, 0), "Day of Week"),
-            ('month_of_year', (0, 1), "Month of Year"),
-            ('quarter', (1, 0), "Quarter"),
-            ('year', (1, 1), "Year"),
-            ('turn_of_month', (2, 0), "Turn of Month"),
-            ('turn_of_quarter', (2, 1), "Turn of Quarter")
-        ]
-
-        for key, (r, c), title in subplot_map:
-            ax = axes[r][c]
-            self._plot_seasonality(analysis_results.get(key), title=title, ax=ax)
-
-        plt.tight_layout()
-        plt.show()
-
-    def generate_report(self, results, analysis_results=None, alpha=0.05):
-        """
-        Generate a text report summarizing the analysis.
-
-        Parameters
-        ----------
-        results : dict
-            Backtester results dict (see analyze).
-        analysis_results : dict, optional
-            Results from analyze() method (will be computed if None).
-        alpha : float
-            Significance level (default: 0.05).
-
-        Returns
-        -------
-        str
-            Multi-line text report.
-        """
-        if analysis_results is None:
-            analysis_results = self.analyze(results, significance_level=alpha)
-
-        lines = []
-        lines.append("=== SEASONALITY ANALYSIS REPORT ===\n")
-
-        strat_ret = results.get('strategy_returns', pd.Series(dtype=float))
-        if not strat_ret.empty:
-            lines.append(f"Overall Mean Return: {strat_ret.mean():.4%}")
-            lines.append(f"Overall Positive Days: {(strat_ret > 0).mean():.2%}")
-            lines.append(f"Total Days Analyzed: {len(strat_ret)}")
-        lines.append("")
-
-        label_map = {
-            'day_of_week': "DAY OF WEEK",
-            'month_of_year': "MONTH OF YEAR",
-            'quarter': "QUARTER",
-            'year': "YEAR",
-            'turn_of_month': "TURN OF MONTH",
-            'turn_of_quarter': "TURN OF QUARTER"
-        }
-
-        for key, title in label_map.items():
-            lines.append(f"=== {title} ANALYSIS ===")
-            result_dict = analysis_results.get(key)
-            lines.extend(self._format_seasonality_report(result_dict, label_name=title))
-            lines.append("")
-
-        return "\n".join(lines)
-
-    ###########################################################################
-    # Internals
-    ###########################################################################
-    def _add_time_features(self, returns_series):
-        """
-        Adds standard time-based features to a returns Series (day, month, quarter, etc.)
-        Also adds flags for turn-of-month and turn-of-quarter from T-3 to T+3.
-        """
-        if returns_series is None or returns_series.empty:
-            return None
-
-        df = pd.DataFrame({'returns': returns_series})
-
-        # Basic time features
-        df['day_of_week'] = df.index.dayofweek  # 0=Monday
-        df['day_name'] = df.index.day_name()
-        df['day'] = df.index.day
-        df['month'] = df.index.month
-        df['month_name'] = df.index.month_name()
-        df['quarter'] = df.index.quarter
-        df['year'] = df.index.year
-
-        # Reorder categories for day_of_week and month_name
-        # so plots can follow chronological order if we choose to map them
-        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        df['day_name'] = pd.Categorical(df['day_name'], categories=day_order, ordered=True)
-
-        month_order = [calendar.month_name[i] for i in range(1, 13)]
-        df['month_name'] = pd.Categorical(df['month_name'], categories=month_order, ordered=True)
-
-        # Mark turn-of-month and turn-of-quarter
-        self._mark_turn(df, prefix='tom', period_months=range(1, 13))  # All months
-        self._mark_turn(df, prefix='toq', period_months=[1, 4, 7, 10])  # Quarter start months
-        return df
-
-    def _mark_turn(self, df, prefix, period_months, day_range=range(-3, 4)):
-        """
-        Mark turn-of-month or turn-of-quarter:
-          prefix='tom' or 'toq'
-          period_months: which months define a "turn" (1..12 or [1,4,7,10])
-          day_range: e.g. -3..+3
-        """
-        # Identify the 'first day' of each relevant month
-        is_start = df.index.month.isin(period_months) & (df.index.day == 1)
-
-        for offset in day_range:
-            col_name = f"{prefix}_{offset}"
-            df[col_name] = False
-            for idx in df.index[is_start]:
-                shifted_idx = idx + pd.Timedelta(days=offset)
-                if shifted_idx in df.index:
-                    df.loc[shifted_idx, col_name] = True
-
-    def _analyze_turn(self, strategy_df, benchmark_df, prefix='tom', alpha=0.05):
-        """
-        Analyze returns around turn-of-month (tom) or turn-of-quarter (toq) ±3 days
-        by grouping them into a single factor column (e.g. 'tom_day').
-        """
-        if strategy_df is None or strategy_df.empty:
-            return None
-
-        offset_labels = {
-            f'{prefix}_-3': 'T-3',
-            f'{prefix}_-2': 'T-2',
-            f'{prefix}_-1': 'T-1',
-            f'{prefix}_0': 'T+0',
-            f'{prefix}_1': 'T+1',
-            f'{prefix}_2': 'T+2',
-            f'{prefix}_3': 'T+3'
-        }
-
-        strat_frames = []
-        bench_frames = []
-
-        for col, label in offset_labels.items():
-            if col in strategy_df.columns:
-                subset_strat = strategy_df.loc[strategy_df[col], :].copy()
-                if not subset_strat.empty:
-                    subset_strat[f'{prefix}_day'] = label
-                    strat_frames.append(subset_strat)
-
-            if benchmark_df is not None and not benchmark_df.empty and col in benchmark_df.columns:
-                subset_bench = benchmark_df.loc[benchmark_df[col], :].copy()
-                if not subset_bench.empty:
-                    subset_bench[f'{prefix}_day'] = label
-                    bench_frames.append(subset_bench)
-
-        if not strat_frames:
-            return None
-
-        df_strat_all = pd.concat(strat_frames)
-        df_bench_all = pd.concat(bench_frames) if bench_frames else None
-
-        return self._analyze_seasonality(
-            df_strat_all,
-            column=f'{prefix}_day',
-            benchmark_df=df_bench_all,
-            alpha=alpha
-        )
-
-    def _analyze_seasonality(self,
-                             df,
-                             column,
-                             value_column='returns',
-                             benchmark_df=None,
-                             alpha=0.05,
-                             display_name_column=None):
-        """
-        Generic seasonality analysis for a given column (e.g., 'day_of_week', 'month', etc.).
-        Groups by that column, computes means, medians, stats, t-tests, etc.
-        Optionally compares strategy vs. benchmark if benchmark_df is provided.
-        """
-        if df is None or df.empty:
-            return None
-
-        grouped = df.groupby(column)[value_column]
-        stats_df = pd.DataFrame({
-            'mean': grouped.mean(),
-            'median': grouped.median(),
-            'std': grouped.std(),
-            'count': grouped.count(),
-            'positive_pct': grouped.apply(lambda x: (x > 0).mean()),
-            'cumulative': grouped.apply(lambda x: (1 + x).prod() - 1),
-        })
-
-        # Overall stats
-        overall_mean = df[value_column].mean()
-        overall_std = df[value_column].std()
-        overall_n = len(df)
-
-        # T-tests: group vs. non-group
-        t_stats, p_values = [], []
-        for group_val in stats_df.index:
-            group_data = df.loc[df[column] == group_val, value_column]
-            non_group_data = df.loc[df[column] != group_val, value_column]
-            t_stat, p_val = stats.ttest_ind(group_data, non_group_data, equal_var=False)
-            t_stats.append(t_stat)
-            p_values.append(p_val)
-
-        stats_df['t_stat'] = t_stats
-        stats_df['p_value'] = p_values
-        stats_df['significant'] = stats_df['p_value'] < alpha
-        # Effect size
-        stats_df['effect_size'] = (stats_df['mean'] - overall_mean) / (overall_std if overall_std != 0 else 1e-9)
-
-        # Multiple testing correction
-        _, corr_pvals, _, _ = multipletests(stats_df['p_value'].values, alpha=alpha, method='fdr_bh')
-        stats_df['corrected_p_value'] = corr_pvals
-        stats_df['significant_corrected'] = stats_df['corrected_p_value'] < alpha
-
-        # If benchmark is provided
-        if benchmark_df is not None and not benchmark_df.empty:
-            bm_grouped = benchmark_df.groupby(column)[value_column]
-            bm_stats = pd.DataFrame({
-                'benchmark_mean': bm_grouped.mean(),
-                'benchmark_median': bm_grouped.median(),
-                'benchmark_cumulative': bm_grouped.apply(lambda x: (1 + x).prod() - 1)
-            })
-            stats_df = stats_df.merge(bm_stats, left_index=True, right_index=True, how='left')
-
-            # Strategy vs. Benchmark t-test within each group
-            strat_vs_bm_t, strat_vs_bm_p = [], []
-            for group_val in stats_df.index:
-                strat_grp = df.loc[df[column] == group_val, value_column]
-                bm_grp = benchmark_df.loc[benchmark_df[column] == group_val, value_column]
-                if not strat_grp.empty and not bm_grp.empty:
-                    t_stat, p_val = stats.ttest_ind(strat_grp, bm_grp, equal_var=False)
-                else:
-                    t_stat, p_val = np.nan, np.nan
-                strat_vs_bm_t.append(t_stat)
-                strat_vs_bm_p.append(p_val)
-
-            stats_df['strat_vs_bm_t'] = strat_vs_bm_t
-            stats_df['strat_vs_bm_p'] = strat_vs_bm_p
-            stats_df['strat_vs_bm_significant'] = stats_df['strat_vs_bm_p'] < alpha
-
-            # Correct these p-values
-            finite_mask = stats_df['strat_vs_bm_p'].notnull()
-            if finite_mask.sum() > 0:
-                _, corr_bm_pvals, _, _ = multipletests(
-                    stats_df.loc[finite_mask, 'strat_vs_bm_p'].values,
-                    alpha=alpha, method='fdr_bh'
-                )
-                stats_df['strat_vs_bm_corrected_p'] = np.nan
-                stats_df.loc[finite_mask, 'strat_vs_bm_corrected_p'] = corr_bm_pvals
-                stats_df['strat_vs_bm_significant_corrected'] = (
-                        stats_df['strat_vs_bm_corrected_p'] < alpha
-                )
-
-        # Remap to display names if requested
-        if display_name_column and display_name_column in df.columns:
-            # Build a map from numeric group_val -> display_name (like day_of_week -> Monday, etc.)
-            unique_map = df[[column, display_name_column]].drop_duplicates()
-            mapper = dict(zip(unique_map[column], unique_map[display_name_column]))
-            # Re-map index to display
-            new_index = []
-            for val in stats_df.index:
-                new_index.append(mapper[val] if val in mapper else val)
-            stats_df.index = new_index
-
-        # No longer automatically sorting by 'mean' descending.
-        # Instead, we keep the natural/temporal order in the final plot step.
-
-        return {
-            'stats': stats_df,
-            'overall_mean': overall_mean,
-            'overall_std': overall_std,
-            'overall_n': overall_n
-        }
-
-    def _plot_seasonality(self, seasonality_result, title, ax):
-        """
-        Plot a bar chart of the mean returns for each group in their temporal/natural order.
-        If a benchmark is present, show it alongside strategy bars.
-        """
-        if seasonality_result is None:
-            ax.text(0.5, 0.5, "No data available",
-                    horizontalalignment='center', verticalalignment='center')
-            ax.set_title(title)
-            return
-
-        df_stats = seasonality_result['stats'].copy()
-        if df_stats.empty:
-            ax.text(0.5, 0.5, "No data available",
-                    horizontalalignment='center', verticalalignment='center')
-            ax.set_title(title)
-            return
-
-        # Reorder the index in a temporal manner depending on 'title'
-        df_stats = self._reorder_index_temporally(df_stats, title)
-
-        x_labels = df_stats.index
-        x_pos = np.arange(len(x_labels))
-        mean_vals = df_stats['mean'].values
-        has_benchmark = ('benchmark_mean' in df_stats.columns)
-
-        width = 0.35 if has_benchmark else 0.5
-
-        # Plot strategy bars
-        bars_strat = ax.bar(
-            x_pos - (width / 2 if has_benchmark else 0),
-            mean_vals,
-            width=width,
-            label='Strategy'
-        )
-
-        # Color code significant bars
-        if 'significant_corrected' in df_stats.columns:
-            for i, sig in enumerate(df_stats['significant_corrected']):
-                if sig:
-                    bars_strat[i].set_color('green')
-                    bars_strat[i].set_alpha(0.7)
-
-        # Plot benchmark bars if available
-        if has_benchmark:
-            bench_vals = df_stats['benchmark_mean'].values
-            bars_bench = ax.bar(
-                x_pos + width / 2,
-                bench_vals,
-                width=width,
-                label='Benchmark',
-                color='orange',
-                alpha=0.7
-            )
-
-        # Plot an overall mean line
-        overall_mean = seasonality_result['overall_mean']
-        ax.axhline(y=overall_mean, color='r', linestyle='--', alpha=0.5,
-                   label=f'Overall Mean: {overall_mean:.4%}')
-
-        ax.set_title(title)
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(x_labels, rotation=0)
-        ax.set_ylabel('Mean Return')
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.2%}'))
-        ax.grid(axis='y', linestyle='--', alpha=0.3)
-        ax.legend()
-
-    def _reorder_index_temporally(self, df_stats, title):
-        """
-        Reorder df_stats.index in a natural or temporal way based on the chart title:
-          - Day of Week: Monday->Sunday
-          - Month of Year: use abbreviated month names (Jan->Dec)
-          - Quarter: map numeric to Q1..Q4 or reorder Q1..Q4
-          - Year: use the last two digits (e.g., 2021 -> 21)
-          - Turn of Month or Quarter: T-3..T+3
-        Only drop rows if their 'mean' is truly NaN, preserving partial data.
-        """
-        if df_stats is None or df_stats.empty:
-            return df_stats
-
-        idx_list = list(df_stats.index)
-
-        # 1) Day of Week
-        if "Day of Week" in title:
-            day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-            sorted_order = [d for d in day_order if d in idx_list]
-            df_stats = df_stats.reindex(sorted_order)
-            df_stats = df_stats.dropna(subset=["mean"])
-            return df_stats
-
-        # 2) Month of Year
-        if "Month of Year" in title:
-            # The DataFrame index currently has full month names like "January", "February", ...
-            # We reorder them, then rename them to abbreviated forms.
-            full_to_abbrev = {
-                "January": "Jan", "February": "Feb", "March": "Mar",
-                "April": "Apr", "May": "May", "June": "Jun",
-                "July": "Jul", "August": "Aug", "September": "Sep",
-                "October": "Oct", "November": "Nov", "December": "Dec"
-            }
-
-            month_order = list(full_to_abbrev.keys())  # [January, February, ..., December]
-            # Reindex in chronological order
-            sorted_order = [m for m in month_order if m in idx_list]
-            df_stats = df_stats.reindex(sorted_order)
-            df_stats = df_stats.dropna(subset=["mean"])
-
-            # Now rename to abbreviations
-            new_index = []
-            for m in df_stats.index:
-                if m in full_to_abbrev:
-                    new_index.append(full_to_abbrev[m])
-                else:
-                    new_index.append(m)  # fallback if something unrecognized
-            df_stats.index = new_index
-
-            return df_stats
-
-        # 3) Quarter
-        if "Quarter" in title:
-            # We might see numeric 1..4 or strings "Q1","Q2", etc.
-            def is_qstring(x):
-                return isinstance(x, str) and len(x) == 2 and x.upper().startswith("Q")
-
-            string_items = [x for x in idx_list if isinstance(x, str)]
-            all_qstrings = all(is_qstring(s) for s in string_items) and len(string_items) == len(idx_list)
-
-            if all_qstrings:
-                quarter_order = ["Q1", "Q2", "Q3", "Q4"]
-                sorted_order = [q for q in quarter_order if q in idx_list]
-                df_stats = df_stats.reindex(sorted_order)
-                df_stats = df_stats.dropna(subset=["mean"])
-                return df_stats
-
-            # Otherwise parse numerics
-            numeric_map = {}
-            for item in idx_list:
-                try:
-                    numeric_map[item] = int(item)  # e.g. 1..4
-                except:
-                    numeric_map[item] = None
-
-            valid_items = [k for k, v in numeric_map.items() if v in [1, 2, 3, 4]]
-            valid_items.sort(key=lambda x: numeric_map[x])
-
-            if valid_items:
-                df_stats = df_stats.loc[valid_items]
-                new_index = []
-                for old in valid_items:
-                    q_num = numeric_map[old]
-                    new_index.append(f"Q{q_num}")
-                df_stats.index = new_index
-                df_stats = df_stats.dropna(subset=["mean"])
-                return df_stats
-
-            # Fallback: just drop rows that are NaN in mean
-            df_stats = df_stats.dropna(subset=["mean"])
-            return df_stats
-
-        # 4) Year
-        if "Year" in title:
-            # We parse each index item as int => then sort ascending => rename to last two digits
-            numeric_map = {}
-            for item in idx_list:
-                try:
-                    numeric_map[item] = int(item)
-                except:
-                    numeric_map[item] = None
-
-            valid_items = [k for k, v in numeric_map.items() if v is not None]
-            # Sort ascending by parsed year
-            valid_items.sort(key=lambda x: numeric_map[x])
-
-            if valid_items:
-                df_stats = df_stats.loc[valid_items]
-                # rename to last two digits
-                new_index = []
-                for old in valid_items:
-                    y = numeric_map[old]
-                    # last two digits
-                    y2 = y % 100
-                    new_index.append(f"{y2:02d}")  # e.g. "21", "22"
-                df_stats.index = new_index
-
-            df_stats = df_stats.dropna(subset=["mean"])
-            return df_stats
-
-        # 5) Turn of Month / Quarter
-        if "Turn of Month" in title or "Turn of Quarter" in title:
-            turn_order = ["T-3", "T-2", "T-1", "T+0", "T+1", "T+2", "T+3"]
-            sorted_order = [d for d in turn_order if d in idx_list]
-            df_stats = df_stats.reindex(sorted_order)
-            df_stats = df_stats.dropna(subset=["mean"])
-            return df_stats
-
-        # Otherwise, return as is
-        df_stats = df_stats.dropna(subset=["mean"])
-        return df_stats
-
-    def _format_seasonality_report(self, seasonality_result, label_name):
-        """
-        Return a list of lines describing the seasonality results for a given period.
-        """
-        if (seasonality_result is None
-                or 'stats' not in seasonality_result
-                or seasonality_result['stats'].empty):
-            return ["No data available.\n"]
-
-        df_stats = seasonality_result['stats']
-
-        lines = []
-        lines.append(f"--- {label_name} ---")
-
-        # We won't reorder the DataFrame here,
-        # because the user specifically wanted temporal ordering in the plot,
-        # not necessarily for the table. But we can do it here if desired:
-        # For textual best/worst we might want them by "mean" descending:
-        sorted_df = df_stats.sort_values('mean', ascending=False)
-
-        # Best & worst
-        best_idx = sorted_df.index[0]
-        worst_idx = sorted_df.index[-1]
-        best_val = sorted_df.iloc[0]['mean']
-        worst_val = sorted_df.iloc[-1]['mean']
-
-        lines.append(f"Best {label_name}: {best_idx} ({best_val:.4%})")
-        lines.append(f"Worst {label_name}: {worst_idx} ({worst_val:.4%})\n")
-
-        # Table header
-        header = (f"{label_name:<15s} | {'Mean':>7s} | {'Median':>7s} | "
-                  f"{'Win %':>5s} | {'Count':>5s} | {'Signif?'} ")
-        lines.append(header)
-        lines.append("-" * len(header))
-
-        for idx, row in sorted_df.iterrows():
-            is_sig = '*' if row.get('significant_corrected', False) else ''
-            lines.append(
-                f"{str(idx):<15s} | "
-                f"{row['mean']:>7.2%} | "
-                f"{row['median']:>7.2%} | "
-                f"{row['positive_pct']:>5.2%} | "
-                f"{int(row['count']):>5d} | {is_sig}"
-            )
-
-        lines.append("")
-        lines.append("* indicates statistical significance (after FDR correction)")
-        return lines
-
-```
-
-# portwine/analyzers/shock.py
-
-```py
-import math
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-from matplotlib import colormaps
-from portwine.analyzers.base import Analyzer
-
-DEFAULT_SHOCK_PERIODS = {
-    "Dot-Com Bubble Crash": ("2000-03-24", "2002-10-09"),
-    "9/11 Aftermath": ("2001-09-10", "2001-09-21"),
-    "Global Financial Crisis": ("2007-10-09", "2009-03-09"),
-    "European Debt Crisis": ("2011-05-02", "2011-10-04"),
-    "2015-2016 Correction": ("2015-08-10", "2016-02-11"),
-    "Volmageddon": ("2018-01-26", "2018-02-09"),
-    "COVID Crash": ("2020-02-20", "2020-03-23"),
-    "2022 Rate Hike Selloff": ("2022-01-03", "2022-06-16")
-}
-
-
-class ShockAnalyzer(Analyzer):
-    """
-    Dynamically lays out the figure so we don't have large empty spaces
-    if only a few stress periods remain.
-    """
-
-    def __init__(self, stress_periods=DEFAULT_SHOCK_PERIODS):
-        """
-        Parameters
-        ----------
-        stress_periods : dict or None
-            {
-              "Dot-Com Bubble": ("2000-03-24", "2002-10-09"),
-              ...
-            }
-            If None/empty, no stress shading or subplots/table.
-        """
-        self.stress_periods = stress_periods if stress_periods else {}
-
-    def analyze(self, results):
-        strat_rets = results.get('strategy_returns')
-        if strat_rets is None or strat_rets.empty:
-            print("Error: 'strategy_returns' missing or empty.")
-            return None
-
-        # Strategy
-        strat_eq = (1.0 + strat_rets).cumprod()
-        strat_dd = self._compute_drawdown(strat_eq)
-        strat_mdd = strat_dd.min()
-        strategy_data = {
-            'equity_curve': strat_eq,
-            'drawdown_series': strat_dd,
-            'max_drawdown': strat_mdd
-        }
-
-        # Benchmark
-        bm_rets = results.get('benchmark_returns')
-        benchmark_data = None
-        if bm_rets is not None and not bm_rets.empty:
-            if isinstance(bm_rets, pd.DataFrame) and bm_rets.shape[1] == 1:
-                bm_rets = bm_rets.iloc[:, 0]
-            bm_eq = (1.0 + bm_rets).cumprod()
-            bm_dd = self._compute_drawdown(bm_eq)
-            bm_mdd = bm_dd.min()
-
-            benchmark_data = {
-                'equity_curve': bm_eq,
-                'drawdown_series': bm_dd,
-                'max_drawdown': bm_mdd
-            }
-
-        if not self.stress_periods:
-            return {
-                'strategy': strategy_data,
-                'benchmark': benchmark_data,
-                'period_slices': {},
-                'stress_df': None
-            }
-
-        # Build slices + summary stats
-        period_slices = {}
-        stress_records = []
-
-        s_idx = strat_eq.index
-        b_idx = benchmark_data['equity_curve'].index if benchmark_data else None
-
-        for pname, (start_str, end_str) in self.stress_periods.items():
-            start_dt = pd.to_datetime(start_str)
-            end_dt = pd.to_datetime(end_str)
-
-            # MODIFIED: Find overlapping data rather than requiring full coverage
-            actual_start = max(s_idx.min(), start_dt)
-            actual_end = min(s_idx.max(), end_dt)
-
-            # Check if we have at least some data in this period
-            if actual_end < actual_start or actual_start > end_dt or actual_end < start_dt:
-                # No overlap with the data we have
-                continue
-
-            # Get the data slice for this (possibly partial) crisis period
-            s_sub = strat_eq.loc[(strat_eq.index >= actual_start) & (strat_eq.index <= actual_end)]
-            if len(s_sub) < 2:
-                continue
-
-            # Add flag to indicate if this is a partial period
-            is_partial = (actual_start > start_dt) or (actual_end < end_dt)
-            partial_label = " (Partial)" if is_partial else ""
-
-            sub_dd = self._compute_drawdown(s_sub)
-            sub_ret = (s_sub.iloc[-1] / s_sub.iloc[0]) - 1.0
-            sub_mdd = sub_dd.min()
-
-            # Possibly do benchmark
-            bm_ret, bm_mdd_val = np.nan, np.nan
-            b_sub = None
-            if benchmark_data:
-                bm_start = max(b_idx.min(), start_dt)
-                bm_end = min(b_idx.max(), end_dt)
-
-                if bm_end >= bm_start:  # If there's some overlap
-                    b_eq_full = benchmark_data['equity_curve']
-                    b_sub = b_eq_full.loc[(b_eq_full.index >= bm_start) & (b_eq_full.index <= bm_end)]
-                    if len(b_sub) > 1:
-                        bm_dd_sub = self._compute_drawdown(b_sub)
-                        bm_mdd_val = bm_dd_sub.min()
-                        bm_ret = (b_sub.iloc[-1] / b_sub.iloc[0]) - 1.0
-
-            display_name = pname + partial_label
-            period_slices[display_name] = {'s_sub': s_sub, 'b_sub': b_sub}
-            stress_records.append({
-                'Period': display_name,
-                'Start': actual_start,
-                'End': actual_end,
-                'Strategy_TotalRet': sub_ret,
-                'Strategy_MaxDD': sub_mdd,
-                'Benchmark_TotalRet': bm_ret,
-                'Benchmark_MaxDD': bm_mdd_val,
-                'IsPartial': is_partial,
-                'OriginalStart': start_dt,
-                'OriginalEnd': end_dt
-            })
-
-        if not stress_records:
-            stress_df = None
-        else:
-            stress_df = pd.DataFrame(stress_records).set_index('Period')
-
-        return {
-            'strategy': strategy_data,
-            'benchmark': benchmark_data,
-            'period_slices': period_slices,
-            'stress_df': stress_df
-        }
-
-    def plot(self, results):
-        adict = self.analyze(results)
-        if adict is None:
-            print("No analysis data to plot.")
-            return
-
-        strat = adict['strategy']
-        bench = adict['benchmark']
-        period_slices = adict['period_slices']
-        stress_df = adict['stress_df']
-
-        # Data
-        strat_eq = strat['equity_curve']
-        strat_dd = strat['drawdown_series'] * 100.0
-        has_bm = (bench is not None)
-        bm_eq = bench['equity_curve'] * 1 if has_bm else None
-        bm_dd = (bench['drawdown_series'] * 100.0) if has_bm else None
-
-        # Which events remain
-        events_list = list(period_slices.items())  # [(name, {s_sub, b_sub}), ...]
-        # Limit to 8 if you want
-        displayed_events = min(8, len(events_list))
-        events_list = events_list[:displayed_events]
-
-        # If none, we just do eq+dd
-        # # subplots_rows = math.ceil(displayed_events / 2)
-        subplots_rows = int(math.ceil(displayed_events / 2.0))
-        # total rows = 2 (eq+dd) + subplots_rows + 1 (table)
-        # If no events at all, skip the subplots entirely but still do 1 row for the table
-        # so the table can show "no stress events"? We'll do a check if stress_df is None
-        # or empty
-
-        # If no events, subplots_rows=0 => total_rows=2+0+1=3
-        # But if stress_df is also None, we might skip the table row?
-        have_table = (stress_df is not None and not stress_df.empty)
-
-        total_rows = 2 + subplots_rows
-        if have_table:
-            total_rows += 1
-
-        # Create figure
-        fig = plt.figure(figsize=(14, 4 * (total_rows)), constrained_layout=True)
-        gs = GridSpec(nrows=total_rows, ncols=2, figure=fig)
-        cmap = colormaps.get_cmap("tab10")
-
-        # Row 0: equity
-        ax_eq = fig.add_subplot(gs[0, :])
-        ax_eq.plot(strat_eq.index, strat_eq.values, label="Strategy")
-        if has_bm:
-            ax_eq.plot(bm_eq.index, bm_eq.values, label="Benchmark", alpha=0.7)
-        ax_eq.set_title("Economic Stress Equity Curve")
-        ax_eq.legend(loc='best')
-        ax_eq.tick_params(axis='x', rotation=45)
-
-        # shading only for those events we actually kept
-        if stress_df is not None:
-            for i, pname in enumerate(stress_df.index):
-                row_data = stress_df.loc[pname]
-
-                # MODIFIED: Instead of stacking, use conditional approach
-                color = cmap(i % 10)
-
-                if 'OriginalStart' in row_data and 'OriginalEnd' in row_data and pd.notnull(row_data['OriginalStart']):
-                    start_dt = row_data['OriginalStart']
-                    end_dt = row_data['OriginalEnd']
-                    actual_start = row_data['Start']
-                    actual_end = row_data['End']
-
-                    # For partial periods, don't stack spans
-                    if row_data.get('IsPartial', False):
-                        # Add light shading only for parts we don't have data for
-                        if start_dt < actual_start:
-                            ax_eq.axvspan(start_dt, actual_start, color=color, alpha=0.05)
-                        if actual_end < end_dt:
-                            ax_eq.axvspan(actual_end, end_dt, color=color, alpha=0.05)
-
-                        # Add normal shading only for the part we have data for
-                        ax_eq.axvspan(actual_start, actual_end, color=color, alpha=0.1)
-                    else:
-                        # For complete periods, just add normal shading
-                        ax_eq.axvspan(start_dt, end_dt, color=color, alpha=0.1)
-                else:
-                    # Fallback to actual dates if original not available
-                    start_dt = row_data['Start']
-                    end_dt = row_data['End']
-                    ax_eq.axvspan(start_dt, end_dt, color=color, alpha=0.1)
-
-            # Add legend entries for each unique event
-            handles, labels = ax_eq.get_legend_handles_labels()
-            event_handles = []
-            event_labels = []
-
-            for i, pname in enumerate(stress_df.index):
-                color = cmap(i % 10)
-                # Remove " (Partial)" from legend
-                clean_name = pname.replace(" (Partial)", "")
-
-                # Use consistent alpha for legend that matches what's shown for complete periods
-                event_handles.append(plt.Rectangle((0, 0), 1, 1, fc=color, alpha=0.1))
-                event_labels.append(clean_name)
-
-            all_handles = handles + event_handles
-            all_labels = labels + event_labels
-            ax_eq.legend(all_handles, all_labels, loc='best')
-
-        # Row 1: dd
-        ax_dd = fig.add_subplot(gs[1, :])
-        ax_dd.plot(strat_dd.index, strat_dd.values, label="Strategy DD (%)")
-        if has_bm:
-            ax_dd.plot(bm_dd.index, bm_dd.values, label="Benchmark DD (%)", alpha=0.7)
-        ax_dd.set_title("Drawdown (%)")
-        ax_dd.legend(loc='best')
-        ax_dd.tick_params(axis='x', rotation=45)
-
-        if stress_df is not None:
-            for i, pname in enumerate(stress_df.index):
-                row_data = stress_df.loc[pname]
-
-                # MODIFIED: Instead of stacking, use conditional approach
-                color = cmap(i % 10)
-
-                if 'OriginalStart' in row_data and 'OriginalEnd' in row_data and pd.notnull(row_data['OriginalStart']):
-                    start_dt = row_data['OriginalStart']
-                    end_dt = row_data['OriginalEnd']
-                    actual_start = row_data['Start']
-                    actual_end = row_data['End']
-
-                    # For partial periods, don't stack spans
-                    if row_data.get('IsPartial', False):
-                        # Add light shading only for parts we don't have data for
-                        if start_dt < actual_start:
-                            ax_dd.axvspan(start_dt, actual_start, color=color, alpha=0.05)
-                        if actual_end < end_dt:
-                            ax_dd.axvspan(actual_end, end_dt, color=color, alpha=0.05)
-
-                        # Add normal shading only for the part we have data for
-                        ax_dd.axvspan(actual_start, actual_end, color=color, alpha=0.1)
-                    else:
-                        # For complete periods, just add normal shading
-                        ax_dd.axvspan(start_dt, end_dt, color=color, alpha=0.1)
-                else:
-                    # Fallback to actual dates if original not available
-                    start_dt = row_data['Start']
-                    end_dt = row_data['End']
-                    ax_dd.axvspan(start_dt, end_dt, color=color, alpha=0.1)
-
-        # Subplots for each event
-        for i, (pname, subdict) in enumerate(events_list):
-            row_idx = 2 + (i // 2)
-            col_idx = i % 2
-            ax_stress = fig.add_subplot(gs[row_idx, col_idx])
-
-            s_sub = subdict['s_sub']
-            b_sub = subdict['b_sub']
-            if len(s_sub) < 2:
-                ax_stress.text(0.5, 0.5, f"No data: {pname}",
-                               ha='center', va='center', transform=ax_stress.transAxes)
-                ax_stress.set_title(pname)
-                ax_stress.tick_params(axis='x', rotation=45)
-                continue
-
-            base_val = s_sub.iloc[0]
-            s_norm = s_sub / base_val
-            ax_stress.plot(s_norm.index, s_norm.values, label="Strategy")
-            if has_bm and b_sub is not None and len(b_sub) >= 2:
-                b0 = b_sub.iloc[0]
-                b_norm = b_sub / b0
-                ax_stress.plot(b_norm.index, b_norm.values, label="Benchmark", alpha=0.7)
-
-            start_date = s_sub.index[0].strftime("%Y-%m-%d")
-            end_date = s_sub.index[-1].strftime("%Y-%m-%d")
-            ax_stress.set_title(f"{pname}: ({start_date} to {end_date})")
-            ax_stress.legend(loc='best')
-            ax_stress.grid(True)
-            ax_stress.tick_params(axis='x', rotation=45)
-
-        # If we have a table, put it in the last row
-        if have_table:
-            # table row = 2 + subplots_rows
-            table_row = 2 + subplots_rows
-            ax_table = fig.add_subplot(gs[table_row, :])
-            ax_table.axis('off')
-
-            headers = ["Period", "Duration", "Strategy Return", "Strategy Max DD"]
-            if has_bm:
-                headers.extend(["Benchmark Return", "Benchmark Max DD", "Relative Perf"])
-
-            table_data = []
-            for idx, row_data in stress_df.iterrows():
-                start_dt = row_data['Start']
-                end_dt = row_data['End']
-                duration_days = (end_dt - start_dt).days if pd.notnull(start_dt) and pd.notnull(end_dt) else 0
-                s_ret = row_data['Strategy_TotalRet']
-                s_mdd = row_data['Strategy_MaxDD']
-
-                line = [
-                    idx,
-                    f"{duration_days} days",
-                    f"{s_ret:.2%}",
-                    f"{s_mdd:.2%}",
-                ]
-
-                if has_bm:
-                    bm_ret = row_data['Benchmark_TotalRet']
-                    bm_dd_val = row_data['Benchmark_MaxDD']
-                    outperf = (s_ret - bm_ret)
-                    line.append(f"{bm_ret:.2%}")
-                    line.append(f"{bm_dd_val:.2%}")
-                    line.append(f"{outperf:.2%}")
-
-                table_data.append(line)
-
-            tbl = ax_table.table(
-                cellText=table_data,
-                colLabels=headers,
-                loc='center',
-                cellLoc='center'
-            )
-            tbl.auto_set_font_size(False)
-            tbl.set_fontsize(9)
-            tbl.scale(1, 1.2)
-
-            # color the "Relative Perf"
-            if has_bm:
-                col_idx = len(headers) - 1
-                for i, row_vals in enumerate(table_data):
-                    cell = tbl[(i + 1, col_idx)]
-                    raw_str = row_vals[col_idx].strip('%')
-                    try:
-                        val = float(raw_str) / 100
-                        if val > 0:
-                            cell.set_facecolor('#d8f3dc')
-                        elif val < 0:
-                            cell.set_facecolor('#ffccd5')
-                    except:
-                        pass
-
-        plt.show()
-
-    # -------------------------
-    # Helper
-    # -------------------------
-    def _compute_drawdown(self, equity_series):
-        roll_max = equity_series.cummax()
-        return (equity_series - roll_max) / roll_max
-```
-
-# portwine/analyzers/tickerrisk.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from portwine.analyzers.base import Analyzer
-from tqdm import tqdm
-
-
-class TickerRiskAnalyzer(Analyzer):
-    """
-    This analyzer:
-      1) Computes per-ticker risk metrics (Sharpe, Sortino, MaxDD, AnnualVol) for each
-         ticker in 'tickers_returns' from the full backtest results.
-      2) For each ticker in the original strategy, re-runs the backtest with that ticker excluded,
-         comparing the new portfolio stats (Sharpe, total return, maxDD, etc.) to the full portfolio.
-      3) Produces a plot with:
-         - A single Equity Curve subplot (top row) showing the “Full” portfolio plus each “Exclude Ticker X”
-           portfolio in the same figure, with consistent colors.
-         - Bar charts for:
-            * Per-ticker Sharpe
-            * Per-ticker Sortino
-            * Sharpe difference (Exclude - Full)
-            * MaxDD difference (Exclude - Full)
-         Each ticker uses the same color across the equity curve and bar charts,
-         so it’s easier to follow.
-
-    Usage:
-      analyzer = TickerRiskAnalyzer(backtester, strategy)
-      # run full backtest => results
-      analyzer.plot(results)
-    """
-
-    def __init__(self, backtester, original_strategy, ann_factor=252):
-        """
-        Parameters
-        ----------
-        backtester : object
-            A backtester instance that can run_backtest(strategy=...).
-        original_strategy : StrategyBase
-            The original strategy used in the full run. We'll clone it, excluding each ticker.
-        ann_factor : int
-            Annualization factor (252 for daily, 12 for monthly, etc.)
-        """
-        self.backtester = backtester
-        self.original_strategy = original_strategy
-        self.ann_factor = ann_factor
-
-        # Pre-assign colors to each ticker in the original strategy for consistency.
-        # We'll use a tab10 palette by default (10 distinct colors).
-        # If user has more than 10 tickers, it cycles through again.
-        self.tickers = list(self.original_strategy.tickers)
-        cmap = plt.colormaps.get_cmap("tab10")  # Matplotlib >=3.7 approach
-        self.color_map = {}
-        for i, tkr in enumerate(self.tickers):
-            self.color_map[tkr] = cmap(i % 10)
-
-        # We'll use black for the "Full Strategy" curve.
-        self.full_strategy_color = "black"
-
-    def analyze(self, results, verbose=False):
-        """
-        1) Per-ticker metrics from results['tickers_returns'].
-        2) Re-run the strategy for each ticker excluded => gather stats & equity curve.
-        3) Return a dict with:
-           - per_ticker_metrics (DataFrame)
-           - portfolio_comparison (DataFrame or None)
-           - full_equity_curve (Series)
-           - excluded_equity_curves ({ticker: Series})
-        """
-        # --- Per-Ticker Metrics ---
-        tickers_returns = results.get('tickers_returns')
-        if tickers_returns is None or tickers_returns.empty:
-            print("Error: 'tickers_returns' missing or empty in results.")
-            return None
-
-        # Build table of Sharpe, Sortino, MaxDD, AnnualVol for each ticker
-        ticker_stats_list = []
-
-        for tkr in tickers_returns.columns:
-            dr = tickers_returns[tkr].dropna()
-            if len(dr) < 2:
-                continue
-            stats = self._compute_per_ticker_stats(dr)
-            stats['Ticker'] = tkr
-            ticker_stats_list.append(stats)
-
-        if ticker_stats_list:
-            per_ticker_metrics = pd.DataFrame(ticker_stats_list).set_index('Ticker')
-        else:
-            per_ticker_metrics = pd.DataFrame(
-                columns=['Sharpe', 'Sortino', 'MaxDD', 'AnnualVol']
-            )
-
-        # --- Full portfolio stats & equity curve ---
-        full_strat_returns = results.get('strategy_returns', pd.Series(dtype=float))
-        full_equity_curve = None
-        full_stats = None
-        if not full_strat_returns.empty:
-            full_equity_curve = (1 + full_strat_returns).cumprod()
-            full_stats = self._compute_portfolio_stats(full_strat_returns)
-
-        # --- Excluding Ticker Comparisons ---
-        portfolio_comparison = None
-        excluded_equity_curves = {}
-        if full_stats is not None:
-            comp_rows = []
-
-            if verbose:
-                ticker_iter = tqdm(self.tickers, desc="Analyzing...")
-            else:
-                ticker_iter = self.tickers
-
-            # For each ticker in the original strategy, remove it, re-run
-            for tkr in ticker_iter:
-                excl_result = self._run_excluding_ticker(tkr)
-                if excl_result is None:
-                    continue
-                # Gather new equity and stats
-                daily_excl_returns = excl_result.get('strategy_returns', pd.Series(dtype=float))
-                if daily_excl_returns.empty:
-                    continue
-
-                eq_excl = (1 + daily_excl_returns).cumprod()
-                excluded_equity_curves[tkr] = eq_excl  # store for plot
-
-                excl_stats = self._compute_portfolio_stats(daily_excl_returns)
-                row = {
-                    'TickerExcluded': tkr,
-                    'Full_TotalRet': full_stats['TotalRet'],
-                    'Full_AnnualVol': full_stats['AnnualVol'],
-                    'Full_Sharpe': full_stats['Sharpe'],
-                    'Full_MaxDD': full_stats['MaxDrawdown'],
-                    'Excl_TotalRet': excl_stats['TotalRet'],
-                    'Excl_AnnualVol': excl_stats['AnnualVol'],
-                    'Excl_Sharpe': excl_stats['Sharpe'],
-                    'Excl_MaxDD': excl_stats['MaxDrawdown'],
-                    'Sharpe_Diff': excl_stats['Sharpe'] - full_stats['Sharpe'],
-                    'MaxDD_Diff': excl_stats['MaxDrawdown'] - full_stats['MaxDrawdown']
-                }
-                comp_rows.append(row)
-
-            if comp_rows:
-                portfolio_comparison = pd.DataFrame(comp_rows).set_index('TickerExcluded')
-
-        return {
-            'per_ticker_metrics': per_ticker_metrics,
-            'portfolio_comparison': portfolio_comparison,
-            'full_equity_curve': full_equity_curve,
-            'excluded_equity_curves': excluded_equity_curves
-        }
-
-    def plot(self, results, verbose=False):
-        """
-        1) Calls analyze(results).
-        2) Produces a figure with 3 rows, 2 columns => total 5 subplots:
-
-           Row 0 (cols=0..1 merged): Equity curves
-             - "Full" in black
-             - "Exclude Ticker X" in color_map[X]
-
-           Row 1, col=0: Per-ticker Sharpe
-           Row 1, col=1: Per-ticker Sortino
-
-           Row 2, col=0: Sharpe_Diff (Exclude - Full)
-           Row 2, col=1: MaxDD_Diff  (Exclude - Full)
-        3) The color used for each ticker’s bars/lines is consistent across the subplots.
-        4) Grids are added to each axis, for improved readability.
-        """
-        analysis_dict = self.analyze(results, verbose=verbose)
-        if not analysis_dict:
-            print("No analysis results to plot.")
-            return
-
-        per_ticker = analysis_dict['per_ticker_metrics']
-        port_comp = analysis_dict['portfolio_comparison']
-        full_eq = analysis_dict['full_equity_curve']
-        excl_eq_map = analysis_dict['excluded_equity_curves']
-
-        # if everything is empty, no data
-        if (per_ticker.empty and not port_comp) and (full_eq is None or full_eq.empty):
-            print("No metrics or equity data to plot.")
-            return
-
-        fig = plt.figure(figsize=(12, 12))
-        gs = fig.add_gridspec(nrows=3, ncols=2, hspace=0.4, wspace=0.3)
-
-        # === Row 0 => merged columns => equity
-        ax_eq = fig.add_subplot(gs[0, :])
-        if full_eq is not None and not full_eq.empty:
-            ax_eq.plot(full_eq.index, full_eq.values, label="Full Strategy",
-                       color=self.full_strategy_color, linewidth=2)
-        if excl_eq_map:
-            for tkr, eq_ser in excl_eq_map.items():
-                clr = self.color_map.get(tkr, "gray")
-                ax_eq.plot(eq_ser.index, eq_ser.values,
-                           label=f"Excl {tkr}",
-                           color=clr, alpha=0.85)
-        ax_eq.set_title("Equity Curves: Full vs. Excluding Ticker")
-        ax_eq.legend(loc='best')
-        ax_eq.tick_params(axis='x', rotation=45)
-        ax_eq.grid(True, alpha=0.3)
-
-        # === Row 1, col=0 => Per-ticker Sharpe
-        ax_sharpe = fig.add_subplot(gs[1, 0])
-        if not per_ticker.empty:
-            df_sharpe = per_ticker.sort_values('Sharpe', ascending=False)
-            xvals = df_sharpe.index
-            height = df_sharpe['Sharpe']
-            # color each bar by the ticker's assigned color
-            bar_colors = [self.color_map.get(t, "gray") for t in xvals]
-            ax_sharpe.bar(xvals, height, color=bar_colors)
-            ax_sharpe.set_title("Per-Ticker Sharpe")
-            ax_sharpe.tick_params(axis='x', rotation=45)
-            ax_sharpe.grid(True, alpha=0.3)
-        else:
-            ax_sharpe.text(0.5, 0.5, "No per-ticker data",
-                           ha='center', va='center')
-            ax_sharpe.grid(True, alpha=0.3)
-
-        # === Row 1, col=1 => Per-ticker Sortino
-        ax_sortino = fig.add_subplot(gs[1, 1])
-        if not per_ticker.empty:
-            df_sortino = per_ticker.sort_values('Sortino', ascending=False)
-            xvals = df_sortino.index
-            height = df_sortino['Sortino']
-            bar_colors = [self.color_map.get(t, "gray") for t in xvals]
-            ax_sortino.bar(xvals, height, color=bar_colors)
-            ax_sortino.set_title("Per-Ticker Sortino")
-            ax_sortino.tick_params(axis='x', rotation=45)
-            ax_sortino.grid(True, alpha=0.3)
-        else:
-            ax_sortino.text(0.5, 0.5, "No per-ticker data",
-                            ha='center', va='center')
-            ax_sortino.grid(True, alpha=0.3)
-
-        # === Row 2, col=0 => Sharpe_Diff
-        ax_diff_sharpe = fig.add_subplot(gs[2, 0])
-        if port_comp is not None and not port_comp.empty:
-            df_sh = port_comp.sort_values('Sharpe_Diff', ascending=False)
-            xvals = df_sh.index
-            height = df_sh['Sharpe_Diff']
-            bar_colors = [self.color_map.get(t, "gray") for t in xvals]
-            ax_diff_sharpe.bar(xvals, height, color=bar_colors)
-            ax_diff_sharpe.axhline(y=0, color='k', linewidth=1)
-            ax_diff_sharpe.set_title("Change in Sharpe (Exclude - Full)")
-            ax_diff_sharpe.tick_params(axis='x', rotation=45)
-            ax_diff_sharpe.grid(True, alpha=0.3)
-        else:
-            ax_diff_sharpe.text(0.5, 0.5, "No exclude-ticker data",
-                                ha='center', va='center')
-            ax_diff_sharpe.axhline(y=0, color='k', linewidth=1)
-            ax_diff_sharpe.grid(True, alpha=0.3)
-
-        # === Row 2, col=1 => MaxDD_Diff
-        ax_diff_maxdd = fig.add_subplot(gs[2, 1])
-        if port_comp is not None and not port_comp.empty:
-            df_md = port_comp.sort_values('MaxDD_Diff', ascending=False)
-            xvals = df_md.index
-            height = df_md['MaxDD_Diff']
-            bar_colors = [self.color_map.get(t, "gray") for t in xvals]
-            ax_diff_maxdd.bar(xvals, height, color=bar_colors)
-            ax_diff_maxdd.axhline(y=0, color='k', linewidth=1)
-            ax_diff_maxdd.set_title("Change in MaxDD (Exclude - Full)")
-            ax_diff_maxdd.tick_params(axis='x', rotation=45)
-            ax_diff_maxdd.grid(True, alpha=0.3)
-        else:
-            ax_diff_maxdd.text(0.5, 0.5, "No exclude-ticker data",
-                               ha='center', va='center')
-            ax_diff_maxdd.axhline(y=0, color='k', linewidth=1)
-            ax_diff_maxdd.grid(True, alpha=0.3)
-
-        plt.show()
-
-    # -------------------------------------------------------------------
-    # Internal Helpers
-    # -------------------------------------------------------------------
-    def _compute_per_ticker_stats(self, daily_returns):
-        """
-        For a single ticker's daily returns: Sharpe, Sortino, MaxDD, AnnualVol
-        """
-        if daily_returns is None or daily_returns.empty:
-            return {'Sharpe': np.nan, 'Sortino': np.nan, 'MaxDD': np.nan, 'AnnualVol': np.nan}
-        dr = daily_returns.dropna()
-        if len(dr) < 2:
-            return {'Sharpe': np.nan, 'Sortino': np.nan, 'MaxDD': np.nan, 'AnnualVol': np.nan}
-
-        ann_factor = self.ann_factor
-        avg_ret = dr.mean()
-        std_ret = dr.std()
-        ann_ret = avg_ret * ann_factor
-        ann_vol = std_ret * np.sqrt(ann_factor)
-        sharpe = ann_ret / ann_vol if ann_vol > 1e-9 else np.nan
-
-        neg = dr[dr < 0]
-        neg_std = neg.std()
-        if neg_std is None or np.isnan(neg_std) or neg_std < 1e-9:
-            sortino = np.nan
-        else:
-            sortino = ann_ret / (neg_std * np.sqrt(ann_factor))
-
-        eq = (1 + dr).cumprod()
-        maxdd = self._compute_drawdown(eq).min()
-
-        return {
-            'Sharpe': sharpe,
-            'Sortino': sortino,
-            'MaxDD': maxdd,
-            'AnnualVol': ann_vol
-        }
-
-    def _compute_portfolio_stats(self, daily_returns):
-        """
-        For the portfolio's daily returns: total ret, annual vol, Sharpe, maxDD
-        """
-        if daily_returns is None or daily_returns.empty:
-            return None
-        dr = daily_returns.dropna()
-        if len(dr) < 2:
-            return None
-
-        ann_factor = self.ann_factor
-        tot_ret = (1 + dr).prod() - 1.0
-        ann_vol = dr.std() * np.sqrt(ann_factor)
-        ann_ret = dr.mean() * ann_factor
-        sharpe = ann_ret / ann_vol if ann_vol > 1e-9 else np.nan
-
-        eq = (1 + dr).cumprod()
-        maxdd = self._compute_drawdown(eq).min()
-
-        return {
-            'TotalRet': tot_ret,
-            'AnnualVol': ann_vol,
-            'Sharpe': sharpe,
-            'MaxDrawdown': maxdd
-        }
-
-    def _compute_drawdown(self, equity_series):
-        roll_max = equity_series.cummax()
-        dd = (equity_series - roll_max) / roll_max
-        return dd
-
-    def _run_excluding_ticker(self, tkr):
-        """
-        1) Clone the strategy minus 'tkr'.
-        2) run_backtest => gather the results.
-        """
-        new_strat = self._clone_strategy_excluding(tkr)
-        if not new_strat.tickers:
-            return None
-        return self.backtester.run_backtest(strategy=new_strat)
-
-    def _clone_strategy_excluding(self, tkr_excl):
-        """
-        Produce a new Strategy object with 'tkr_excl' removed from original_strategy.tickers
-        using a simple approach. Adjust as needed for your environment.
-        """
-        old_list = list(self.original_strategy.tickers)
-        if tkr_excl in old_list:
-            old_list.remove(tkr_excl)
-
-        if len(old_list) < 1:
-            return None  # no point in re-running with zero tickers
-
-        # create new strategy instance
-        StrategyClass = self.original_strategy.__class__
-        new_strategy = StrategyClass(old_list)
-        return new_strategy
-
-```
-
-# portwine/analyzers/traintest.py
-
-```py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-from portwine.analyzers.base import Analyzer
-
-
-class TrainTestEquityDrawdownAnalyzer(Analyzer):
-    """
-    A train/test analyzer that plots:
-      - (Row 0) Strategy & benchmark equity curves with a vertical line marking
-                the boundary between train & test sets.
-      - (Row 1) Drawdown curves for strategy & benchmark with the same vertical line.
-      - (Row 2) two columns:
-          * Left: Overlaid histogram of train vs. test daily returns.
-          * Right: Summary stats table for [CAGR, Vol, Sharpe, MaxDD, Calmar, Sortino].
-            Columns = [Metric, Train, Test, Diff, Overfit Ratio].
-
-    Specifics:
-      1) Diff column:
-         - For CAGR, Vol, MaxDD, Calmar: show the simple difference (test minus train) as a percentage.
-           * Exception: For MaxDD, the difference is computed as the difference in absolute values.
-         - For Sharpe and Sortino: show the simple difference as a raw value.
-      2) Overfit Ratio:
-         - For MaxDD => ratio = abs(testVal) / abs(trainVal).
-         - For everything else => ratio = abs(trainVal) / abs(testVal).
-         - The ratio is always positive.
-         - Color coding: if ratio <= 1.1 => green; if <= 1.25 => yellow; else red.
-      3) Extra metrics: Calmar, Sortino.
-    """
-
-    def _compute_drawdown(self, equity_series):
-        """
-        Computes drawdown from peak as a fraction (range: 0 to -1).
-        Example: -0.20 => -20% drawdown from the peak.
-        """
-        rolling_max = equity_series.cummax()
-        dd = (equity_series - rolling_max) / rolling_max
-        return dd
-
-    def _compute_summary_stats(self, daily_returns):
-        """
-        Returns a dict with:
-          'CAGR'
-          'Vol'
-          'Sharpe'
-          'MaxDD'   (negative, e.g. -0.25 => -25%)
-          'Calmar'  (CAGR / abs(MaxDD))
-          'Sortino' (annualized mean / annualized downside stdev)
-        """
-        if len(daily_returns) < 2:
-            return {}
-
-        dr = daily_returns.dropna()
-        if dr.empty:
-            return {}
-
-        ann_factor = 252.0
-        eq = (1.0 + dr).cumprod()
-        end_val = eq.iloc[-1]
-        n_days = len(dr)
-        years = n_days / ann_factor
-
-        # CAGR
-        if years > 0 and end_val > 0:
-            cagr_ = end_val ** (1.0 / years) - 1.0
-        else:
-            cagr_ = np.nan
-
-        # Volatility
-        std_ = dr.std()
-        vol_ = std_ * np.sqrt(ann_factor) if std_ > 1e-9 else np.nan
-
-        # Sharpe Ratio
-        if vol_ and vol_ > 1e-9:
-            sharpe_ = cagr_ / vol_
-        else:
-            sharpe_ = np.nan
-
-        # Maximum Drawdown (negative)
-        dd = self._compute_drawdown(eq)
-        max_dd_ = dd.min()  # negative
-
-        # Calmar Ratio = CAGR / |MaxDD|
-        if max_dd_ is not None and max_dd_ != 0 and not np.isnan(max_dd_):
-            calmar_ = cagr_ / abs(max_dd_)
-        else:
-            calmar_ = np.nan
-
-        # Sortino Ratio: annualized return / annualized downside volatility
-        downside = dr[dr < 0]
-        if len(downside) < 2:
-            sortino_ = np.nan
-        else:
-            downside_std_annual = downside.std() * np.sqrt(ann_factor)
-            ann_mean = dr.mean() * ann_factor
-            if downside_std_annual > 1e-9:
-                sortino_ = ann_mean / downside_std_annual
-            else:
-                sortino_ = np.nan
-
-        return {
-            "CAGR": cagr_,
-            "Vol": vol_,
-            "Sharpe": sharpe_,
-            "MaxDD": max_dd_,
-            "Calmar": calmar_,
-            "Sortino": sortino_
-        }
-
-    def plot(self, results, split=0.7, benchmark_label="Benchmark"):
-        """
-        Creates the figure with 3 rows x 2 columns.
-        """
-        strategy_returns = results.get("strategy_returns", pd.Series(dtype=float))
-        if strategy_returns.empty:
-            print("No strategy returns found in results.")
-            return
-
-        benchmark_returns = results.get("benchmark_returns", pd.Series(dtype=float))
-
-        # Equity curves
-        strat_equity = (1.0 + strategy_returns).cumprod()
-        bench_equity = None
-        if not benchmark_returns.empty:
-            bench_equity = (1.0 + benchmark_returns).cumprod()
-
-        # Split train/test by date
-        all_dates = strategy_returns.index.unique().sort_values()
-        n = len(all_dates)
-        if n < 2:
-            print("Not enough data to plot.")
-            return
-
-        split_idx = int(n * split)
-        if split_idx < 1:
-            print("Train set is empty. Increase 'split'.")
-            return
-        if split_idx >= n:
-            print("Test set is empty. Decrease 'split'.")
-            return
-
-        train_dates = all_dates[:split_idx]
-        test_dates = all_dates[split_idx:]
-        split_date = train_dates[-1]
-
-        # Split returns
-        strat_train = strategy_returns.loc[train_dates]
-        strat_test = strategy_returns.loc[test_dates]
-
-        # Compute summary stats for train and test returns
-        train_stats = self._compute_summary_stats(strat_train)
-        test_stats = self._compute_summary_stats(strat_test)
-
-        # Layout the figure
-        fig = plt.figure(figsize=(12, 10))
-        gs = GridSpec(nrows=3, ncols=2, figure=fig, height_ratios=[2, 2, 2])
-
-        # Row 0: Equity curves
-        ax_eq = fig.add_subplot(gs[0, :])
-        ax_eq.plot(strat_equity.index, strat_equity.values, label="Strategy")
-        if bench_equity is not None:
-            ax_eq.plot(bench_equity.index, bench_equity.values, label=benchmark_label, alpha=0.7)
-        ax_eq.set_title("Equity Curve")
-        ax_eq.legend(loc="best")
-        ax_eq.axvline(x=split_date, color="gray", linestyle="--", alpha=0.8)
-
-        # Row 1: Drawdowns
-        ax_dd = fig.add_subplot(gs[1, :])
-        strat_dd = self._compute_drawdown(strat_equity) * 100.0
-        ax_dd.plot(strat_dd.index, strat_dd.values, label="Strategy DD (%)")
-        if bench_equity is not None:
-            bench_dd = self._compute_drawdown(bench_equity) * 100.0
-            ax_dd.plot(bench_dd.index, bench_dd.values, label=f"{benchmark_label} DD (%)", alpha=0.7)
-        ax_dd.set_title("Drawdown (%)")
-        ax_dd.legend(loc="best")
-        ax_dd.axvline(x=split_date, color="gray", linestyle="--", alpha=0.8)
-
-        # Row 2, Left: Histogram of daily returns (train vs. test)
-        ax_hist = fig.add_subplot(gs[2, 0])
-        ax_hist.hist(strat_train, bins=30, alpha=0.5, label="Train")
-        ax_hist.hist(strat_test, bins=30, alpha=0.5, label="Test")
-        ax_hist.set_title("Train vs. Test Daily Returns")
-        ax_hist.legend(loc="best")
-
-        # Row 2, Right: Summary stats table
-        ax_table = fig.add_subplot(gs[2, 1])
-        ax_table.axis("off")
-        ax_table.set_title("Train vs. Test Stats", pad=10)
-
-        row_labels = ["CAGR", "Vol", "Sharpe", "MaxDD", "Calmar", "Sortino"]
-        col_labels = ["Metric", "Train", "Test", "Diff", "Overfit Ratio"]
-        cell_text = []
-        diff_list = []
-        ratio_list = []
-
-        def fmt_val(metric, val):
-            if pd.isna(val):
-                return "NaN"
-            if metric in ["CAGR", "Vol", "MaxDD", "Calmar"]:
-                return f"{val:,.2%}"
-            elif metric in ["Sharpe", "Sortino"]:
-                return f"{val:,.2f}"
-            else:
-                return f"{val:.4f}"
-
-        for metric in row_labels:
-            train_val = train_stats.get(metric, np.nan)
-            test_val = test_stats.get(metric, np.nan)
-
-            # Compute diff: use test - train for all metrics except MaxDD.
-            if pd.isna(train_val) or pd.isna(test_val):
-                diff_val = np.nan
-            else:
-                if metric == "MaxDD":
-                    # Use difference in absolute values so that a worse drawdown is positive.
-                    diff_val = abs(test_val) - abs(train_val)
-                else:
-                    diff_val = test_val - train_val
-
-            # Compute Overfit Ratio (always positive).
-            if (
-                pd.isna(train_val)
-                or pd.isna(test_val)
-                or abs(train_val) < 1e-12
-                or abs(test_val) < 1e-12
-            ):
-                ratio_val = np.nan
-            else:
-                if metric == "MaxDD":
-                    ratio_val = abs(test_val) / abs(train_val)
-                else:
-                    ratio_val = abs(train_val) / abs(test_val)
-
-            train_str = fmt_val(metric, train_val)
-            test_str = fmt_val(metric, test_val)
-            if pd.isna(diff_val):
-                diff_str = "NaN"
-            else:
-                if metric in ["CAGR", "Vol", "MaxDD", "Calmar"]:
-                    diff_str = f"{diff_val:,.2%}"
-                elif metric in ["Sharpe", "Sortino"]:
-                    diff_str = f"{diff_val:,.2f}"
-                else:
-                    diff_str = f"{diff_val:.4f}"
-
-            ratio_str = "NaN" if pd.isna(ratio_val) else f"{ratio_val:,.2f}"
-
-            cell_text.append([metric, train_str, test_str, diff_str, ratio_str])
-            diff_list.append((metric, diff_val))
-            ratio_list.append((metric, ratio_val))
-
-        tbl = ax_table.table(
-            cellText=cell_text,
-            colLabels=col_labels,
-            cellLoc="center",
-            loc="center"
-        )
-        tbl.auto_set_font_size(False)
-        tbl.set_fontsize(10)
-
-        # Bold header row.
-        for col_idx in range(len(col_labels)):
-            hdr_cell = tbl[(0, col_idx)]
-            hdr_cell.get_text().set_weight("bold")
-
-        # Bold first column.
-        for row_idx in range(1, len(row_labels) + 1):
-            metric_cell = tbl[(row_idx, 0)]
-            metric_cell.get_text().set_weight("bold")
-
-        # Color the Diff column (column 3).
-        diff_col_idx = 3
-        for i, (metric, diff_val) in enumerate(diff_list, start=1):
-            if metric == "Vol" or pd.isna(diff_val):
-                continue
-            diff_cell = tbl.get_celld()[(i, diff_col_idx)]
-            if metric == "MaxDD":
-                # For MaxDD diff: positive diff (i.e. a larger absolute drawdown in test) should be red.
-                if diff_val > 0:
-                    diff_cell.set_facecolor("lightcoral")
-                else:
-                    diff_cell.set_facecolor("lightgreen")
-            else:
-                if diff_val > 0:
-                    diff_cell.set_facecolor("lightgreen")
-                else:
-                    diff_cell.set_facecolor("lightcoral")
-
-        # Color the Overfit Ratio column (column 4), skipping Vol.
-        ratio_col_idx = 4
-        for i, (metric, ratio_val) in enumerate(ratio_list, start=1):
-            if metric == "Vol" or pd.isna(ratio_val):
-                continue
-            ratio_cell = tbl.get_celld()[(i, ratio_col_idx)]
-            if ratio_val <= 1.1:
-                ratio_cell.set_facecolor("lightgreen")
-            elif ratio_val <= 1.25:
-                ratio_cell.set_facecolor("lightyellow")
-            else:
-                ratio_cell.set_facecolor("lightcoral")
-
-        plt.tight_layout()
-        plt.show()
-
-```
-
-# portwine/analyzers/walkforward.py
-
-```py
-"""
-Walk Forward Optimization analysis tools.
-
-This module provides visualization and analytical tools for examining
-walk-forward optimization results.
-"""
-
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-
-
-class WalkForwardAnalyzer:
-    """
-    Analyzer for walk-forward optimization results.
-
-    This analyzer provides tools to visualize and analyze the performance of
-    walk-forward optimization results, including equity curves, drawdowns,
-    parameter evolution, and performance metrics.
-    """
-
-    def analyze(self, results):
-        """
-        Analyze walk-forward optimization results.
-
-        Parameters
-        ----------
-        results : dict
-            Results from a WalkForwardOptimizer.optimize() call.
-
-        Returns
-        -------
-        dict
-            Analysis metrics
-        """
-        # Extract test periods data
-        test_periods = results.get('test_periods', {})
-        if not test_periods:
-            return {"error": "No test periods found in results"}
-
-        # Combine all test period returns for overall analysis
-        all_returns = []
-        for period_key, period_data in test_periods.items():
-            if ('results' in period_data and period_data['results'] and
-                    'strategy_returns' in period_data['results']):
-                period_returns = period_data['results']['strategy_returns']
-                if not period_returns.empty:
-                    all_returns.append(period_returns)
-
-        # Only concatenate if we have returns to work with
-        combined_returns = pd.Series(dtype=float)
-        if all_returns:
-            combined_returns = pd.concat(all_returns)
-
-        # Sort combined returns by date
-        if not combined_returns.empty:
-            combined_returns = combined_returns.sort_index()
-
-        # Calculate performance metrics
-        metrics = self._calculate_performance_metrics(combined_returns)
-
-        # Extract parameter evolution data
-        param_evolution = self._extract_parameter_evolution(test_periods)
-
-        # Extract period transitions
-        period_transitions = self._extract_period_transitions(test_periods)
-
-        # Store analysis results
-        analysis_results = {
-            'combined_returns': combined_returns,
-            'metrics': metrics,
-            'param_evolution': param_evolution,
-            'period_transitions': period_transitions
-        }
-
-        return analysis_results
-
-    def _extract_period_transitions(self, test_periods):
-        """Extract transition dates between test periods."""
-        transitions = []
-
-        # Convert to list and sort by start date
-        periods_list = [(period_key, period_data) for period_key, period_data in test_periods.items()]
-        sorted_periods = sorted(periods_list, key=lambda x: x[1]['start_date'])
-
-        # Extract start and end dates
-        for _, period_data in sorted_periods:
-            transitions.append(period_data['start_date'])
-            transitions.append(period_data['end_date'])
-
-        # Remove duplicates and sort
-        return sorted(list(set(transitions)))
-
-    def _calculate_performance_metrics(self, returns):
-        """Calculate comprehensive performance metrics."""
-        if returns.empty or len(returns) < 10:
-            return {}
-
-        # Annual factor for daily returns
-        ann_factor = 252.0
-
-        # Basic metrics
-        mean_return = returns.mean() * ann_factor
-        std_return = returns.std() * np.sqrt(ann_factor)
-        sharpe = mean_return / std_return if std_return > 1e-8 else 0.0
-        total_return = (1 + returns).prod() - 1
-        win_rate = (returns > 0).mean()
-
-        # Drawdown calculations
-        equity_curve = (1 + returns).cumprod()
-        running_max = equity_curve.cummax()
-        drawdown = (equity_curve / running_max - 1)
-        max_drawdown = drawdown.min()
-
-        # Calmar ratio (annualized return / max drawdown)
-        calmar = (mean_return / abs(max_drawdown)) if max_drawdown < 0 else float('inf')
-
-        # Recovery metrics
-        underwater_periods = (drawdown < 0).sum()
-        underwater_pct = underwater_periods / len(returns) if len(returns) > 0 else 0
-
-        # Monthly returns
-        monthly_returns = returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
-        monthly_win_rate = (monthly_returns > 0).mean()
-
-        # Return all metrics
-        return {
-            'ann_return': mean_return,
-            'ann_volatility': std_return,
-            'sharpe_ratio': sharpe,
-            'total_return': total_return,
-            'win_rate': win_rate,
-            'max_drawdown': max_drawdown,
-            'calmar_ratio': calmar,
-            'underwater_pct': underwater_pct,
-            'monthly_win_rate': monthly_win_rate
-        }
-
-    def _extract_parameter_evolution(self, test_periods):
-        """Extract parameter evolution data across test periods."""
-        if not test_periods:
-            return {}
-
-        # Convert test periods to a DataFrame for easier analysis
-        periods_data = []
-        for period_key, period_data in test_periods.items():
-            row = {
-                'period': period_key,
-                'start_date': period_data['start_date'],
-                'end_date': period_data['end_date'],
-                'step': period_data.get('step', None)  # Add step information
-            }
-
-            # Extract parameters (excluding tickers which would be lists)
-            if 'best_params' in period_data:
-                for param, value in period_data['best_params'].items():
-                    if param != 'tickers':
-                        row[f'param_{param}'] = value
-
-            # Add basic metrics if available
-            if ('results' in period_data and period_data['results'] and
-                    'strategy_returns' in period_data['results']):
-                returns = period_data['results']['strategy_returns']
-                if len(returns) >= 5:  # Minimum for meaningful metrics
-                    row['sharpe'] = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() != 0 else 0
-                    row['total_return'] = (1 + returns).prod() - 1
-
-            periods_data.append(row)
-
-        if periods_data:
-            df = pd.DataFrame(periods_data)
-            # Sort by step if available, otherwise by period start date
-            if 'step' in df.columns and df['step'].notna().all():
-                df = df.sort_values('step')
-            else:
-                df = df.sort_values('start_date')
-            return df.set_index('period')
-        else:
-            return {}
-
-    def plot(self, results, figsize=(15, 12)):
-        """
-        Plot walk-forward optimization results.
-
-        Parameters
-        ----------
-        results : dict
-            Results from WalkForwardOptimizer.optimize()
-        figsize : tuple
-            Figure size (width, height)
-        """
-        # First analyze the results
-        analysis = self.analyze(results)
-
-        if 'error' in analysis:
-            print(f"Error: {analysis['error']}")
-            return
-
-        combined_returns = analysis['combined_returns']
-        param_evolution = analysis['param_evolution']
-        metrics = analysis['metrics']
-        period_transitions = analysis['period_transitions']
-
-        if combined_returns.empty:
-            print("No returns data to plot.")
-            return
-
-        # Extract configuration
-        optimizer_type = results.get('optimizer_type', 'walk_forward')
-        anchored = results.get('anchored', False)
-
-        # Create the figure with 3 rows
-        fig = plt.figure(figsize=figsize)
-        gs = fig.add_gridspec(3, 1, height_ratios=[2, 1, 1])
-
-        # Add vertical lines for period transitions (pastel yellow)
-        transition_color = 'lightgrey'  # Pastel yellow
-
-        ax1 = fig.add_subplot(gs[0])
-        equity_curve = (1 + combined_returns).cumprod()
-        for date in period_transitions:
-            if date in equity_curve.index:
-                ax1.axvline(date, color=transition_color, linestyle='--', alpha=0.7)
-
-        # Equity curve with transition markers
-        ax1.plot(equity_curve.index, equity_curve.values, label='Strategy')
-
-        # Add benchmark if available in any test period
-        all_benchmark_returns = []
-        for period_key, period_data in results['test_periods'].items():
-            if ('results' in period_data and period_data['results'] and
-                    'benchmark_returns' in period_data['results']):
-                period_benchmark = period_data['results']['benchmark_returns']
-                if not period_benchmark.empty:
-                    all_benchmark_returns.append(period_benchmark)
-
-        benchmark_returns = pd.Series(dtype=float)
-        if all_benchmark_returns:
-            benchmark_returns = pd.concat(all_benchmark_returns)
-
-        if not benchmark_returns.empty:
-            benchmark_returns = benchmark_returns.sort_index()
-            benchmark_equity = (1 + benchmark_returns).cumprod()
-            ax1.plot(benchmark_equity.index, benchmark_equity.values, label='Benchmark', alpha=0.7)
-
-        title_type = f"{'Anchored' if anchored else 'Sliding'} Walk-Forward" if optimizer_type == 'walk_forward' else optimizer_type.replace(
-            '_', ' ').title()
-        ax1.set_title(f'Out-of-Sample Equity Curve ({title_type})')
-        ax1.set_ylabel('Cumulative Return')
-        ax1.legend()
-
-        ax2 = fig.add_subplot(gs[1])
-        drawdown = (equity_curve / equity_curve.cummax() - 1)
-
-        # Add vertical lines for period transitions in drawdown chart
-        for date in period_transitions:
-            if date in drawdown.index:
-                ax2.axvline(date, color=transition_color, linestyle='--', alpha=0.7)
-
-        # Drawdowns (full width)
-        ax2.fill_between(drawdown.index, 0, drawdown.values, color='red', alpha=0.3)
-        ax2.plot(drawdown.index, drawdown.values, color='red')
-        ax2.set_title('Out-of-Sample Drawdown')
-        ax2.set_ylabel('Drawdown (%)')
-
-        # Parameter evolution at the bottom (full width) with simple numbered x-axis
-        if isinstance(param_evolution, pd.DataFrame) and not param_evolution.empty:
-            ax3 = fig.add_subplot(gs[2])
-
-            # Find parameter columns
-            param_cols = [col for col in param_evolution.columns if col.startswith('param_')]
-
-            # Create x-axis positions (just sequential numbers)
-            x_values = range(len(param_evolution))
-
-            # Add vertical lines for parameter transitions
-            # We'll place them evenly across the parameter chart where possible
-            for i in range(len(param_evolution) - 1):  # Don't add a line after the last period
-                ax3.axvline(i + 0.5, color=transition_color, linestyle='--', alpha=0.7)
-
-            # Plot up to 4 parameters for readability
-            for col in param_cols[:4]:
-                param_name = col.replace('param_', '')
-                ax3.plot(x_values, param_evolution[col], 'o-', label=param_name)
-
-            ax3.set_title('Parameter Evolution')
-            ax3.set_xlabel('Walk-Forward Step')
-            ax3.set_ylabel('Parameter Value')
-
-            # Simple numbered x-axis
-            ax3.set_xticks(x_values)
-            ax3.set_xticklabels([str(i + 1) for i in x_values])
-
-            ax3.legend()
-
-        plt.tight_layout()
-        plt.show()
-
-    def _print_summary(self, metrics):
-        """Print a summary of performance metrics."""
-        if not metrics:
-            print("No performance metrics available.")
-            return
-
-        print("\n=== Performance Summary ===")
-        formatted_metrics = {
-            'Annual Return': f"{metrics.get('ann_return', 0):.2%}",
-            'Annual Volatility': f"{metrics.get('ann_volatility', 0):.2%}",
-            'Sharpe Ratio': f"{metrics.get('sharpe_ratio', 0):.2f}",
-            'Total Return': f"{metrics.get('total_return', 0):.2%}",
-            'Win Rate': f"{metrics.get('win_rate', 0):.2%}",
-            'Max Drawdown': f"{metrics.get('max_drawdown', 0):.2%}",
-            'Calmar Ratio': f"{metrics.get('calmar_ratio', 0):.2f}",
-            'Time Underwater': f"{metrics.get('underwater_pct', 0):.2%}",
-            'Monthly Win Rate': f"{metrics.get('monthly_win_rate', 0):.2%}"
-        }
-
-        # Print in a nice format
-        max_key_len = max(len(k) for k in formatted_metrics.keys())
-        for key, value in formatted_metrics.items():
-            print(f"{key:{max_key_len}}: {value}")
-
-    def plot_parameter_surface(self, results, param1, param2, metric='sharpe', figsize=(12, 8)):
-        """
-        Plot a 3D surface showing the relationship between two parameters and a performance metric.
-
-        Parameters
-        ----------
-        results : dict
-            Results from WalkForwardOptimizer.optimize()
-        param1 : str
-            First parameter name
-        param2 : str
-            Second parameter name
-        metric : str
-            Performance metric to visualize
-        figsize : tuple
-            Figure size (width, height)
-        """
-        try:
-            from mpl_toolkits.mplot3d import Axes3D
-        except ImportError:
-            print("3D plotting requires mpl_toolkits.mplot3d")
-            return
-
-        # Get parameter data
-        param_evolution = self._extract_parameter_evolution(results.get('test_periods', {}))
-
-        if isinstance(param_evolution, pd.DataFrame) and not param_evolution.empty:
-            # Check if we have the required columns
-            param1_col = f"param_{param1}"
-            param2_col = f"param_{param2}"
-
-            if param1_col not in param_evolution.columns:
-                print(f"Parameter {param1} not found in results")
-                return
-
-            if param2_col not in param_evolution.columns:
-                print(f"Parameter {param2} not found in results")
-                return
-
-            if metric not in param_evolution.columns:
-                print(f"Metric {metric} not found in results")
-                return
-
-            # Create the 3D plot
-            fig = plt.figure(figsize=figsize)
-            ax = fig.add_subplot(111, projection='3d')
-
-            # Plot the surface
-            ax.scatter(param_evolution[param1_col],
-                       param_evolution[param2_col],
-                       param_evolution[metric],
-                       c=param_evolution[metric],
-                       cmap='viridis',
-                       s=100,
-                       alpha=0.8)
-
-            # Connect points in sequence to show evolution
-            if 'step' in param_evolution.columns:
-                sorted_df = param_evolution.sort_values('step')
-                ax.plot(sorted_df[param1_col], sorted_df[param2_col], sorted_df[metric], 'r-', alpha=0.6)
-
-            ax.set_xlabel(param1)
-            ax.set_ylabel(param2)
-            ax.set_zlabel(metric)
-            ax.set_title(f'Parameter Surface: {param1} vs {param2} vs {metric}')
-
-            plt.tight_layout()
-            plt.show()
-        else:
-            print("No parameter evolution data available")
-```
-
-# portwine/app.py
-
-```py
-# app.py
-
-import os
-import sys
-import uuid
-import importlib.util
-import io
-import base64
-
-from flask import Flask, request, render_template_string
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-from portwine.backtester import Backtester
-from portwine.loaders.eodhd import EODHDMarketDataLoader
-from portwine.analyzers.equitydrawdown import EquityDrawdownAnalyzer
-from portwine.strategies.base import StrategyBase
-
-app = Flask(__name__)
-UPLOAD_FOLDER = '/tmp/portwine_uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-HTML_TEMPLATE = '''
-<!doctype html>
-<html>
-  <head>
-    <title>Portwine MVP</title>
-  </head>
-  <body>
-    <h1>Paste Your StrategyBase Subclass</h1>
-    <form method="post">
-      <textarea name="code" rows="20" cols="80"
-        placeholder="Paste your StrategyBase subclass here..."></textarea><br>
-      <label for="tickers">Tickers (comma-separated):</label><br>
-      <input type="text" name="tickers" size="80"
-             placeholder="e.g. AAPL, MSFT, GOOG"/><br><br>
-      <button type="submit">Run Backtest</button>
-    </form>
-    {% if img_data %}
-      <h2>Equity Curve & Drawdown</h2>
-      <img src="data:image/png;base64,{{img_data}}" alt="Equity & Drawdown Plot"/>
-    {% endif %}
-  </body>
-</html>
-'''
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    img_data = None
-
-    if request.method == 'POST':
-        raw_code = request.form.get('code', '')
-        tickers_input = request.form.get('tickers', '')
-        if not raw_code.strip():
-            return 'Error: No strategy code provided.', 400
-        if not tickers_input.strip():
-            return 'Error: No tickers provided.', 400
-
-        # Parse tickers list
-        tickers = [t.strip() for t in tickers_input.split(',') if t.strip()]
-        if not tickers:
-            return 'Error: Could not parse any tickers.', 400
-
-        # Prepend import so StrategyBase is defined
-        full_code = "from portwine.strategies.base import StrategyBase\n\n" + raw_code
-
-        # Write user code to a temporary file
-        filename = f"{uuid.uuid4().hex}.py"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        with open(filepath, 'w') as f:
-            f.write(full_code)
-
-        # Dynamically import the module
-        spec = importlib.util.spec_from_file_location('user_strategy', filepath)
-        user_mod = importlib.util.module_from_spec(spec)
-        user_mod.__dict__['StrategyBase'] = StrategyBase
-        sys.modules['user_strategy'] = user_mod
-        try:
-            spec.loader.exec_module(user_mod)
-        except Exception as e:
-            return f'Error importing strategy code: {e}', 400
-
-        # Find the first subclass of StrategyBase
-        strategy_cls = None
-        for obj in vars(user_mod).values():
-            if isinstance(obj, type) and issubclass(obj, StrategyBase) and obj is not StrategyBase:
-                strategy_cls = obj
-                break
-        if strategy_cls is None:
-            return 'Error: No StrategyBase subclass found in code.', 400
-
-        # Instantiate and run backtest
-        try:
-            strategy = strategy_cls(tickers)
-            data_loader = EODHDMarketDataLoader(data_path='/Users/stuart/Developer/Data/EODHD/us_sorted/US')
-            backtester = Backtester(data_loader)
-            results = backtester.run_backtest(strategy)
-            if results is None:
-                return ('Error: Backtest returned no results. '
-                        'Make sure your CSV files live under ./data with names like TICKER.US.csv, '
-                        'and that your tickers are valid.'), 500
-        except Exception as e:
-            return f'Error running backtest: {e}', 500
-
-        # Plot equity & drawdown
-        try:
-            eq_analyzer = EquityDrawdownAnalyzer()
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-
-            strat_eq = (1.0 + results['strategy_returns']).cumprod()
-            bm_eq    = (1.0 + results['benchmark_returns']).cumprod()
-
-            ax1.plot(strat_eq.index, strat_eq.values, label='Strategy')
-            ax1.plot(bm_eq.index,    bm_eq.values,    label='Benchmark')
-            ax1.set_title('Equity Curve')
-            ax1.legend()
-            ax1.grid(True)
-
-            strat_dd = eq_analyzer.compute_drawdown(strat_eq) * 100
-            bm_dd    = eq_analyzer.compute_drawdown(bm_eq)    * 100
-
-            ax2.plot(strat_dd.index, strat_dd.values, label='Strategy DD (%)')
-            ax2.plot(bm_dd.index,    bm_dd.values,    label='Benchmark DD (%)')
-            ax2.set_title('Drawdown (%)')
-            ax2.legend()
-            ax2.grid(True)
-
-            plt.tight_layout()
-
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png')
-            buf.seek(0)
-            img_data = base64.b64encode(buf.read()).decode('ascii')
-            plt.close(fig)
-        except Exception as e:
-            return f'Error generating plot: {e}', 500
-
-    return render_template_string(HTML_TEMPLATE, img_data=img_data)
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
+__all__ = ['StrategyBase', 'Backtester', 'BenchmarkTypes', 'benchmark_equal_weight', 'benchmark_markowitz', 'Universe']
 ```
 
 # portwine/backtester.py
@@ -4945,12 +137,12 @@ import cvxpy as cp
 import numpy as np
 import pandas as pd
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from rich.progress import track
 import logging as _logging
+from tqdm import tqdm
 from portwine.logging import Logger
 
 import pandas_market_calendars as mcal
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class InvalidBenchmarkError(Exception):
     """Raised when the requested benchmark is neither a standard name nor a valid ticker."""
@@ -4970,7 +162,7 @@ def benchmark_markowitz(
 ) -> pd.Series:
     tickers = ret_df.columns
     n = len(tickers)
-    iterator = track(ret_df.index, description="Markowitz") if verbose else ret_df.index
+    iterator = tqdm(ret_df.index, desc="Markowitz") if verbose else ret_df.index
     w_rows: List[np.ndarray] = []
     for ts in iterator:
         win = ret_df.loc[:ts].tail(lookback)
@@ -5003,12 +195,18 @@ class BenchmarkTypes:
     INVALID            = 3
 
 # ------------------------------------------------------------------------------
-# Backtester
+# Optimized Backtester
 # ------------------------------------------------------------------------------
 class Backtester:
     """
-    A step‑driven back‑tester that supports intraday bars and,
-    optionally, an exchange trading calendar.
+    An optimized step‑driven back‑tester that addresses performance bottlenecks
+    identified through profiling.
+    
+    Key optimizations:
+    1. Pre-computed data access patterns
+    2. Vectorized operations where possible
+    3. Reduced pandas indexing overhead
+    4. Memory-efficient data structures
     """
 
     def __init__(
@@ -5016,8 +214,8 @@ class Backtester:
         market_data_loader: MarketDataLoader,
         alternative_data_loader=None,
         calendar: Optional[Union[str, mcal.ExchangeCalendar]] = None,
-        logger: Optional[_logging.Logger] = None,  # pre-configured logger or default
-        log: bool = False,  # enable backtester logging if True
+        logger: Optional[_logging.Logger] = None,
+        log: bool = False,
     ):
         self.market_data_loader      = market_data_loader
         self.alternative_data_loader = alternative_data_loader
@@ -5025,15 +223,21 @@ class Backtester:
             self.calendar = mcal.get_calendar(calendar)
         else:
             self.calendar = calendar
-        # --- configure logging for backtester ---
+        
+        # Configure logging
         if logger is not None:
             self.logger = logger
         else:
             self.logger = Logger.create(__name__, level=_logging.INFO)
-            # enable or disable logging based on simple flag
             self.logger.disabled = not log
+        
+        # Performance optimization: cache for data access
+        self._data_cache = {}
+        self._price_cache = {}
+        self._date_index_cache = {}
 
-    def _split_tickers(self, tickers: List[str]) -> Tuple[List[str], List[str]]:
+    def _split_tickers(self, tickers: set) -> Tuple[List[str], List[str]]:
+        """Split tickers into regular and alternative data tickers."""
         reg, alt = [], []
         for t in tickers:
             if isinstance(t, str) and ":" in t:
@@ -5041,6 +245,65 @@ class Backtester:
             else:
                 reg.append(t)
         return reg, alt
+
+    def _precompute_data_access(self, reg_data: Dict[str, pd.DataFrame], all_ts: List[pd.Timestamp]) -> Dict:
+        """
+        Pre-compute data access patterns to avoid repeated pandas indexing.
+        This is the key optimization that addresses the major bottleneck.
+        """
+        self.logger.debug("Pre-computing data access patterns...")
+        
+        # Create fast lookup structures
+        data_cache = {}
+        price_cache = {}
+        date_index_cache = {}
+        
+        for ticker, df in reg_data.items():
+            # Create fast date-to-index mapping
+            date_to_idx = {date: idx for idx, date in enumerate(df.index)}
+            date_index_cache[ticker] = date_to_idx
+            
+            # Pre-extract price data as numpy arrays for faster access
+            price_cache[ticker] = {
+                'open': df['open'].values,
+                'high': df['high'].values,
+                'low': df['low'].values,
+                'close': df['close'].values,
+                'volume': df['volume'].values,
+                'dates': df.index.values
+            }
+            
+            # Create fast lookup for each timestamp using numpy arrays (no pandas indexing)
+            data_cache[ticker] = {}
+            for ts in all_ts:
+                if ts in date_to_idx:
+                    idx = date_to_idx[ts]
+                    # Use numpy arrays directly instead of pandas .iloc[]
+                    data_cache[ticker][ts] = {
+                        'open': float(price_cache[ticker]['open'][idx]),
+                        'high': float(price_cache[ticker]['high'][idx]),
+                        'low': float(price_cache[ticker]['low'][idx]),
+                        'close': float(price_cache[ticker]['close'][idx]),
+                        'volume': float(price_cache[ticker]['volume'][idx]),
+                    }
+                else:
+                    data_cache[ticker][ts] = None
+        
+        return {
+            'data_cache': data_cache,
+            'price_cache': price_cache,
+            'date_index_cache': date_index_cache
+        }
+
+    def _fast_bar_dict(self, ts: pd.Timestamp, data_cache: Dict) -> Dict[str, dict | None]:
+        """
+        Optimized version of _bar_dict that uses pre-computed data access.
+        This eliminates the pandas indexing bottleneck.
+        """
+        out: Dict[str, dict | None] = {}
+        for ticker, ticker_cache in data_cache.items():
+            out[ticker] = ticker_cache.get(ts)
+        return out
 
     def get_benchmark_type(self, benchmark) -> int:
         if isinstance(benchmark, str):
@@ -5064,12 +327,14 @@ class Backtester:
         require_all_tickers: bool = False,
         verbose: bool = False
     ) -> Optional[Dict[str, pd.DataFrame]]:
-        # adjust logging level based on verbosity
+        # Adjust logging level based on verbosity
         self.logger.setLevel(_logging.DEBUG if verbose else _logging.INFO)
+        
         self.logger.info(
-            "Starting backtest: tickers=%s, start_date=%s, end_date=%s",
+            "Starting optimized backtest: tickers=%s, start_date=%s, end_date=%s",
             strategy.tickers, start_date, end_date,
         )
+        
         # 1) normalize date filters
         sd = pd.Timestamp(start_date) if start_date is not None else None
         ed = pd.Timestamp(end_date)   if end_date   is not None else None
@@ -5077,7 +342,9 @@ class Backtester:
             raise ValueError("start_date must be on or before end_date")
 
         # 2) split tickers
-        reg_tkrs, alt_tkrs = self._split_tickers(strategy.tickers)
+        all_tickers = strategy.universe.all_tickers
+        reg_tkrs, alt_tkrs = self._split_tickers(all_tickers)
+            
         self.logger.debug(
             "Split tickers: %d regular, %d alternative", len(reg_tkrs), len(alt_tkrs)
         )
@@ -5092,6 +359,7 @@ class Backtester:
         self.logger.debug(
             "Fetched market data for %d tickers", len(reg_data)
         )
+        
         # identify any tickers for which we got no data
         missing = [t for t in reg_tkrs if t not in reg_data]
         if missing:
@@ -5104,10 +372,11 @@ class Backtester:
                 raise ValueError(msg)
             else:
                 self.logger.warning(msg)
+        
         # only keep tickers that have data
         reg_tkrs = [t for t in reg_tkrs if t in reg_data]
 
-        # 5) preload benchmark ticker if needed (for require_all_history and later returns)
+        # 5) preload benchmark ticker if needed
         if bm_type == BenchmarkTypes.TICKER:
             bm_data = self.market_data_loader.fetch_data([benchmark])
 
@@ -5149,43 +418,6 @@ class Backtester:
 
             all_ts = list(closes)
 
-        # 5) build trading dates
-        if self.calendar is not None:
-            # data span
-            first_dt = min(df.index.min() for df in reg_data.values())
-            last_dt  = max(df.index.max() for df in reg_data.values())
-
-            # schedule uses dates only
-            sched = self.calendar.schedule(
-                start_date=first_dt.date(),
-                end_date=last_dt.date()
-            )
-            closes = sched["market_close"]
-
-            # drop tz if present
-            if getattr(getattr(closes, "dt", None), "tz", None) is not None:
-                closes = closes.dt.tz_convert(None)
-
-            # restrict to actual data
-            closes = closes[(closes >= first_dt) & (closes <= last_dt)]
-
-            # require history
-            if require_all_history and reg_tkrs:
-                common = max(df.index.min() for df in reg_data.values())
-                closes = closes[closes >= common]
-
-            # apply start/end (full timestamp)
-            if sd is not None:
-                closes = closes[closes >= sd]
-            if ed is not None:
-                closes = closes[closes <= ed]
-
-            all_ts = list(closes)
-
-            # **raise** on empty calendar range
-            if not all_ts:
-                raise ValueError("No trading dates after filtering")
-
         else:
             # legacy union of data indices
             if hasattr(self.market_data_loader, "get_all_dates"):
@@ -5208,66 +440,210 @@ class Backtester:
             if ed is not None:
                 all_ts = [d for d in all_ts if d <= ed]
 
-            if not all_ts:
-                raise ValueError("No trading dates after filtering")
+        if not all_ts:
+            raise ValueError("No trading dates after filtering")
 
-        # 7) main loop: signals
-        sig_rows = []
+        # 7) OPTIMIZATION: Pre-compute data access patterns
+        access_cache = self._precompute_data_access(reg_data, all_ts)
+        data_cache = access_cache['data_cache']
+        price_cache = access_cache['price_cache']
+
+        # 8) main loop: signals (optimized)
+        # OPTIMIZATION: Pre-allocate arrays instead of building lists
+        n_dates = len(all_ts)
+        tickers_list = list(strategy.tickers)
+        n_tickers = len(tickers_list)
+        signals_array = np.zeros((n_dates, n_tickers), dtype=np.float64)
+        dates_array = np.empty(n_dates, dtype=object)
+        
+        # OPTIMIZATION: Cache universe lookups to avoid repeated calls
+        universe_cache = {}
+        
         self.logger.debug(
             "Processing %d backtest steps", len(all_ts)
         )
-        iterator = track(all_ts, description="Backtest") if verbose else all_ts
-        for ts in iterator:
+        iterator = tqdm(all_ts, desc="Backtest") if verbose else all_ts
+
+        for i, ts in enumerate(iterator):
+            # OPTIMIZATION: Cache universe lookups
+            if ts not in universe_cache:
+                universe_cache[ts] = strategy.universe.get_constituents(ts)
+            current_universe_tickers = universe_cache[ts]
+            
+            # OPTIMIZATION: Use pre-computed data access
             if hasattr(self.market_data_loader, "next"):
-                bar = self.market_data_loader.next(reg_tkrs, ts)
+                bar = self.market_data_loader.next(current_universe_tickers, ts)
             else:
-                bar = self._bar_dict(ts, reg_data)
+                # Use optimized bar_dict
+                filtered_data_cache = {t: data_cache[t] for t in current_universe_tickers if t in data_cache}
+                bar = self._fast_bar_dict(ts, filtered_data_cache)
+
 
             if self.alternative_data_loader:
                 alt_ld = self.alternative_data_loader
                 if hasattr(alt_ld, "next"):
                     bar.update(alt_ld.next(alt_tkrs, ts))
                 else:
-                    for t, df in alt_ld.fetch_data(alt_tkrs).items():
-                        bar[t] = self._bar_dict(ts, {t: df})[t]
+                    alt_data = alt_ld.fetch_data(alt_tkrs)
+                    for t, df in alt_data.items():
+                        bar_result = self._bar_dict(ts, {t: df})[t]
+                        bar[t] = bar_result
 
             sig = strategy.step(ts, bar)
-            row = {"date": ts}
-            for t in strategy.tickers:
-                row[t] = sig.get(t, 0.0)
-            sig_rows.append(row)
+            
+            # Validate that strategy only assigns weights to tickers in the current universe
+            # OPTIMIZATION: Reuse cached universe lookup
+            invalid_tickers = [t for t in sig.keys() if t not in current_universe_tickers]
+            if invalid_tickers:
+                raise ValueError(
+                    f"Strategy assigned weights to tickers not in current universe at {ts}: {invalid_tickers}. "
+                    f"Current universe: {current_universe_tickers}"
+                )
+            
+            # OPTIMIZATION: Direct array assignment instead of building dictionaries
+            dates_array[i] = ts
+            for j, ticker in enumerate(tickers_list):
+                signals_array[i, j] = sig.get(ticker, 0.0)
 
-        # 8) construct signals_df
-        sig_df = pd.DataFrame(sig_rows).set_index("date").sort_index()
-        sig_df.index.name = None
-        sig_reg = ((sig_df.shift(1).ffill() if shift_signals else sig_df)
-                   .fillna(0.0)[reg_tkrs])
+        # 9) OPTIMIZATION: Pure numpy signal processing (replaces pandas operations)
+        # Apply signal shifting using numpy operations
+        if shift_signals:
+            shifted_signals = np.zeros_like(signals_array)
+            if signals_array.shape[0] > 1:
+                shifted_signals[1:] = signals_array[:-1]  # Shift down by 1
+            signals_processed = shifted_signals
+        else:
+            signals_processed = signals_array
+        
+        # Forward fill using numpy (replace .ffill()) - only for NaN values, not zeros
+        # Note: 0.0 is a valid signal value meaning "no allocation", so we don't forward fill zeros
+        # In our numpy array, we initialized with zeros, so no NaN handling needed here
+        # The original pandas .ffill() would only forward fill NaN values
+        # Since we pre-allocated with zeros and strategy.step() returns valid values,
+        # no forward fill is needed for this step-based backtester
+        
+        # Select only reg_tkrs columns (replace pandas column selection)
+        tickers_list = list(strategy.tickers)
+        reg_ticker_indices = [i for i, ticker in enumerate(tickers_list) if ticker in reg_tkrs]
+        sig_reg_array = signals_processed[:, reg_ticker_indices]
+        
+        # Create minimal DataFrame only for API compatibility at the end
+        sig_reg = pd.DataFrame(
+            sig_reg_array,
+            index=pd.DatetimeIndex(dates_array),
+            columns=[tickers_list[i] for i in reg_ticker_indices]
+        )
 
-        # 9) compute returns
-        px     = pd.DataFrame({t: reg_data[t]["close"] for t in reg_tkrs})
-        px     = px.reindex(sig_reg.index).ffill()
-        ret_df = px.pct_change(fill_method=None).fillna(0.0)
-        strat_ret = (ret_df * sig_reg).sum(axis=1)
+        # 10) OPTIMIZATION: Pure numpy price processing and returns calculation
+        self.logger.debug("Computing returns using pure numpy operations...")
+        
+        # Build price matrix using numpy operations
+        n_dates = len(dates_array)
+        n_reg_tickers = len(reg_tkrs)
+        price_matrix = np.full((n_dates, n_reg_tickers), np.nan, dtype=np.float64)
+        
+        # Create date lookup for alignment
+        date_to_idx = {date: i for i, date in enumerate(dates_array)}
+        
+        # Fill price matrix for each ticker
+        for ticker_idx, ticker in enumerate(reg_tkrs):
+            if ticker in price_cache:
+                ticker_dates = price_cache[ticker]['dates']
+                ticker_prices = price_cache[ticker]['close']
+                
+                # Align prices with our date array
+                for date_idx, date in enumerate(ticker_dates):
+                    if date in date_to_idx:
+                        price_matrix[date_to_idx[date], ticker_idx] = ticker_prices[date_idx]
+        
+        # Forward fill missing prices using numpy
+        for col in range(n_reg_tickers):
+            mask = np.isnan(price_matrix[:, col])
+            valid_indices = np.where(~mask)[0]
+            if len(valid_indices) > 0:
+                # Forward fill from first valid value
+                for i in range(valid_indices[0] + 1, n_dates):
+                    if mask[i]:
+                        # Find last valid value
+                        last_valid_idx = i - 1
+                        while last_valid_idx >= 0 and mask[last_valid_idx]:
+                            last_valid_idx -= 1
+                        if last_valid_idx >= 0:
+                            price_matrix[i, col] = price_matrix[last_valid_idx, col]
+        
+        # Calculate returns using numpy (replaces pct_change)
+        returns_matrix = np.zeros_like(price_matrix)
+        returns_matrix[1:] = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
+        # Replace NaN/inf with 0.0
+        returns_matrix = np.nan_to_num(returns_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Calculate strategy returns using numpy (replaces pandas matrix multiplication)
+        strat_ret_array = np.sum(returns_matrix * sig_reg_array, axis=1)
+        
+        # Create minimal pandas objects for API compatibility
+        ret_df = pd.DataFrame(
+            returns_matrix,
+            index=pd.DatetimeIndex(dates_array),
+            columns=reg_tkrs
+        )
+        strat_ret = pd.Series(
+            strat_ret_array,
+            index=pd.DatetimeIndex(dates_array)
+        )
 
-        # 10) benchmark returns
+        # 11) benchmark returns
         if bm_type == BenchmarkTypes.CUSTOM_METHOD:
             bm_ret = benchmark(ret_df)
         elif bm_type == BenchmarkTypes.STANDARD_BENCHMARK:
             bm_ret = STANDARD_BENCHMARKS[benchmark](ret_df)
         else:  # TICKER
-            ser = bm_data[benchmark]["close"].reindex(sig_reg.index).ffill()
-            bm_ret = ser.pct_change(fill_method=None).fillna(0.0)
+            # OPTIMIZATION: Replace pandas operations with numpy for benchmark calculation
+            bm_df = bm_data[benchmark]
+            bm_prices = bm_df["close"].values
+            bm_dates = bm_df.index.values
+            
+            # Align benchmark data with strategy dates using numpy
+            strategy_dates = pd.DatetimeIndex(dates_array).values
+            aligned_prices = np.full(len(strategy_dates), np.nan)
+            
+            # Fast date alignment using searchsorted
+            for i, target_date in enumerate(strategy_dates):
+                pos = np.searchsorted(bm_dates, target_date, side="right") - 1
+                if pos >= 0:
+                    aligned_prices[i] = bm_prices[pos]
+            
+            # Forward fill using numpy (replace .ffill())
+            last_valid_price = np.nan
+            for i in range(len(aligned_prices)):
+                if not np.isnan(aligned_prices[i]):
+                    last_valid_price = aligned_prices[i]
+                elif not np.isnan(last_valid_price):
+                    aligned_prices[i] = last_valid_price
+            
+            # Calculate returns using numpy (replace .pct_change().fillna())
+            bm_ret_array = np.zeros(len(aligned_prices))
+            bm_ret_array[1:] = (aligned_prices[1:] - aligned_prices[:-1]) / aligned_prices[:-1]
+            bm_ret_array = np.nan_to_num(bm_ret_array, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Create minimal pandas series for API compatibility
+            bm_ret = pd.Series(bm_ret_array, index=pd.DatetimeIndex(dates_array))
 
-        # 11) dynamic alternative data update
+        # 12) dynamic alternative data update
         if self.alternative_data_loader and hasattr(self.alternative_data_loader, "update"):
-            for ts in sig_reg.index:
-                raw_sigs = sig_df.loc[ts, strategy.tickers].to_dict()
+            for i, ts in enumerate(sig_reg.index):
+                # Create raw_sigs dict directly from numpy array
+                raw_sigs = {ticker: float(signals_processed[i, j]) 
+                           for j, ticker in enumerate(tickers_list)}
+                
+                # Create raw_rets dict directly from numpy array (ret_df still pandas for now)
                 raw_rets = ret_df.loc[ts].to_dict()
+                
+                # Get strategy return as float (strat_ret still pandas for now)
                 self.alternative_data_loader.update(ts, raw_sigs, raw_rets, float(strat_ret.loc[ts]))
 
         # log completion
         self.logger.info(
-            "Backtest complete: processed %d timestamps", len(all_ts)
+            "Optimized backtest complete: processed %d timestamps", len(all_ts)
         )
         return {
             "signals_df":        sig_reg,
@@ -5278,10 +654,23 @@ class Backtester:
 
     @staticmethod
     def _bar_dict(ts: pd.Timestamp, data: Dict[str, pd.DataFrame]) -> Dict[str, dict | None]:
+        """
+        OPTIMIZED: _bar_dict method with 'at or before' logic for compatibility.
+        Uses the same logic as the loader optimization but for direct DataFrame access.
+        """
         out: Dict[str, dict | None] = {}
         for t, df in data.items():
-            if ts in df.index:
-                row = df.loc[ts]
+            if df.empty:
+                out[t] = None
+                continue
+                
+            # Use 'at or before' logic like the optimized loader
+            idx = df.index
+            pos = idx.searchsorted(ts, side="right") - 1
+            if pos < 0:
+                out[t] = None
+            else:
+                row = df.iloc[pos]
                 out[t] = {
                     "open":   float(row["open"]),
                     "high":   float(row["high"]),
@@ -5289,9 +678,7 @@ class Backtester:
                     "close":  float(row["close"]),
                     "volume": float(row["volume"]),
                 }
-            else:
-                out[t] = None
-        return out
+        return out 
 
 ```
 
@@ -5801,6 +1188,415 @@ class MockBroker(BrokerBase):
 
 ```
 
+# portwine/data/interface.py
+
+```py
+from datetime import datetime
+
+class DataInterface:
+    def __init__(self, data_loader):
+        self.data_loader = data_loader
+        self.current_timestamp = None
+
+    def set_current_timestamp(self, timestamp: datetime):
+        self.current_timestamp = timestamp
+    
+    def __getitem__(self, ticker: str):
+        """
+        Access data for a ticker using bracket notation: interface['AAPL']
+        
+        Returns the latest OHLCV data for the ticker at the current timestamp.
+        This enables lazy loading and caching without passing large dictionaries to strategies.
+        
+        Args:
+            ticker: The ticker symbol to retrieve data for
+            
+        Returns:
+            dict: OHLCV data dictionary with keys ['open', 'high', 'low', 'close', 'volume']
+            
+        Raises:
+            ValueError: If current_timestamp is not set
+            KeyError: If the ticker is not found or has no data
+        """
+        if self.current_timestamp is None:
+            raise ValueError("Current timestamp not set. Call set_current_timestamp() first.")
+        
+        # Get data for this ticker at the current timestamp
+        data = self.data_loader.next([ticker], self.current_timestamp)
+        
+        if ticker not in data or data[ticker] is None:
+            raise KeyError(f"No data found for ticker: {ticker}")
+        
+        return data[ticker]
+```
+
+# portwine/data/provider.py
+
+```py
+import abc
+from datetime import datetime
+from typing import Union
+import httpx
+import asyncio
+
+class DataProvider(abc.ABC):
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        ...
+
+    def get_data(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None):
+        # gets for a given identifier, start_date, and end_date
+        # data can be ANY format, OHLCV, fundamental data, etc.
+        # this is just the interface for the data provider
+        ...
+
+    async def get_data_async(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None):
+        # gets for a given identifier, start_date, and end_date
+        # data can be ANY format, OHLCV, fundamental data, etc.
+        # this is just the interface for the data provider
+        ...
+
+'''
+EODHD Historical Data Provider
+
+This provider is used to get historical data from EODHD.
+
+https://eodhd.com/
+
+import requests
+
+url = f'https://eodhd.com/api/eod/MCD.US?api_token=67740bda7e4247.39007920&fmt=json'
+data = requests.get(url).json()
+
+print(data)
+'''
+class EODHDHistoricalDataProvider(DataProvider):
+    def __init__(self, api_key: str, exchange_code: str):
+        self.api_key = api_key
+        self.exchange_code = exchange_code
+
+    def _get_url(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None):
+        url = f'https://eodhd.com/api/eod/{identifier}.{self.exchange_code}?api_token={self.api_key}&fmt=json'
+        if end_date is not None:
+            url += f'&to={end_date.strftime("%Y-%m-%d")}'
+        if start_date is not None:
+            url += f'&from={start_date.strftime("%Y-%m-%d")}'
+        return url
+
+    def get_data(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None):
+        url = self._get_url(identifier, start_date, end_date)
+        data = httpx.get(url).json()
+        
+        return data
+    
+    async def get_data_async(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None):
+        url = self._get_url(identifier, start_date, end_date)
+        
+        async with httpx.AsyncClient() as client:
+            data = await client.get(url)
+            data = data.json()
+
+        return data
+```
+
+# portwine/data/store.py
+
+```py
+'''
+DataStore is a class that stores data fetched from a data provider.
+
+It can store it in flat files, in a database, or in memory; whatever the developer wants.
+'''
+
+from datetime import datetime
+from typing import Union, OrderedDict
+from collections import OrderedDict as OrderedDictType
+import abc
+import os
+import pandas as pd
+from pathlib import Path
+
+'''
+
+Data format:
+
+identifier: {
+    datetime_str: {
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: int,
+    },
+    datetime_str: {
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: int,
+    },
+    ...
+}
+
+Could also be fundamental data, etc. like:
+
+identifier: {
+    datetime_str: {
+        gdp: float,
+        inflation: float,
+        unemployment: float,
+        interest_rate: float,
+        etc.
+    },
+    datetime_str: {
+        gdp: float,
+        inflation: float,
+        unemployment: float,
+        interest_rate: float,
+        etc.
+    },
+    ...
+}
+
+'''
+
+class DataStore(abc.ABC):
+    def __init__(self, *args, **kwargs):
+        ...
+
+    '''
+    Adds data to the store. Assumes that data is immutable, and that if the data already exists for the given times, 
+    it is skipped.
+    '''
+    def add(self, identifier: str, data: dict):
+        ...
+
+    '''
+    Gets data from the store in chronological order (earliest to latest).
+    If the data is not found, it returns None.
+    '''
+    def get(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None) -> Union[OrderedDictType[datetime, dict], None]:
+        ...
+
+    '''
+    Gets the latest data point for the identifier.
+    If the data is not found, it returns None.
+    '''
+    def get_latest(self, identifier: str) -> Union[dict, None]:
+        ...
+
+    '''
+    Gets the latest date for a given identifier from the store.
+    If the data is not found, it returns None.
+    '''
+    def latest(self, identifier: str) -> Union[datetime, None]:
+        ...
+
+    '''
+    Checks if data exists for a given identifier, start_date, and end_date.
+
+    If start_date is None, it assumes the earliest date for that piece of data.
+    If end_date is None, it assumes the latest date for that piece of data.
+
+    If start_date is not None and end_date is not None, it checks if the data exists
+    for the given start_date until the end of the data.
+    '''
+    def exists(self, identifier: str, start_date: Union[datetime, None] = None, end_date: Union[datetime, None] = None) -> bool:
+        ...
+    
+    '''
+    Gets all identifiers from the store.
+    '''
+    def identifiers(self):
+        ...
+
+
+class ParquetDataStore(DataStore):
+    """
+    A DataStore implementation that stores data in parquet files.
+    
+    File structure:
+    data_dir/
+    ├── <identifier_1>.pqt
+    ├── <identifier_2>.pqt
+    ├── <identifier_3>.pqt
+    └── <identifier_4>.pqt
+    
+    Each parquet file contains a DataFrame with:
+    - Index: datetime (chronologically ordered)
+    - Columns: data fields (open, high, low, close, volume, etc.)
+    """
+    
+    def __init__(self, data_dir: str):
+        """
+        Initialize the ParquetDataStore.
+        
+        Args:
+            data_dir: Directory where parquet files are stored
+        """
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _get_file_path(self, identifier: str) -> Path:
+        """Get the parquet file path for an identifier."""
+        return self.data_dir / f"{identifier}.pqt"
+    
+    def _load_dataframe(self, identifier: str) -> pd.DataFrame:
+        """Load DataFrame from parquet file, return empty DataFrame if file doesn't exist."""
+        file_path = self._get_file_path(identifier)
+        if file_path.exists():
+            try:
+                df = pd.read_parquet(file_path)
+                # Ensure index is datetime
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index)
+                return df.sort_index()  # Ensure chronological order
+            except Exception as e:
+                print(f"Error loading parquet file for {identifier}: {e}")
+                return pd.DataFrame()
+        return pd.DataFrame()
+    
+    def _save_dataframe(self, identifier: str, df: pd.DataFrame):
+        """Save DataFrame to parquet file."""
+        file_path = self._get_file_path(identifier)
+        try:
+            # Ensure chronological order before saving
+            df_sorted = df.sort_index()
+            df_sorted.to_parquet(file_path, index=True)
+        except Exception as e:
+            print(f"Error saving parquet file for {identifier}: {e}")
+    
+    def add(self, identifier: str, data: dict, overwrite: bool = False):
+        """
+        Adds data to the store.
+        
+        Args:
+            identifier: The identifier for the data
+            data: Dictionary with datetime keys and data dictionaries as values
+            overwrite: If True, overwrite existing data for the same dates
+        """
+        if not data:
+            return
+        
+        # Load existing data
+        df_existing = self._load_dataframe(identifier)
+        
+        # Convert new data to DataFrame
+        new_data = []
+        for dt, values in data.items():
+            if isinstance(dt, str):
+                dt = pd.to_datetime(dt)
+            row_data = {'date': dt, **values}
+            new_data.append(row_data)
+        
+        if not new_data:
+            return
+        
+        df_new = pd.DataFrame(new_data)
+        df_new.set_index('date', inplace=True)
+        
+        if df_existing.empty:
+            # No existing data, just save new data
+            self._save_dataframe(identifier, df_new)
+        else:
+            if overwrite:
+                # Remove existing rows for the same dates, then concatenate
+                df_existing = df_existing.drop(df_new.index, errors='ignore')
+                df_combined = pd.concat([df_existing, df_new])
+            else:
+                # For non-overwrite mode, filter out dates that already exist
+                existing_dates = df_existing.index
+                df_new_filtered = df_new[~df_new.index.isin(existing_dates)]
+                
+                if df_new_filtered.empty:
+                    # No new data to add
+                    return
+                
+                # Concatenate existing data with only new dates
+                df_combined = pd.concat([df_existing, df_new_filtered])
+            
+            self._save_dataframe(identifier, df_combined)
+    
+    def get(self, identifier: str, start_date: datetime, end_date: Union[datetime, None] = None) -> Union[OrderedDictType[datetime, dict], None]:
+        """
+        Gets data from the store in chronological order (earliest to latest).
+        If the data is not found, it returns None.
+        """
+        df = self._load_dataframe(identifier)
+        if df.empty:
+            return None
+        
+        # Filter by date range
+        if end_date is None:
+            end_date = df.index.max()
+        
+        mask = (df.index >= start_date) & (df.index <= end_date)
+        df_filtered = df[mask]
+        
+        if df_filtered.empty:
+            return None
+        
+        # Convert to OrderedDict with datetime keys
+        result = OrderedDict()
+        for dt, row in df_filtered.iterrows():
+            result[dt] = row.to_dict()
+        
+        return result
+    
+    def get_latest(self, identifier: str) -> Union[dict, None]:
+        """
+        Gets the latest data point for the identifier.
+        If the data is not found, it returns None.
+        """
+        df = self._load_dataframe(identifier)
+        if df.empty:
+            return None
+        
+        latest_row = df.iloc[-1]
+        return latest_row.to_dict()
+    
+    def latest(self, identifier: str) -> Union[datetime, None]:
+        """
+        Gets the latest date for a given identifier from the store.
+        If the data is not found, it returns None.
+        """
+        df = self._load_dataframe(identifier)
+        if df.empty:
+            return None
+        
+        return df.index.max()
+    
+    def exists(self, identifier: str, start_date: Union[datetime, None] = None, end_date: Union[datetime, None] = None) -> bool:
+        """
+        Checks if data exists for a given identifier, start_date, and end_date.
+        """
+        df = self._load_dataframe(identifier)
+        if df.empty:
+            return False
+        
+        if start_date is None:
+            start_date = df.index.min()
+        if end_date is None:
+            end_date = df.index.max()
+        
+        # Check if any data exists in the specified range
+        mask = (df.index >= start_date) & (df.index <= end_date)
+        return df[mask].shape[0] > 0
+    
+    def identifiers(self):
+        """
+        Gets all identifiers from the store.
+        """
+        identifiers = []
+        for file_path in self.data_dir.glob("*.pqt"):
+            # Extract identifier from filename (remove .pqt extension)
+            identifier = file_path.stem
+            identifiers.append(identifier)
+        return identifiers
+
+
+```
+
 # portwine/execution.py
 
 ```py
@@ -5819,12 +1615,15 @@ from typing import Dict, List, Optional, Tuple, Iterator
 import math
 import time
 from datetime import datetime
+import pandas as pd
+import pandas_market_calendars as mcal
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 from portwine.strategies.base import StrategyBase
 from portwine.brokers.base import BrokerBase, Order
 from portwine.logging import Logger, log_position_table, log_weight_table, log_order_table
-from rich.progress import track
+from rich.progress import track, Progress, SpinnerColumn, TimeElapsedColumn, TextColumn
+from portwine.scheduler import daily_schedule
 
 class ExecutionError(Exception):
     """Base exception for execution-related errors."""
@@ -5865,6 +1664,7 @@ class ExecutionBase(abc.ABC):
         alternative_data_loader: Optional[MarketDataLoader] = None,
         min_change_pct: float = 0.01,
         min_order_value: float = 1.0,
+        fractional: bool = False,
         timezone: Optional[datetime.tzinfo] = None,
     ):
         """
@@ -5893,14 +1693,14 @@ class ExecutionBase(abc.ABC):
         self.alternative_data_loader = alternative_data_loader
         self.min_change_pct = min_change_pct
         self.min_order_value = min_order_value
-        
+        self.fractional = fractional
         # Store timezone (tzinfo); default to system local timezone
         self.timezone = timezone if timezone is not None else datetime.now().astimezone().tzinfo
         # Initialize ticker list from strategy
         self.tickers = strategy.tickers
         # Set up a per-instance rich-enabled logger
         self.logger = Logger.create(self.__class__.__name__, level=logging.INFO)
-        self.logger.info(f"Initialized {self.__class__.__name__} with {len(self.tickers)} tickers")
+        self.logger.info(f"Initialized {self.strategy.__class__.__name__} with {len(self.tickers)} tickers")
     
     @staticmethod
     def _split_tickers(tickers: List[str]) -> Tuple[List[str], List[str]]:
@@ -5919,41 +1719,33 @@ class ExecutionBase(abc.ABC):
 
     def fetch_latest_data(self, timestamp: Optional[float] = None) -> Dict[str, Optional[Dict[str, float]]]:
         """
-        Fetch latest market data for the tickers in the strategy.
+        Fetch latest data for all tickers at the given timestamp.
         
         Parameters
         ----------
-        timestamp : Optional[float]
-            UNIX timestamp to get data for, or current time if None
+        timestamp : float, optional
+            Unix timestamp in seconds. If None, uses current time.
             
         Returns
         -------
         Dict[str, Optional[Dict[str, float]]]
-            Dictionary of latest bar data for each ticker
-        
-        Raises
-        ------
-        DataFetchError
-            If data cannot be fetched
+            Dictionary mapping tickers to their latest bar data or None
         """
-        self.logger.debug(f"Fetching data for tickers: {self.tickers}")
-
         try:
-            # Convert UNIX timestamp to timezone-aware datetime, default to now
+            # Convert UNIX timestamp to timezone-aware pandas Timestamp
             if timestamp is None:
-                dt = datetime.now(tz=self.timezone)
+                dt = pd.Timestamp.now(tz=self.timezone)
             else:
                 # timestamp is seconds since epoch
-                dt = datetime.fromtimestamp(timestamp, tz=self.timezone)
-            # Strip tzinfo for loader to match tz-naive indices
-            loader_dt = dt.replace(tzinfo=None)
+                dt = pd.Timestamp(timestamp, unit='s', tz=self.timezone)
+            
             # Split tickers into market vs alternative
             reg_tkrs, alt_tkrs = self._split_tickers(self.tickers)
             # Fetch market data only for regular tickers
-            data = self.market_data_loader.next(reg_tkrs, loader_dt)
+            data = self.market_data_loader.next(reg_tkrs, dt)
             # Fetch alternative data only for alternative tickers
             if self.alternative_data_loader is not None and alt_tkrs:
-                alt_data = self.alternative_data_loader.next(alt_tkrs, loader_dt)
+                alt_data = self.alternative_data_loader.next(alt_tkrs, dt)
                 # Merge alternative entries into result
                 data.update(alt_data)
 
@@ -5970,14 +1762,12 @@ class ExecutionBase(abc.ABC):
         Get current closing prices for the specified symbols by querying only market data.
 
         This method bypasses alternative data and directly uses market_data_loader.next
-        with a timezone-naive datetime matching the execution timezone.
+        with a timezone-aware datetime matching the execution timezone.
         """
         # Build current datetime in execution timezone
         dt = datetime.now(tz=self.timezone)
-        # Align to loader timezone (no-op if same) and strip tzinfo
-        loader_dt = dt.astimezone(self.timezone).replace(tzinfo=None)
         # Fetch only market data for given symbols
-        data = self.market_data_loader.next(symbols, loader_dt)
+        data = self.market_data_loader.next(symbols, dt)
         prices: Dict[str, float] = {}
         for symbol, bar in data.items():
             if bar is None:
@@ -6010,7 +1800,7 @@ class ExecutionBase(abc.ABC):
         target_weights: Dict[str, float],
         portfolio_value: float,
         prices: Dict[str, float],
-        fractional: bool = True,
+        fractional: bool = False,
     ) -> Dict[str, float]:
         """
         Convert target weights to absolute position sizes.
@@ -6196,7 +1986,7 @@ class ExecutionBase(abc.ABC):
         self.logger.debug(f"Prices: {prices}")
 
         # Compute target positions and optionally current weights
-        target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices)
+        target_positions = self._calculate_target_positions(target_weights, portfolio_value, prices, self.fractional)
         current_weights = self._calculate_current_weights(list(current_positions.items()), portfolio_value, prices)
         # Render position changes table
         log_position_table(self.logger, current_positions, target_positions)
@@ -6211,16 +2001,64 @@ class ExecutionBase(abc.ABC):
         executed = self._execute_orders(orders)
         return executed
 
-    def run(self, schedule: Iterator[int]) -> None:
+    def warmup(self, start_date: str, end_date: str = None, after_open_minutes: int = 0, before_close_minutes: int = 0, interval_seconds: int = None):
         """
-        Continuously execute `step` at each timestamp provided by the schedule iterator,
-        waiting until the scheduled time before running.
-
-        Args:
-            schedule: An iterator yielding UNIX timestamps in milliseconds for when to run each step.
-
-        The loop terminates when the iterator is exhausted (StopIteration).
+        Warm up the strategy by running it over historical data from start_date up to end_date.
+        If end_date is None, uses current date.
         """
+        tickers = self.tickers
+        calendar_name = "NYSE"
+        if end_date is None:
+            end_date = pd.Timestamp.now(tz=self.timezone).strftime("%Y-%m-%d")
+        schedule = daily_schedule(
+            after_open_minutes=after_open_minutes,
+            before_close_minutes=before_close_minutes,
+            interval_seconds=interval_seconds,
+            calendar_name=calendar_name,
+            start_date=start_date,
+            end_date=end_date
+        )
+        steps = 0
+        last_data = {t: None for t in tickers}
+        try:
+            for ts in schedule:
+                dt_aware = pd.to_datetime(ts, unit='ms', utc=True).tz_convert(self.timezone)
+                # Fetch data with ffill
+                daily_data = self.market_data_loader.next(tickers, dt_aware, ffill=True)
+                # Forward-fill missing values
+                for t in tickers:
+                    if daily_data[t] is None and last_data[t] is not None:
+                        daily_data[t] = last_data[t]
+                    elif daily_data[t] is not None:
+                        last_data[t] = daily_data[t]
+                current_signals = self.strategy.step(dt_aware, daily_data)
+                self.logger.info(f"Warmup step at {dt_aware}: {current_signals}")
+                steps += 1
+                if steps % 100 == 0:
+                    self.logger.info(f"Warm-up progress: {steps} steps...")
+        except StopIteration:
+            self.logger.info(f"Warm-up complete after {steps} steps (schedule exhausted).")
+            return
+        self.logger.info(f"Warm-up complete after {steps} steps (reached now).")
+
+    def run(self, schedule: Iterator[int], warmup_start_date: str = None) -> None:
+        """
+        Optionally run warmup before main execution loop. If warmup_start_date is provided, run warmup from that date.
+        """
+        if warmup_start_date is not None:
+            # Try to extract warmup params from schedule object
+            after_open = getattr(schedule, 'after_open', 0)
+            before_close = getattr(schedule, 'before_close', 0)
+            interval = getattr(schedule, 'interval', None)
+            self.logger.info(
+                f"Running warmup from {warmup_start_date} (after_open={after_open}, before_close={before_close}, interval={interval})"
+            )
+            self.warmup(
+                warmup_start_date,
+                after_open_minutes=after_open,
+                before_close_minutes=before_close,
+                interval_seconds=interval
+            )
         # allow for missing timezone (e.g. in FakeExec)
         tz = getattr(self, 'timezone', None)
         for timestamp_ms in schedule:
@@ -6234,11 +2072,18 @@ class ExecutionBase(abc.ABC):
             now_s = time.time()
             wait = target_s - now_s
             if wait > 0:
-                # sleep 1 second at a time
-                for _ in range(int(wait)):
-                    time.sleep(1)
-                # remainder
-                rem = wait - int(wait)
+                total_seconds = int(wait)
+                progress = Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                )
+                with progress:
+                    task = progress.add_task("Waiting for next execution", total=total_seconds)
+                    for _ in range(total_seconds):
+                        time.sleep(1)
+                        progress.advance(task)
+                rem = wait - total_seconds
                 if rem > 0:
                     time.sleep(rem)
             self.logger.info(
@@ -6248,18 +2093,258 @@ class ExecutionBase(abc.ABC):
 
 ```
 
+# portwine/indexes.py
+
+```py
+### Indexes and standard baskets of equities. Not guarenteed to be up to date.
+
+# 100 Oldest Companies (not standardized)
+# Taken at May 27, 2025 from: https://stockanalysis.com/list/oldest-companies/
+oldest_100 = [
+    'DBD', 'BCO', 'NTB', 'FITB', 'FHB', 'EML', 'SR', 'SAN', 'MWA', 'BBVA', 'ACNB', 'SNN', 'NBTB', 'MTB', 'TD', 'MGEE',
+    'CXT', 'CR', 'WNEB', 'TRV', 'OTIS', 'NVRI', 'LEVI', 'CNA', 'BLCO', 'WFC', 'THG', 'SWBI', 'PNC', 'BHRB', 'WU', 'TRI',
+    'NYT', 'GLW', 'DOLE', 'BHP', 'AROW', 'MATW', 'CCU', 'AXP', 'PFE', 'DCO', 'CMA', 'UNM', 'PUK', 'LAZ', 'FNF', 'CLF',
+    'SGI', 'CHD', 'BHLB', 'BC', 'PSO', 'TRC', 'SWK', 'RYI', 'CNH', 'DNB', 'PFS', 'BRK.B', 'PG', 'DE', 'TMP', 'ONB',
+    'HIFS', 'MCK', 'IFF', 'CHMG', 'ROG', 'BNS', 'M', 'WTW', 'CFG', 'KEY', 'MO', 'EBC', 'BG', 'FISI', 'BMO', 'YORW', 'C',
+    'HIG', 'WLY', 'CL', 'WASH', 'JPM', 'STT', 'CI', 'FLS', 'CWK', 'BK', 'BAC', 'TAK', 'IHG', 'BIRK', 'NWG', 'GSK',
+    'LYG', 'BCS', 'BUD'
+]
+
+# S&P 500
+# Taken at May 27, 2025 from: https://github.com/fja05680/sp500
+sp500 = [
+    'MMM', 'AOS', 'ABT', 'ABBV', 'ACN', 'ADBE', 'AMD', 'AES', 'AFL', 'A', 'APD', 'ABNB', 'AKAM', 'ALB', 'ARE', 'ALGN',
+    'ALLE', 'LNT', 'ALL', 'GOOGL', 'GOOG', 'MO', 'AMZN', 'AMCR', 'AEE', 'AEP', 'AXP', 'AIG', 'AMT', 'AWK', 'AMP', 'AME',
+    'AMGN', 'APH', 'ADI', 'ANSS', 'AON', 'APA', 'APO', 'AAPL', 'AMAT', 'APTV', 'ACGL', 'ADM', 'ANET', 'AJG', 'AIZ', 'T',
+    'ATO', 'ADSK', 'ADP', 'AZO', 'AVB', 'AVY', 'AXON', 'BKR', 'BALL', 'BAC', 'BAX', 'BDX', 'BRK.B', 'BBY', 'TECH',
+    'BIIB', 'BLK', 'BX', 'BK', 'BA', 'BKNG', 'BWA', 'BSX', 'BMY', 'AVGO', 'BR', 'BRO', 'BF.B', 'BLDR', 'BG', 'BXP',
+    'CHRW', 'CDNS', 'CZR', 'CPT', 'CPB', 'COF', 'CAH', 'KMX', 'CCL', 'CARR', 'CAT', 'CBOE', 'CBRE', 'CDW', 'CE', 'COR',
+    'CNC', 'CNP', 'CF', 'CRL', 'SCHW', 'CHTR', 'CVX', 'CMG', 'CB', 'CHD', 'CI', 'CINF', 'CTAS', 'CSCO', 'C', 'CFG',
+    'CLX', 'CME', 'CMS', 'KO', 'CTSH', 'CL', 'CMCSA', 'CAG', 'COP', 'ED', 'STZ', 'CEG', 'COO', 'CPRT', 'GLW', 'CPAY',
+    'CTVA', 'CSGP', 'COST', 'CTRA', 'CRWD', 'CCI', 'CSX', 'CMI', 'CVS', 'DHR', 'DRI', 'DVA', 'DAY', 'DECK', 'DE',
+    'DELL', 'DAL', 'DVN', 'DXCM', 'FANG', 'DLR', 'DFS', 'DG', 'DLTR', 'D', 'DPZ', 'DOV', 'DOW', 'DHI', 'DTE', 'DUK',
+    'DD', 'EMN', 'ETN', 'EBAY', 'ECL', 'EIX', 'EW', 'EA', 'ELV', 'EMR', 'ENPH', 'ETR', 'EOG', 'EPAM', 'EQT', 'EFX',
+    'EQIX', 'EQR', 'ERIE', 'ESS', 'EL', 'EG', 'EVRG', 'ES', 'EXC', 'EXPE', 'EXPD', 'EXR', 'XOM', 'FFIV', 'FDS', 'FICO',
+    'FAST', 'FRT', 'FDX', 'FIS', 'FITB', 'FSLR', 'FE', 'FI', 'FMC', 'F', 'FTNT', 'FTV', 'FOXA', 'FOX', 'BEN', 'FCX',
+    'GRMN', 'IT', 'GE', 'GEHC', 'GEV', 'GEN', 'GNRC', 'GD', 'GIS', 'GM', 'GPC', 'GILD', 'GPN', 'GL', 'GDDY', 'GS',
+    'HAL', 'HIG', 'HAS', 'HCA', 'DOC', 'HSIC', 'HSY', 'HES', 'HPE', 'HLT', 'HOLX', 'HD', 'HON', 'HRL', 'HST', 'HWM',
+    'HPQ', 'HUBB', 'HUM', 'HBAN', 'HII', 'IBM', 'IEX', 'IDXX', 'ITW', 'INCY', 'IR', 'PODD', 'INTC', 'ICE', 'IFF', 'IP',
+    'IPG', 'INTU', 'ISRG', 'IVZ', 'INVH', 'IQV', 'IRM', 'JBHT', 'JBL', 'JKHY', 'J', 'JNJ', 'JCI', 'JPM', 'JNPR', 'K',
+    'KVUE', 'KDP', 'KEY', 'KEYS', 'KMB', 'KIM', 'KMI', 'KKR', 'KLAC', 'KHC', 'KR', 'LHX', 'LH', 'LRCX', 'LW', 'LVS',
+    'LDOS', 'LEN', 'LII', 'LLY', 'LIN', 'LYV', 'LKQ', 'LMT', 'L', 'LOW', 'LULU', 'LYB', 'MTB', 'MPC', 'MKTX', 'MAR',
+    'MMC', 'MLM', 'MAS', 'MA', 'MTCH', 'MKC', 'MCD', 'MCK', 'MDT', 'MRK', 'META', 'MET', 'MTD', 'MGM', 'MCHP', 'MU',
+    'MSFT', 'MAA', 'MRNA', 'MHK', 'MOH', 'TAP', 'MDLZ', 'MPWR', 'MNST', 'MCO', 'MS', 'MOS', 'MSI', 'MSCI', 'NDAQ',
+    'NTAP', 'NFLX', 'NEM', 'NWSA', 'NWS', 'NEE', 'NKE', 'NI', 'NDSN', 'NSC', 'NTRS', 'NOC', 'NCLH', 'NRG', 'NUE',
+    'NVDA', 'NVR', 'NXPI', 'ORLY', 'OXY', 'ODFL', 'OMC', 'ON', 'OKE', 'ORCL', 'OTIS', 'PCAR', 'PKG', 'PLTR', 'PANW',
+    'PARA', 'PH', 'PAYX', 'PAYC', 'PYPL', 'PNR', 'PEP', 'PFE', 'PCG', 'PM', 'PSX', 'PNW', 'PNC', 'POOL', 'PPG', 'PPL',
+    'PFG', 'PG', 'PGR', 'PLD', 'PRU', 'PEG', 'PTC', 'PSA', 'PHM', 'PWR', 'QCOM', 'DGX', 'RL', 'RJF', 'RTX', 'O', 'REG',
+    'REGN', 'RF', 'RSG', 'RMD', 'RVTY', 'ROK', 'ROL', 'ROP', 'ROST', 'RCL', 'SPGI', 'CRM', 'SBAC', 'SLB', 'STX', 'SRE',
+    'NOW', 'SHW', 'SPG', 'SWKS', 'SJM', 'SW', 'SNA', 'SOLV', 'SO', 'LUV', 'SWK', 'SBUX', 'STT', 'STLD', 'STE', 'SYK',
+    'SMCI', 'SYF', 'SNPS', 'SYY', 'TMUS', 'TROW', 'TTWO', 'TPR', 'TRGP', 'TGT', 'TEL', 'TDY', 'TFX', 'TER', 'TSLA',
+    'TXN', 'TPL', 'TXT', 'TMO', 'TJX', 'TSCO', 'TT', 'TDG', 'TRV', 'TRMB', 'TFC', 'TYL', 'TSN', 'USB', 'UBER', 'UDR',
+    'ULTA', 'UNP', 'UAL', 'UPS', 'URI', 'UNH', 'UHS', 'VLO', 'VTR', 'VLTO', 'VRSN', 'VRSK', 'VZ', 'VRTX', 'VTRS',
+    'VICI', 'V', 'VST', 'VMC', 'WRB', 'GWW', 'WAB', 'WBA', 'WMT', 'DIS', 'WBD', 'WM', 'WAT', 'WEC', 'WFC', 'WELL',
+    'WST', 'WDC', 'WY', 'WMB', 'WTW', 'WDAY', 'WYNN', 'XEL', 'XYL', 'YUM', 'ZBRA', 'ZBH', 'ZTS'
+]
+
+# S&P 100
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/S%26P_100
+sp100 = [
+    'AAPL', 'ABBV', 'ABT', 'ACN', 'ADBE', 'AIG', 'AMD', 'AMGN', 'AMT', 'AMZN', 'AVGO', 'AXP', 'BA', 'BAC', 'BK', 'BKNG',
+    'BLK', 'BMY', 'BRK.B', 'C', 'CAT', 'CHTR', 'CL', 'CMCSA', 'COF', 'COP', 'COST', 'CRM', 'CSCO', 'CVS', 'CVX', 'DE',
+    'DHR', 'DIS', 'DUK', 'EMR', 'FDX', 'GD', 'GE', 'GILD', 'GM', 'GOOG', 'GOOGL', 'GS', 'HD', 'HON', 'IBM', 'INTC',
+    'INTU', 'ISRG', 'JNJ', 'JPM', 'KO', 'LIN', 'LLY', 'LMT', 'LOW', 'MA', 'MCD', 'MDLZ', 'MDT', 'MET', 'META', 'MMM',
+    'MO', 'MRK', 'MS', 'MSFT', 'NEE', 'NFLX', 'NKE', 'NOW', 'NVDA', 'ORCL', 'PEP', 'PFE', 'PG', 'PLTR', 'PM', 'PYPL',
+    'QCOM', 'RTX', 'SBUX', 'SCHW', 'SO', 'SPG', 'T', 'TGT', 'TMO', 'TMUS', 'TSLA', 'TXN', 'UNH', 'UNP', 'UPS', 'USB',
+    'V', 'VZ', 'WFC', 'WMT', 'XOM'
+]
+
+# NASDAQ 100
+# Taken at May 27, 2025 from: https://www.slickcharts.com/nasdaq100
+nasdaq100 = [
+    'MSFT', 'NVDA', 'AAPL', 'AMZN', 'GOOG', 'GOOGL', 'META', 'TSLA', 'AVGO', 'NFLX', 'COST', 'PLTR', 'ASML', 'TMUS',
+    'CSCO', 'AZN', 'LIN', 'INTU', 'ISRG', 'AMD', 'PEP', 'ADBE', 'BKNG', 'PDD', 'QCOM', 'TXN', 'AMGN', 'HON', 'ARM',
+    'GILD', 'ADP', 'CMCSA', 'AMAT', 'MELI', 'PANW', 'APP', 'CRWD', 'VRTX', 'MU', 'ADI', 'LRCX', 'MSTR', 'KLAC', 'SBUX',
+    'CEG', 'CTAS', 'INTC', 'DASH', 'CDNS', 'MDLZ', 'FTNT', 'ORLY', 'ABNB', 'SNPS', 'MAR', 'PYPL', 'WDAY', 'REGN',
+    'ADSK', 'MNST', 'ROP', 'CSX', 'AXON', 'TEAM', 'PAYX', 'CHTR', 'AEP', 'MRVL', 'CPRT', 'NXPI', 'PCAR', 'FAST', 'ROST',
+    'KDP', 'EXC', 'VRSK', 'CCEP', 'TTWO', 'FANG', 'IDXX', 'XEL', 'DDOG', 'CTSH', 'ZS', 'LULU', 'EA', 'TTD', 'BKR',
+    'ODFL', 'DXCM', 'GEHC', 'CSGP', 'KHC', 'MCHP', 'ANSS', 'CDW', 'WBD', 'GFS', 'BIIB', 'ON', 'MDB'
+]
+
+# HUI Gold Index
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/HUI_Gold_Index
+hui_gold_index = [
+    'NEM', 'ABX', 'GG', 'AEM', 'GOLD', 'KGC', 'AU', 'GFI', 'BVN', 'SBGL', 'IAG', 'KL', 'AUY', 'NGD' 'AGI', 'OR', 'HL',
+    'EGO'
+]
+
+# Russell 1000
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/Russell_1000_Index
+russell_1000 = [
+    'TXG', 'MMM', 'AOS', 'AAON', 'ABT', 'ABBV', 'ACHC', 'ACN', 'AYI', 'ADBE', 'ADT', 'AAP', 'WMS', 'AMD', 'ACM', 'AES',
+    'AMG', 'AFRM', 'AFL', 'AGCO', 'A', 'ADC', 'AGNC', 'AL', 'APD', 'ABNB', 'AKAM', 'ALK', 'ALB', 'ACI', 'AA', 'ARE',
+    'ALGN', 'ALLE', 'ALGM', 'LNT', 'ALSN', 'ALL', 'ALLY', 'ALNY', 'GOOGL', 'GOOG', 'MO', 'AMZN', 'AMCR', 'DOX', 'AMED',
+    'AMTM', 'AS', 'AEE', 'AAL', 'AEP', 'AXP', 'AFG', 'AMH', 'AIG', 'AMT', 'AWK', 'COLD', 'AMP', 'AME', 'AMGN', 'AMKR',
+    'APH', 'ADI', 'ANGI', 'NLY', 'ANSS', 'AM', 'AR', 'AON', 'APA', 'APG', 'APLS', 'APO', 'APPF', 'AAPL', 'AMAT', 'APP',
+    'ATR', 'APTV', 'ARMK', 'ACGL', 'ADM', 'ARES', 'ANET', 'AWI', 'ARW', 'AJG', 'ASH', 'AIZ', 'AGO', 'ALAB', 'T', 'ATI',
+    'TEAM', 'ATO', 'ADSK', 'ADP', 'AN', 'AZO', 'AVB', 'AVTR', 'AVY', 'CAR', 'AVT', 'AXTA', 'AXS', 'AXON', 'AZEK',
+    'AZTA', 'BKR', 'BALL', 'BAC', 'OZK', 'BBWI', 'BAX', 'BDX', 'BRBR', 'BSY', 'BRK.B', 'BBY', 'BILL', 'BIO', 'TECH',
+    'BIIB', 'BMRN', 'BIRK', 'BJ', 'BLK', 'BX', 'HRB', 'XYZ', 'OWL', 'BK', 'BA', 'BOKF', 'BKNG', 'BAH', 'BWA', 'SAM',
+    'BSX', 'BYD', 'BFAM', 'BHF', 'BMY', 'BRX', 'AVGO', 'BR', 'BEPC', 'BRO', 'BF.A', 'BF.B', 'BRKR', 'BC', 'BLDR', 'BG',
+    'BURL', 'BWXT', 'BXP', 'CHRW', 'CACI', 'CDNS', 'CZR', 'CPT', 'CPB', 'COF', 'CPRI', 'CAH', 'CSL', 'CG', 'KMX', 'CCL',
+    'CARR', 'CRI', 'CVNA', 'CASY', 'CAT', 'CAVA', 'CBOE', 'CBRE', 'CCCS', 'CDW', 'CE', 'CELH', 'COR', 'CNC', 'CNP',
+    'CERT', 'CF', 'CRL', 'SCHW', 'CHTR', 'CHE', 'CC', 'LNG', 'CVX', 'CMG', 'CHH', 'CHRD', 'CB', 'CHD', 'CHDN', 'CIEN',
+    'CI', 'CINF', 'CTAS', 'CRUS', 'CSCO', 'C', 'CFG', 'CIVI', 'CLVT', 'CLH', 'CWEN.A', 'CWEN', 'CLF', 'CLX', 'NET',
+    'CME', 'CMS', 'CNA', 'CNH', 'KO', 'COKE', 'CGNX', 'CTSH', 'COHR', 'COIN', 'CL', 'COLB', 'COLM', 'CMCSA', 'CMA',
+    'FIX', 'CBSH', 'CAG', 'CNXC', 'CFLT', 'COP', 'ED', 'STZ', 'CEG', 'COO', 'CPRT', 'CNM', 'GLW', 'CPAY', 'CTVA',
+    'CSGP', 'COST', 'CTRA', 'COTY', 'CPNG', 'CUZ', 'CR', 'CXT', 'CACC', 'CRH', 'CROX', 'CRWD', 'CCI', 'CCK', 'CSX',
+    'CUBE', 'CMI', 'CW', 'CVS', 'DHI', 'DHR', 'DRI', 'DAR', 'DDOG', 'DVA', 'DAY', 'DECK', 'DE', 'DAL', 'DELL', 'XRAY',
+    'DVN', 'DXCM', 'FANG', 'DKS', 'DLR', 'DDS', 'DOCU', 'DLB', 'DG', 'DLTR', 'D', 'DPZ', 'DCI', 'DASH', 'DV', 'DOV',
+    'DOW', 'DOCS', 'DKNG', 'DBX', 'DTM', 'DTE', 'DUK', 'DNB', 'DUOL', 'DD', 'BROS', 'DXC', 'DT', 'ELF', 'EXP', 'EWBC',
+    'EGP', 'EMN', 'ETN', 'EBAY', 'ECL', 'EIX', 'EW', 'ELAN', 'ESTC', 'EA', 'ESI', 'ELV', 'EME', 'EMR', 'EHC', 'ENOV',
+    'ENPH', 'ENTG', 'ETR', 'NVST', 'EOG', 'EPAM', 'EPR', 'EQT', 'EFX', 'EQIX', 'EQH', 'ELS', 'EQR', 'ESAB', 'WTRG',
+    'ESS', 'EL', 'ETSY', 'EEFT', 'EVR', 'EG', 'EVRG', 'ES', 'ECG', 'EXAS', 'EXEL', 'EXC', 'EXE', 'EXPE', 'EXPD', 'EXR',
+    'XOM', 'FFIV', 'FDS', 'FICO', 'FAST', 'FRT', 'FDX', 'FERG', 'FNF', 'FIS', 'FITB', 'FAF', 'FCNCA', 'FHB', 'FHN',
+    'FR', 'FSLR', 'FE', 'FI', 'FIVE', 'FIVN', 'FND', 'FLO', 'FLS', 'FMC', 'FNB', 'F', 'FTNT', 'FTV', 'FTRE', 'FBIN',
+    'FOXA', 'FOX', 'BEN', 'FCX', 'FRPT', 'FYBR', 'CFR', 'FCN', 'GME', 'GLPI', 'GAP', 'GRMN', 'IT', 'GTES', 'GE', 'GEHC',
+    'GEV', 'GEN', 'GNRC', 'GD', 'GIS', 'GM', 'G', 'GNTX', 'GPC', 'GILD', 'GTLB', 'GPN', 'GFS', 'GLOB', 'GL', 'GMED',
+    'GDDY', 'GS', 'GGG', 'GRAL', 'LOPE', 'GPK', 'GO', 'GWRE', 'GXO', 'HAL', 'THG', 'HOG', 'HIG', 'HAS', 'HAYW', 'HCA',
+    'HR', 'DOC', 'HEI.A', 'HEI', 'JKHY', 'HSY', 'HES', 'HPE', 'HXL', 'DINO', 'HIW', 'HLT', 'HOLX', 'HD', 'HON', 'HRL',
+    'HST', 'HLI', 'HHH', 'HWM', 'HPQ', 'HUBB', 'HUBS', 'HUM', 'HBAN', 'HII', 'HUN', 'H', 'IAC', 'IBM', 'IDA', 'IEX',
+    'IDXX', 'ITW', 'ILMN', 'INCY', 'INFA', 'IR', 'INGM', 'INGR', 'INSP', 'PODD', 'INTC', 'IBKR', 'ICE', 'IFF', 'IP',
+    'IPG', 'INTU', 'ISRG', 'IVZ', 'INVH', 'IONS', 'IPGP', 'IQV', 'IRDM', 'IRM', 'ITT', 'JBL', 'J', 'JHG', 'JAZZ',
+    'JBHT', 'JEF', 'JNJ', 'JCI', 'JLL', 'JPM', 'JNPR', 'KBR', 'K', 'KMPR', 'KVUE', 'KDP', 'KEY', 'KEYS', 'KRC', 'KMB',
+    'KIM', 'KMI', 'KNSL', 'KEX', 'KKR', 'KLAC', 'KNX', 'KSS', 'KHC', 'KR', 'KD', 'LHX', 'LH', 'LRCX', 'LAMR', 'LW',
+    'LSTR', 'LVS', 'LSCC', 'LAZ', 'LEA', 'LEG', 'LDOS', 'LEN', 'LEN.B', 'LII', 'LBRDA', 'LBRDK', 'LBTYA', 'LBTYK',
+    'FWONA', 'FWONK', 'LLYVA', 'LLYVK', 'LNW', 'LLY', 'LECO', 'LNC', 'LIN', 'LINE', 'LAD', 'LFUS', 'LYV', 'LKQ', 'LOAR',
+    'LMT', 'L', 'LPX', 'LOW', 'LPLA', 'LCID', 'LULU', 'LITE', 'LYFT', 'LYB', 'MTB', 'MTSI', 'M', 'MSGS', 'MANH', 'MAN',
+    'CART', 'MPC', 'MKL', 'MKTX', 'MAR', 'VAC', 'MMC', 'MLM', 'MRVL', 'MAS', 'MASI', 'MTZ', 'MA', 'MTDR', 'MTCH', 'MAT',
+    'MKC', 'MCD', 'MCK', 'MDU', 'MPW', 'MEDP', 'MDT', 'MRK', 'META', 'MET', 'MTD', 'MTG', 'MGM', 'MCHP', 'MU', 'MSFT',
+    'MSTR', 'MAA', 'MIDD', 'MRP', 'MKSI', 'MRNA', 'MHK', 'MOH', 'TAP', 'MDLZ', 'MDB', 'MPWR', 'MNST', 'MCO', 'MS',
+    'MORN', 'MOS', 'MSI', 'MP', 'MSA', 'MSM', 'MSCI', 'MUSA', 'NDAQ', 'NTRA', 'NFG', 'NSA', 'NCNO', 'NTAP', 'NFLX',
+    'NBIX', 'NFE', 'NYT', 'NWL', 'NEU', 'NEM', 'NWSA', 'NWS', 'NXST', 'NEE', 'NKE', 'NI', 'NNN', 'NDSN', 'NSC', 'NTRS',
+    'NOC', 'NCLH', 'NOV', 'NRG', 'NU', 'NUE', 'NTNX', 'NVT', 'NVDA', 'NVR', 'ORLY', 'OXY', 'OGE', 'OKTA', 'ODFL', 'ORI',
+    'OLN', 'OLLI', 'OHI', 'OMC', 'ON', 'OMF', 'OKE', 'ONTO', 'ORCL', 'OGN', 'OSK', 'OTIS', 'OVV', 'OC', 'PCAR', 'PKG',
+    'PLTR', 'PANW', 'PARAA', 'PARA', 'PK', 'PH', 'PSN', 'PAYX', 'PAYC', 'PCTY', 'PYPL', 'PEGA', 'PENN', 'PAG', 'PNR',
+    'PEN', 'PEP', 'PFGC', 'PR', 'PRGO', 'PFE', 'PCG', 'PM', 'PSX', 'PPC', 'PNFP', 'PNW', 'PINS', 'PLNT', 'PLTK', 'PNC',
+    'PII', 'POOL', 'BPOP', 'POST', 'PPG', 'PPL', 'PINC', 'TROW', 'PRI', 'PFG', 'PCOR', 'PG', 'PGR', 'PLD', 'PB', 'PRU',
+    'PTC', 'PSA', 'PEG', 'PHM', 'PSTG', 'PVH', 'QGEN', 'QRVO', 'QCOM', 'PWR', 'QS', 'DGX', 'QDEL', 'RL', 'RRC', 'RJF',
+    'RYN', 'RBA', 'RBC', 'O', 'RRX', 'REG', 'REGN', 'RF', 'RGA', 'RS', 'RNR', 'RGEN', 'RSG', 'RMD', 'RVTY', 'REXR',
+    'REYN', 'RH', 'RNG', 'RITM', 'RIVN', 'RLI', 'RHI', 'HOOD', 'RBLX', 'RKT', 'ROK', 'ROIV', 'ROKU', 'ROL', 'ROP',
+    'ROST', 'RCL', 'RGLD', 'RPRX', 'RPM', 'RTX', 'RYAN', 'R', 'SPGI', 'SAIA', 'SAIC', 'CRM', 'SLM', 'SNDK', 'SRPT',
+    'SBAC', 'HSIC', 'SLB', 'SNDR', 'SMG', 'SEB', 'SEE', 'SEG', 'SEIC', 'SRE', 'ST', 'S', 'SCI', 'NOW', 'SN', 'SHW',
+    'FOUR', 'SLGN', 'SPG', 'SSD', 'SIRI', 'SITE', 'SKX', 'SWKS', 'SFD', 'SJM', 'SW', 'SNA', 'SNOW', 'SOFI', 'SOLV',
+    'SGI', 'SON', 'SHC', 'SO', 'SCCO', 'LUV', 'SPB', 'SPR', 'SPOT', 'SSNC', 'STAG', 'SARO', 'SWK', 'SBUX', 'STWD',
+    'STT', 'STLD', 'STE', 'SF', 'SYK', 'SUI', 'SMCI', 'SYF', 'SNPS', 'SNV', 'SYY', 'TMUS', 'TTWO', 'TPR', 'TRGP', 'TGT',
+    'SNX', 'FTI', 'TDY', 'TFX', 'THC', 'TDC', 'TER', 'TSLA', 'TTEK', 'TXN', 'TPL', 'TXRH', 'TXT', 'TMO', 'TFSL', 'THO',
+    'TKR', 'TJX', 'TKO', 'TOST', 'TOL', 'BLD', 'TTC', 'TPG', 'TSCO', 'TTD', 'TW', 'TT', 'TDG', 'TRU', 'TNL', 'TRV',
+    'TREX', 'TRMB', 'TRIP', 'TFC', 'DJT', 'TWLO', 'TYL', 'TSN', 'UHAL', 'UHAL.B', 'USB', 'X', 'UBER', 'UI', 'UDR',
+    'UGI', 'PATH', 'ULTA', 'RARE', 'UAA', 'UA', 'UNP', 'UAL', 'UPS', 'URI', 'UTHR', 'UWMC', 'UNH', 'U', 'OLED', 'UHS',
+    'UNM', 'USFD', 'MTN', 'VLO', 'VMI', 'VVV', 'VEEV', 'VTR', 'VLTO', 'VRSN', 'VRSK', 'VZ', 'VRTX', 'VRT', 'VSTS',
+    'VFC', 'VTRS', 'VICI', 'VKTX', 'VNOM', 'VIRT', 'V', 'VST', 'VNT', 'VNO', 'VOYA', 'VMC', 'WPC', 'WRB', 'GWW', 'WAB',
+    'WBA', 'WMT', 'DIS', 'WBD', 'WM', 'WAT', 'WSO', 'W', 'WFRD', 'WBS', 'WEC', 'WFC', 'WELL', 'WEN', 'WCC', 'WST',
+    'WAL', 'WDC', 'WU', 'WLK', 'WEX', 'WY', 'WHR', 'WTM', 'WMB', 'WSM', 'WTW', 'WSC', 'WING', 'WTFC', 'WOLF', 'WWD',
+    'WDAY', 'WH', 'WYNN', 'XEL', 'XP', 'XPO', 'XYL', 'YETI', 'YUM', 'ZBRA', 'ZG', 'Z', 'ZBH', 'ZION', 'ZTS', 'ZM', 'ZI',
+    'ZS'
+]
+
+# S&P 600
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/List_of_S%26P_600_companies
+sp600 = [
+    'AAP', 'AAT', 'ABCB', 'ABG', 'ABM', 'ABR', 'ACA', 'ACAD', 'ACIW', 'ACLS', 'ACT', 'ADEA', 'ADMA', 'ADNT', 'ADUS',
+    'AEIS', 'AEO', 'AESI', 'AGO', 'AGYS', 'AHCO', 'AHH', 'AIN', 'AIR', 'AKR', 'AL', 'ALEX', 'ALG', 'ALGT', 'ALKS',
+    'ALRM', 'AMN', 'AMPH', 'AMR', 'AMSF', 'AMTM', 'AMWD', 'ANDE', 'ANGI', 'ANIP', 'AORT', 'AOSL', 'APAM', 'APLE',
+    'APOG', 'ARCB', 'ARI', 'ARLO', 'AROC', 'ARR', 'ARWR', 'ASIX', 'ASO', 'ASTE', 'ASTH', 'ATEN', 'ATGE', 'AUB', 'AVA',
+    'AVAV', 'AVNS', 'AWI', 'AWR', 'AX', 'AXL', 'AZTA', 'AZZ', 'BANC', 'BANF', 'BANR', 'BCC', 'BCPC', 'BDN', 'BFH',
+    'BFS', 'BGC', 'BGS', 'BHE', 'BHLB', 'BJRI', 'BKE', 'BKU', 'BL', 'BLFS', 'BLMN', 'BMI', 'BOH', 'BOOT', 'BOX', 'BRC',
+    'BRKL', 'BSIG', 'BTU', 'BWA', 'BXMT', 'CABO', 'CAKE', 'CAL', 'CALM', 'CALX', 'CARG', 'CARS', 'CASH', 'CATY', 'CBRL',
+    'CBU', 'CC', 'CCOI', 'CCS', 'CE', 'CENT', 'CENTA', 'CENX', 'CERT', 'CEVA', 'CFFN', 'CHCO', 'CHEF', 'CLB', 'CLSK',
+    'CNK', 'CNMD', 'CNR', 'CNS', 'CNXN', 'COHU', 'COLL', 'CON', 'COOP', 'CORT', 'CPF', 'CPK', 'CPRX', 'CRC', 'CRGY',
+    'CRI', 'CRK', 'CRSR', 'CRVL', 'CSGS', 'CSR', 'CSWI', 'CTKB', 'CTRE', 'CTS', 'CUBI', 'CURB', 'CVBF', 'CVCO', 'CVI',
+    'CWEN', 'CWEN.A', 'CWK', 'CWT', 'CXM', 'CXW', 'DAN', 'DCOM', 'DEA', 'DEI', 'DFH', 'DFIN', 'DGII', 'DIOD', 'DLX',
+    'DNOW', 'DOCN', 'DORM', 'DRH', 'DRQ', 'DV', 'DVAX', 'DXC', 'DXPE', 'DY', 'EAT', 'ECG', 'ECPG', 'EFC', 'EGBN', 'EIG',
+    'ELME', 'EMBC', 'ENOV', 'ENR', 'ENVA', 'EPAC', 'EPC', 'EPRT', 'ESE', 'ESI', 'ETD', 'ETSY', 'EVTC', 'EXPI', 'EXTR',
+    'EYE', 'EZPW', 'FBK', 'FBNC', 'FBP', 'FBRT', 'FCF', 'FCPT', 'FDP', 'FELE', 'FFBC', 'FHB', 'FIZZ', 'FL', 'FMC',
+    'FORM', 'FOXF', 'FRPT', 'FSS', 'FTDR', 'FTRE', 'FUL', 'FULT', 'FUN', 'FWRD', 'GBX', 'GDEN', 'GDYN', 'GEO', 'GES',
+    'GFF', 'GIII', 'GKOS', 'GMS', 'GNL', 'GNW', 'GO', 'GOGO', 'GOLF', 'GPI', 'GRBK', 'GSHD', 'GTES', 'GTY', 'GVA',
+    'HAFC', 'HASI', 'HAYW', 'HBI', 'HCC', 'HCI', 'HCSG', 'HELE', 'HFWA', 'HI', 'HIW', 'HLIT', 'HLX', 'HMN', 'HNI',
+    'HOPE', 'HP', 'HRMY', 'HSII', 'HSTM', 'HTH', 'HTLD', 'HTZ', 'HUBG', 'HWKN', 'HZO', 'IAC', 'IART', 'IBP', 'ICHR',
+    'ICUI', 'IDCC', 'IIIN', 'IIPR', 'INDB', 'INN', 'INSP', 'INSW', 'INVA', 'IOSP', 'IPAR', 'ITGR', 'ITRI', 'JACK',
+    'JBGS', 'JBLU', 'JBSS', 'JBT', 'JJSF', 'JOE', 'JXN', 'KAI', 'KALU', 'KAR', 'KFY', 'KLG', 'KLIC', 'KMT', 'KN', 'KOP',
+    'KREF', 'KRYS', 'KSS', 'KTB', 'KTOS', 'KW', 'KWR', 'LBRT', 'LCII', 'LEG', 'LGIH', 'LGND', 'LKFN', 'LMAT', 'LNC',
+    'LNN', 'LPG', 'LQDT', 'LRN', 'LTC', 'LUMN', 'LXP', 'LZB', 'MAC', 'MARA', 'MATW', 'MATX', 'MBC', 'MC', 'MCRI', 'MCW',
+    'MCY', 'MD', 'MDU', 'MGEE', 'MGPI', 'MGY', 'MHO', 'MLAB', 'MLKN', 'MMI', 'MMSI', 'MNRO', 'MODG', 'MOG.A', 'MP',
+    'MPW', 'MRCY', 'MRP', 'MRTN', 'MSEX', 'MSGS', 'MTH', 'MTRN', 'MTUS', 'MTX', 'MWA', 'MXL', 'MYGN', 'MYRG', 'NABL',
+    'NATL', 'NAVI', 'NBHC', 'NBTB', 'NEO', 'NEOG', 'NGVT', 'NHC', 'NMIH', 'NOG', 'NPK', 'NPO', 'NSIT', 'NTCT', 'NVEE',
+    'NVRI', 'NWBI', 'NWL', 'NWN', 'NX', 'NXRT', 'NYMT', 'OFG', 'OGN', 'OI', 'OII', 'OMCL', 'OMI', 'OSIS', 'OTTR', 'OUT',
+    'OXM', 'PAHC', 'PARR', 'PAYO', 'PATK', 'PBH', 'PBI', 'PCRX', 'PDFS', 'PEB', 'PECO', 'PENN', 'PFBC', 'PFS', 'PGNY',
+    'PHIN', 'PI', 'PINC', 'PIPR', 'PJT', 'PLAB', 'PLAY', 'PLMR', 'PLUS', 'PLXS', 'PMT', 'POWL', 'PPBI', 'PRA', 'PRAA',
+    'PRDO', 'PRG', 'PRGS', 'PRK', 'PRLB', 'PRVA', 'PSMT', 'PTEN', 'PTGX', 'PUMP', 'PZZA', 'QDEL', 'QNST', 'QRVO',
+    'RAMP', 'RC', 'RCUS', 'RDN', 'RDNT', 'RES', 'REX', 'REZI', 'RGR', 'RHI', 'RHP', 'RNST', 'ROCK', 'ROG', 'RUN',
+    'RUSHA', 'RWT', 'RXO', 'SAFE', 'SABR', 'SAFT', 'SAH', 'SANM', 'SBCF', 'SBH', 'SBSI', 'SCHL', 'SCL', 'SCSC', 'SCVL',
+    'SDGR', 'SEDG', 'SEE', 'SEM', 'SFBS', 'SFNC', 'SGH', 'SHAK', 'SHEN', 'SHO', 'SHOO', 'SIG', 'SITC', 'SITM', 'SJW',
+    'SKT', 'SKY', 'SKYW', 'SLG', 'SLP', 'SLVM', 'SM', 'SMP', 'SMPL', 'SMTC', 'SNCY', 'SNDK', 'SNDR', 'SNEX', 'SONO',
+    'SPNT', 'SPSC', 'SPTN', 'SPXC', 'SSTK', 'STAA', 'STBA', 'STC', 'STEL', 'STEP', 'STRA', 'STRL', 'SUPN', 'SXC', 'SXI',
+    'SXT', 'TALO', 'TBBK', 'TDC', 'TDS', 'TDW', 'TFIN', 'TFX', 'TGI', 'TGNA', 'TGTX', 'THRM', 'THRY', 'THS', 'TILE',
+    'TMDX', 'TMP', 'TNC', 'TNDM', 'TPH', 'TR', 'TRIP', 'TRMK', 'TRN', 'TRNO', 'TRST', 'TRUP', 'TTGT', 'TTMI', 'TWI',
+    'TWO', 'UCBI', 'UCTT', 'UE', 'UFCS', 'UFPT', 'UHT', 'UNF', 'UNFI', 'UNIT', 'UPBD', 'URBN', 'USNA', 'USPH', 'UTL',
+    'UVV', 'VBTX', 'VCEL', 'VECO', 'VIAV', 'VICR', 'VIR', 'VIRT', 'VRE', 'VRRM', 'VRTS', 'VSAT', 'VSCO', 'VSH', 'VSTS',
+    'VTOL', 'VTLE', 'VVI', 'VYX', 'WABC', 'WAFD', 'WD', 'WDFC', 'WERN', 'WGO', 'WHD', 'WKC', 'WLY', 'WOLF', 'WOR',
+    'WRLD', 'WS', 'WSC', 'WSFS', 'WSR', 'WT', 'WWW', 'XHR', 'XNCR', 'XPEL', 'XRX', 'YELP', 'YOU', 'ZD', 'ZWS'
+]
+
+# Dow Jones Industial Average
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average
+djia = [
+    'MMM', 'AXP', 'AMGN', 'AMZN', 'AAPL', 'BA', 'CAT', 'CVX', 'CSCO', 'KO', 'DIS', 'GS', 'HD', 'HON', 'IBM', 'JNJ',
+    'JPM', 'MCD', 'MRK', 'MSFT', 'NKE', 'NVDA', 'PG', 'CRM', 'SHW', 'TRV', 'UNH', 'VZ', 'V', 'WMT'
+]
+
+# Dow Jones Transportation Average
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/Dow_Jones_Transportation_Average
+djta = [
+    'ALK', 'AAL', 'CAR', 'CHRW', 'CSX', 'DAL', 'EXPD', 'FDX', 'JBHT', 'KEX', 'LSTR', 'MATX', 'NSC', 'ODFL', 'R', 'LUV',
+    'UBER', 'UNP', 'UAL', 'UPS'
+]
+
+# Dow Jones Utility Average
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/Dow_Jones_Utility_Average
+djua = [
+    'AEP', 'AWK', 'ATO', 'ED', 'D', 'DUK', 'EIX', 'EXC', 'FE', 'NEE', 'PEG', 'SRE', 'SO', 'VST', 'XEL'
+]
+
+# Dow Jones Composite Average
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/Dow_Jones_Composite_Average
+djca = [
+    'MMM', 'AES', 'ALK', 'AAL', 'AEP', 'AXP', 'AWK', 'AMGN', 'AAPL', 'ATO', 'CAR', 'BA', 'CAT', 'CHRW', 'CVX', 'CSCO',
+    'KO', 'ED', 'CSX', 'DAL', 'D', 'DOW', 'DUK', 'EIX', 'EXC', 'EXPD', 'FDX', 'FE', 'GS', 'HD', 'HON', 'INTC', 'IBM',
+    'JBHT', 'JBLU', 'JPM', 'JNJ', 'KEX', 'LSTR', 'MATX', 'MCD', 'MRK', 'MSFT', 'NEE', 'NKE', 'NSC', 'ODFL', 'PG', 'PEG',
+    'R', 'CRM', 'SRE', 'SO', 'LUV', 'TRV', 'UNP', 'UAL', 'UPS', 'UNH', 'VZ', 'V', 'WBA', 'WMT', 'DIS', 'XEL'
+]
+
+# S&P 500 Dividend Aristocrats
+# Taken at May 27, 2025 from: https://en.wikipedia.org/wiki/S%26P_500_Dividend_Aristocrats
+sp_dividend_aristocrats = [
+    'AOS', 'ABT', 'ABBV', 'AFL', 'APD', 'ALB', 'AMCR', 'ADM', 'ATO', 'ADP', 'BDX', 'BRO', 'BF.B', 'CAH', 'CAT', 'CHRW',
+    'CVX', 'CB', 'CHD', 'CINF', 'CTAS', 'CLX', 'KO', 'CL', 'ED', 'DOV', 'ECL', 'EMR', 'ERIE', 'ES', 'ESS', 'EXPD',
+    'XOM', 'FDS', 'FAST', 'FRT', 'BEN', 'GD', 'GPC', 'HRL', 'ITW', 'IBM', 'SJM', 'JNJ', 'KVUE', 'KMB', 'LIN', 'LOW',
+    'MKC', 'MCD', 'MDT', 'NEE', 'NDSN', 'NUE', 'PNR', 'PEP', 'PPG', 'PG', 'O', 'ROP', 'SPGI', 'SHW', 'SWK', 'SYY',
+    'TROW', 'TGT', 'GWW', 'WMT', 'WST'
+]
+```
+
 # portwine/loaders/__init__.py
 
 ```py
-from portwine.loaders.base import MarketDataLoader
-from portwine.loaders.eodhd import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 from portwine.loaders.polygon import PolygonMarketDataLoader
-from portwine.loaders.noisy import NoisyMarketDataLoader
+from portwine.data.providers.loader_adapters import NoisyMarketDataLoader
 from portwine.loaders.fred import FREDMarketDataLoader
 from portwine.loaders.barchartindices import BarchartIndicesMarketDataLoader
 from portwine.loaders.alternative import AlternativeMarketDataLoader
 from portwine.loaders.dailytoopenclose import DailyToOpenCloseLoader
-from portwine.loaders.alpaca import AlpacaMarketDataLoader
+from portwine.data.providers.loader_adapters import AlpacaMarketDataLoader
 
 ```
 
@@ -6284,7 +2369,7 @@ import requests
 import pandas as pd
 import pytz
 
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -6683,7 +2768,7 @@ class AlpacaMarketDataLoader(MarketDataLoader):
 # portwine/loaders/alternative.py
 
 ```py
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class AlternativeMarketDataLoader(MarketDataLoader):
@@ -6762,6 +2847,7 @@ class AlternativeMarketDataLoader(MarketDataLoader):
         """
         Ensures we have data loaded for each ticker in 'tickers'.
         Routes each ticker to the appropriate specialized data loader.
+        OPTIMIZATION: Creates numpy caches for fast access.
 
         Parameters
         ----------
@@ -6776,11 +2862,15 @@ class AlternativeMarketDataLoader(MarketDataLoader):
         fetched_data = {}
 
         for ticker in tickers:
-            data = self.load_ticker(ticker)
-
-            # Add to the returned dictionary if load was successful
-            if data is not None:
-                fetched_data[ticker] = data
+            if ticker not in self._data_cache:
+                data = self.load_ticker(ticker)
+                # OPTIMIZATION: Create numpy caches for fast access
+                if data is not None:
+                    self._create_numpy_cache(ticker, data)
+            
+            # Add to the returned dictionary if we have cached data
+            if ticker in self._data_cache:
+                fetched_data[ticker] = self._data_cache[ticker]
 
         return fetched_data
 
@@ -6801,7 +2891,7 @@ class AlternativeMarketDataLoader(MarketDataLoader):
 ```py
 import os
 import pandas as pd
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class BarchartIndicesMarketDataLoader(MarketDataLoader):
@@ -6917,6 +3007,8 @@ class BarchartIndicesMarketDataLoader(MarketDataLoader):
 
 ```py
 import pandas as pd
+import numpy as np
+from typing import Optional
 
 class MarketDataLoader:
     """
@@ -6924,10 +3016,14 @@ class MarketDataLoader:
     Adds:
       - get_all_dates: union calendar for any tickers
       - next: returns the bar at or immediately before a given ts via searchsorted
+    
+    OPTIMIZATION: Uses numpy arrays for fast data access instead of pandas operations.
     """
 
     def __init__(self):
         self._data_cache = {}
+        self._numpy_cache = {}  # Store numpy arrays for fast access
+        self._date_cache = {}   # Store date arrays for fast searchsorted
 
     def load_ticker(self, ticker: str) -> pd.DataFrame | None:
         """
@@ -6938,7 +3034,8 @@ class MarketDataLoader:
 
     def fetch_data(self, tickers: list[str]) -> dict[str, pd.DataFrame]:
         """
-        Exactly as before: caches & returns all requested tickers.
+        Caches & returns all requested tickers.
+        OPTIMIZATION: Also creates numpy caches for fast access.
         """
         fetched = {}
         for t in tickers:
@@ -6946,9 +3043,22 @@ class MarketDataLoader:
                 df = self.load_ticker(t)
                 if df is not None:
                     self._data_cache[t] = df
+                    # OPTIMIZATION: Create numpy caches for fast access
+                    self._create_numpy_cache(t, df)
             if t in self._data_cache:
                 fetched[t] = self._data_cache[t]
         return fetched
+
+    def _create_numpy_cache(self, ticker: str, df: pd.DataFrame) -> None:
+        """
+        Create numpy arrays for fast data access.
+        Replaces pandas operations with numpy for 2-5x speedup.
+        """
+        # Convert dates to numpy array for fast searchsorted
+        self._date_cache[ticker] = df.index.values.astype('datetime64[ns]')
+        
+        # Convert OHLCV data to numpy array for fast indexing
+        self._numpy_cache[ticker] = df[['open', 'high', 'low', 'close', 'volume']].values.astype(np.float64)
 
     def get_all_dates(self, tickers: list[str]) -> list[pd.Timestamp]:
         """
@@ -6959,16 +3069,62 @@ class MarketDataLoader:
         all_ts = {ts for df in data.values() for ts in df.index}
         return sorted(all_ts)
 
-    def _get_bar_at_or_before(self, df: pd.DataFrame, ts: pd.Timestamp) -> pd.Series | None:
+    def _get_bar_at_or_before_numpy(self, ticker: str, ts: pd.Timestamp) -> Optional[np.ndarray]:
         """
-        Find the row whose index is <= ts, using searchsorted.
-        Returns the row (a pd.Series) or None if ts is before the first index.
+        OPTIMIZED: Get the bar at or immediately before the given timestamp using numpy.
+        This replaces pandas operations with numpy for 2-5x speedup.
+        
+        Parameters
+        ----------
+        ticker : str
+            Ticker symbol to get data for
+        ts : pd.Timestamp
+            Timestamp to get data for
+            
+        Returns
+        -------
+        np.ndarray or None
+            Array with [open, high, low, close, volume] if found, None otherwise
         """
+        if ticker not in self._numpy_cache:
+            return None
+            
+        date_array = self._date_cache[ticker]
+        if len(date_array) == 0:
+            return None
+            
+        # Convert timestamp to numpy datetime64 for comparison
+        ts_np = np.datetime64(ts)
+        
+        # OPTIMIZATION: Use numpy searchsorted instead of pandas (much faster)
+        pos = np.searchsorted(date_array, ts_np, side="right") - 1
+        if pos < 0:
+            return None
+            
+        # OPTIMIZATION: Direct numpy array access instead of df.iloc (much faster)
+        return self._numpy_cache[ticker][pos]
+
+    def _get_bar_at_or_before(self, df: pd.DataFrame, ts: pd.Timestamp) -> Optional[pd.Series]:
+        """
+        LEGACY: Get the bar at or immediately before the given timestamp.
+        This method is kept for backwards compatibility but is slower than the numpy version.
+        """
+        if df.empty:
+            return None
+            
+        # Ensure both timestamp and index are timezone-aware and match
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(df.index.tz)
+        elif df.index.tz is None:
+            df.index = df.index.tz_localize(ts.tz)
+        elif str(ts.tz) != str(df.index.tz):
+            ts = ts.tz_convert(df.index.tz)
+            
         idx = df.index
         pos = idx.searchsorted(ts, side="right") - 1
-        if pos >= 0:
-            return df.iloc[pos]
-        return None
+        if pos < 0:
+            return None
+        return df.iloc[pos]
 
     def next(self,
              tickers: list[str],
@@ -6978,21 +3134,25 @@ class MarketDataLoader:
         For a given timestamp ts, return a dict:
           { ticker: {'open','high','low','close','volume'} }
         where the values come from the bar at or immediately before ts.
+        
+        OPTIMIZATION: Uses numpy arrays for 2-5x speedup vs pandas operations.
         """
         data = self.fetch_data(tickers)
         bar_dict: dict[str, dict[str, float] | None] = {}
 
-        for t, df in data.items():
-            row = self._get_bar_at_or_before(df, ts)
+        for t in data.keys():
+            # OPTIMIZATION: Use numpy-based method instead of pandas
+            row = self._get_bar_at_or_before_numpy(t, ts)
             if row is None:
                 bar_dict[t] = None
             else:
+                # Direct access to numpy array elements (much faster than pandas)
                 bar_dict[t] = {
-                    'open':   float(row['open']),
-                    'high':   float(row['high']),
-                    'low':    float(row['low']),
-                    'close':  float(row['close']),
-                    'volume': float(row['volume'])
+                    'open':   float(row[0]),
+                    'high':   float(row[1]),
+                    'low':    float(row[2]),
+                    'close':  float(row[3]),
+                    'volume': float(row[4])
                 }
 
         return bar_dict
@@ -7004,7 +3164,7 @@ class MarketDataLoader:
 ```py
 from typing import Optional, List, Dict, Any
 import pandas as pd
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 from portwine.brokers.base import BrokerBase
 
 
@@ -7066,7 +3226,7 @@ class BrokerDataLoader(MarketDataLoader):
 ```py
 import pandas as pd
 import numpy as np
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class DailyToOpenCloseLoader(MarketDataLoader):
@@ -7129,7 +3289,8 @@ class DailyToOpenCloseLoader(MarketDataLoader):
 ```py
 import os
 import pandas as pd
-from portwine.loaders.base import MarketDataLoader
+from typing import Dict, List
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class EODHDMarketDataLoader(MarketDataLoader):
@@ -7178,6 +3339,47 @@ class EODHDMarketDataLoader(MarketDataLoader):
 
         return df
 
+    def next(self, tickers: List[str], timestamp: pd.Timestamp) -> Dict[str, Dict]:
+        """
+        Get data for tickers at or immediately before timestamp.
+
+        Parameters
+        ----------
+        tickers : List[str]
+            List of ticker symbols
+        timestamp : pd.Timestamp or datetime
+            Timestamp to get data for
+
+        Returns
+        -------
+        Dict[str, dict]
+            Dictionary mapping tickers to bar data
+        """
+        # Convert datetime to pandas Timestamp if needed
+        if not isinstance(timestamp, pd.Timestamp):
+            timestamp = pd.Timestamp(timestamp)
+            
+        result = {}
+        for ticker in tickers:
+            # Get data from cache or load it
+            df = self.fetch_data([ticker]).get(ticker)
+            if df is not None:
+                # Find the bar at or before the timestamp
+                bar = self._get_bar_at_or_before(df, timestamp)
+                if bar is not None:
+                    result[ticker] = {
+                        "open": float(bar["open"]),
+                        "high": float(bar["high"]),
+                        "low": float(bar["low"]),
+                        "close": float(bar["close"]),
+                        "volume": float(bar["volume"]),
+                    }
+                else:
+                    result[ticker] = None
+            else:
+                result[ticker] = None
+        return result
+
 ```
 
 # portwine/loaders/fred.py
@@ -7186,7 +3388,7 @@ class EODHDMarketDataLoader(MarketDataLoader):
 import os
 import pandas as pd
 from fredapi import Fred
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 
 class FREDMarketDataLoader(MarketDataLoader):
@@ -7652,39 +3854,505 @@ class NoisyMarketDataLoader:
 # portwine/loaders/polygon.py
 
 ```py
+"""
+Polygon market data loader for the portwine framework.
+
+This module provides a MarketDataLoader implementation for fetching data
+from the Polygon.io API, supporting both historical daily data and current
+partial day data.
+"""
+
+import logging
 import os
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Union, Any
+import requests
 import pandas as pd
-from portwine.loaders.base import MarketDataLoader
+import pytz
+
+from portwine.data.providers.loader_adapters import MarketDataLoader
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# API URLs
+POLYGON_BASE_URL = "https://api.polygon.io"
 
 
 class PolygonMarketDataLoader(MarketDataLoader):
     """
-    Assumes storage as parquet files.
+    Market data loader for Polygon.io API.
+    
+    This loader fetches historical daily data and current partial day data
+    from Polygon.io API using direct REST calls.
+    
+    Parameters
+    ----------
+    api_key : str, optional
+        Polygon API key. If not provided, attempts to read from POLYGON_API_KEY env var.
+    data_dir : str
+        Directory where historical data files are stored.
+    timezone : str
+        Timezone for the data. Default is "America/New_York".
     """
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        data_dir: str = "data",
+        timezone: str = "America/New_York"
+    ):
+        """Initialize Polygon market data loader."""
+        super().__init__()
+        
+        # Use environment variable if not provided
+        self.api_key = api_key or os.environ.get("POLYGON_API_KEY")
+        if not self.api_key:
+            logger.warning("Polygon API key not provided. Will raise error if fetching historical data.")
+            raise ValueError(
+                "Polygon API key must be provided either as argument or POLYGON_API_KEY env var.")
+        
+        # Base URL for API requests
+        self.base_url = POLYGON_BASE_URL
+        
+        # Create requests session for connection pooling
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        })
+        
+        # Data directory
+        self.data_dir = data_dir
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir)
+        
+        # In-memory cache
+        self._data_cache: Dict[str, pd.DataFrame] = {}
+        
+        # Latest data cache for partial day data
+        self._latest_data_cache: Dict[str, Dict] = {}
+        self._latest_data_timestamp = None
+        
+        # Cache for last valid data used in ffill
+        self._last_valid_data: Optional[Dict] = None
+        
+        # Timezone
+        self.timezone = timezone
 
-    def __init__(self, data_path):
+    def _api_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Any:
         """
+        Helper method to make authenticated GET requests to Polygon API
+        
         Parameters
         ----------
-        data_path : str
-            The directory path where CSV files are located.
+        url : str
+            API endpoint URL (starting with /)
+        params : Dict[str, Any], optional
+            Query parameters for the request
+            
+        Returns
+        -------
+        Any
+            JSON response data
+            
+        Raises
+        ------
+        Exception
+            If API request fails
         """
-        self.data_path = data_path
-        super().__init__()
+        if url is None:
+            raise ValueError("URL cannot be None")
+            
+        response = None
+        try:
+            response = self.session.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request failed: {e}")
+            if response is not None:
+                logger.error(f"Response: {response.text}")
+            raise
 
-    def load_ticker(self, ticker):
-        file_path = os.path.join(self.data_path, f"{ticker}.parquet")
-        if not os.path.isfile(file_path):
-            print(f"Warning: Parquet file not found for {ticker}: {file_path}")
+    def _get_data_path(self, ticker: str) -> str:
+        """
+        Get path to data file for a ticker.
+        
+        Parameters
+        ----------
+        ticker : str
+            Ticker symbol
+            
+        Returns
+        -------
+        str
+            Path to data file
+            
+        Raises
+        ------
+        ValueError
+            If ticker contains invalid characters for a filename
+        """
+        # Check for invalid characters in ticker
+        invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+        if any(char in ticker for char in invalid_chars):
+            raise ValueError(f"Ticker {ticker} contains invalid characters for a filename")
+            
+        return os.path.join(self.data_dir, f"{ticker}.parquet")
+    
+    def _load_from_disk(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        Load data from disk if available.
+        
+        Parameters
+        ----------
+        ticker : str
+            Ticker symbol
+            
+        Returns
+        -------
+        pd.DataFrame or None
+            DataFrame if data exists on disk, None otherwise
+        """
+        data_path = self._get_data_path(ticker)
+        if os.path.exists(data_path):
+            try:
+                return pd.read_parquet(data_path)
+            except Exception as e:
+                logger.warning(f"Error loading data for {ticker}: {e}")
+        else:
+            logger.warning(f"Error loading data for {ticker}: File not found")
+        
+        return None
+    
+    def _save_to_disk(self, ticker: str, df: pd.DataFrame) -> None:
+        """
+        Save data to disk.
+        
+        Parameters
+        ----------
+        ticker : str
+            Ticker symbol
+        df : pd.DataFrame
+            Data to save
+        """
+        data_path = self._get_data_path(ticker)
+        try:
+            df.to_parquet(data_path)
+        except Exception as e:
+            logger.warning(f"Error saving data for {ticker}: {e}")
+
+    def _validate_and_convert_dates(
+        self,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None
+    ) -> tuple[str, str]:
+        """
+        Validate and convert date inputs to proper format.
+        
+        Parameters
+        ----------
+        from_date : str, optional
+            Start date in YYYY-MM-DD format or millisecond timestamp
+        to_date : str, optional
+            End date in YYYY-MM-DD format or millisecond timestamp
+            
+        Returns
+        -------
+        tuple[str, str]
+            Tuple of (from_date, to_date) in proper format for API
+            
+        Raises
+        ------
+        ValueError
+            If dates are malformed or if to_date is before from_date
+        """
+        # Set default dates if not provided
+        today = datetime.now(pytz.UTC)
+        if from_date is None:
+            from_date = str(int(datetime.timestamp(today - timedelta(days=365 * 2)) * 1000))
+        if to_date is None:
+            to_date = str(int(datetime.timestamp(today) * 1000))
+            
+        # If date is in YYYY-MM-DD format, convert to milliseconds
+        if "-" in str(from_date):
+            try:
+                dt = datetime.strptime(from_date, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=pytz.UTC)  # Make timezone-aware as UTC
+                from_date = str(int(dt.timestamp() * 1000))
+            except ValueError:
+                raise ValueError(f"from_date must be in YYYY-MM-DD format or millisecond timestamp. Got {from_date}")
+                
+        if "-" in str(to_date):
+            try:
+                dt = datetime.strptime(to_date, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=pytz.UTC)  # Make timezone-aware as UTC
+                to_date = str(int(dt.timestamp() * 1000))
+            except ValueError:
+                raise ValueError(f"to_date must be in YYYY-MM-DD format or millisecond timestamp. Got {to_date}")
+        
+        # Validate millisecond timestamps
+        try:
+            from_ms = int(from_date)
+            to_ms = int(to_date)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid millisecond timestamps. Got from_date={from_date}, to_date={to_date}")
+            
+        # Check order
+        if to_ms < from_ms:
+            raise ValueError(f"to_date ({to_date}) must be after from_date ({from_date})")
+            
+        return from_date, to_date
+
+    def fetch_historical_data(
+        self,
+        ticker: str,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch historical data for a given ticker and date range from Polygon.io API.
+        
+        Parameters
+        ----------
+        ticker : str
+            The stock ticker symbol to fetch data for
+        from_date : str, optional
+            Start date in YYYY-MM-DD format or millisecond timestamp. If None, defaults to 2 years ago.
+        to_date : str, optional
+            End date in YYYY-MM-DD format or millisecond timestamp. If None, defaults to today.
+            
+        Returns
+        -------
+        pd.DataFrame or None
+            DataFrame with OHLCV data if successful, None if error occurs
+            
+        Raises
+        ------
+        ValueError
+            If dates are malformed or if to_date is before from_date
+            If API key is not provided
+        """
+        try:
+            # Validate and convert dates
+            from_date, to_date = self._validate_and_convert_dates(from_date, to_date)
+            
+            # Initialize list to store all results
+            all_results = []
+            
+            # Construct initial API endpoint
+            endpoint = f"{self.base_url}/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}"
+            
+            # Fetch data with pagination
+            while endpoint:
+                # Make API request
+                response_data = self._api_get(endpoint, params={"adjusted": "true", "sort": "asc"})
+                
+                # Process response
+                if response_data and response_data.get("results"):
+                    all_results.extend(response_data["results"])
+                    
+                    # Get next URL for pagination
+                    endpoint = response_data.get("next_url")
+                else:
+                    break
+            
+            if not all_results:
+                logger.warning(f"No data returned for {ticker} from {from_date} to {to_date}")
+                return None
+                
+            # Convert to DataFrame
+            df = pd.DataFrame(all_results)
+            
+            # Rename columns to match expected format
+            df = df.rename(columns={
+                "v": "volume",
+                "o": "open",
+                "c": "close",
+                "h": "high",
+                "l": "low",
+                "t": "timestamp"
+            })
+            
+            # Convert timestamp from milliseconds to datetime
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert(self.timezone)
+            df.set_index("timestamp", inplace=True)
+            
+            # Sort by timestamp
+            df.sort_index(inplace=True)
+            
+            # Cache the data
+            self._data_cache[ticker] = df
+            
+            # Save to disk
+            self._save_to_disk(ticker, df)
+            
+            logger.info(f"Successfully fetched historical data for {ticker} from {from_date} to {to_date}")
+            return df
+
+        except ValueError:
+            # Re-raise ValueError exceptions (invalid dates)
+            raise
+        except Exception as e:
+            # Log and return None for all other exceptions
+            logger.error(f"Error fetching historical data for {ticker}: {e}")
             return None
 
-        df = pd.read_parquet(file_path)
-        df['date'] = pd.to_datetime(df['timestamp']).dt.date
-        df.set_index('date', inplace=True)
-        df.drop(columns='timestamp', inplace=True)
+    def _fetch_partial_day_data(self, ticker: str) -> Optional[Dict]:
+        """
+        Fetch current day's partial data from Polygon API.
+        """
+        try:
+            est = pytz.timezone('US/Eastern')
+            now = datetime.now(est)
+            now_ms = int(now.timestamp() * 1000)
+            from_ms = now_ms - (24 * 60 * 60 * 1000)  # 24 hours ago
+            # Use path parameters for from and to
+            url = f"{self.base_url}/v2/aggs/ticker/{ticker}/range/1/minute/{from_ms}/{now_ms}"
+            params = {
+                "adjusted": "true",
+                "sort": "asc",
+                "limit": 50000
+            }
+            response = self._api_get(url, params)
+            if 'results' in response:
+                today_bars = [
+                    bar for bar in response['results']
+                    if est.localize(datetime.fromtimestamp(bar['t'] / 1000)).hour >= 9
+                    and est.localize(datetime.fromtimestamp(bar['t'] / 1000)).hour < 16
+                ]
+                if not today_bars:
+                    return None
+                first_bar = today_bars[0]
+                today_open = first_bar['o']
+                high = max(bar['h'] for bar in today_bars)
+                low = min(bar['l'] for bar in today_bars)
+                close = today_bars[-1]['c']
+                volume = sum(bar['v'] for bar in today_bars)
+                return {
+                    "open": float(today_open),
+                    "high": float(high),
+                    "low": float(low),
+                    "close": float(close),
+                    "volume": float(volume)
+                }
+        except Exception as e:
+            logger.error(f"Error fetching partial day data for {ticker}: {e}")
+            if hasattr(e, 'response') and getattr(e.response, 'status_code', None) == 404:
+                return None
+            return None
+        return None
 
+    def load_ticker(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        Load data for a ticker from memory cache or disk.
+        This method only reads from cache/disk and does not fetch new data.
+        
+        Parameters
+        ----------
+        ticker : str
+            Ticker symbol
+            
+        Returns
+        -------
+        pd.DataFrame or None
+            DataFrame with OHLCV data or None if data is not found
+        """
+        # Check in-memory cache first
+        if ticker in self._data_cache:
+            df = self._data_cache[ticker]
+        else:
+            df = self._load_from_disk(ticker)
+            if df is not None:
+                self._data_cache[ticker] = df
+        if df is not None:
+            # Ensure index is timezone-aware and matches self.timezone
+            if df.index.tz is None:
+                df.index = df.index.tz_localize(self.timezone)
+            elif str(df.index.tz) != str(pytz.timezone(self.timezone)):
+                df.index = df.index.tz_convert(self.timezone)
         return df
 
+    def next(self, tickers: List[str], timestamp: pd.Timestamp, ffill: bool = False) -> Dict[str, Dict]:
+        """
+        Get data for tickers at or immediately before timestamp.
+        For current day, returns partial day data.
+        
+        Parameters
+        ----------
+        tickers : List[str]
+            List of ticker symbols to get data for
+        timestamp : pd.Timestamp or datetime
+            Timestamp to get data for
+        ffill : bool, optional
+            If True, when a ticker has no data, use the last non-None ticker's data.
+            If False, return None for tickers with no data.
+            Default is False.
+            
+        Returns
+        -------
+        Dict[str, Dict]
+            Dictionary mapping ticker symbols to their OHLCV data or None
+        """
+        # Convert timestamp to pandas Timestamp if needed
+        if not isinstance(timestamp, pd.Timestamp):
+            timestamp = pd.Timestamp(timestamp)
+            
+        # Ensure timestamp is timezone-aware and in correct timezone
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.tz_localize(self.timezone)
+        else:
+            timestamp = timestamp.tz_convert(self.timezone)
+            
+        result = {}
+        now = pd.Timestamp.now(tz=self.timezone)
+        
+        if timestamp.date() == now.date():
+            for ticker in tickers:
+                bar_data = self._fetch_partial_day_data(ticker)
+                if bar_data:
+                    result[ticker] = bar_data
+                    if ffill:
+                        self._last_valid_data = bar_data
+                else:
+                    if ffill and self._last_valid_data is not None:
+                        result[ticker] = self._last_valid_data
+                    else:
+                        result[ticker] = None
+        else:
+            for ticker in tickers:
+                df = self.load_ticker(ticker)
+                if df is None:
+                    result[ticker] = self._last_valid_data if ffill else None
+                    continue
+                    
+                # Ensure DataFrame index is timezone-aware and matches timestamp timezone
+                if df.index.tz is None:
+                    df.index = df.index.tz_localize(self.timezone)
+                elif str(df.index.tz) != str(timestamp.tz):
+                    df.index = df.index.tz_convert(self.timezone)
+                    
+                bar = self._get_bar_at_or_before(df, timestamp)
+                if bar is None:
+                    result[ticker] = self._last_valid_data if ffill else None
+                    continue
+                    
+                result[ticker] = {
+                    "open": float(bar["open"]),
+                    "high": float(bar["high"]),
+                    "low": float(bar["low"]),
+                    "close": float(bar["close"]),
+                    "volume": float(bar["volume"]),
+                }
+                if ffill:
+                    self._last_valid_data = result[ticker]
+        return result
+
+    def __del__(self):
+        """Clean up resources"""
+        if hasattr(self, 'session'):
+            self.session.close()
 ```
 
 # portwine/logging.py
@@ -7715,6 +4383,7 @@ class Logger:
         rotate: bool = True,
         max_bytes: int = 10 * 1024 * 1024,
         backup_count: int = 5,
+        propagate: bool = False,
     ):
         """
         Initialize and configure the logger.
@@ -7725,12 +4394,13 @@ class Logger:
         :param rotate: Whether to use a rotating file handler.
         :param max_bytes: Maximum size of a log file before rotation (in bytes).
         :param backup_count: Number of rotated backup files to keep.
+        :param propagate: Whether to propagate logs to parent loggers (default False).
         """
         # Create or get the logger
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
-        # Prevent logs from propagating to the root logger twice
-        self.logger.propagate = False
+        # Allow control over log propagation
+        self.logger.propagate = propagate
 
         # Console handler with Rich
         console_handler = RichHandler(
@@ -7778,12 +4448,12 @@ class Logger:
         rotate: bool = True,
         max_bytes: int = 10 * 1024 * 1024,
         backup_count: int = 5,
+        propagate: bool = False,
     ) -> logging.Logger:
         """
         Convenience method to configure and return a logger in one step.
         """
-        return cls(name, level, log_file, rotate, max_bytes, backup_count).get() 
-    
+        return cls(name, level, log_file, rotate, max_bytes, backup_count, propagate).get()
 
 # Top-level rich-logging helpers
 def log_position_table(logger: logging.Logger, current_positions: Dict[str, float], target_positions: Dict[str, float]) -> None:
@@ -7827,215 +4497,6 @@ def log_order_table(logger: logging.Logger, orders: List[Order]) -> None:
         table.add_row(o.ticker, o.side, str(int(o.quantity)), o.order_type, o.time_in_force, f"{o.average_price:.2f}")
     logger.info("Orders to execute:")
     rprint(table)
-
-```
-
-# portwine/new_scheduler.py
-
-```py
-import pandas as pd
-import pandas_market_calendars as mcal
-from datetime import datetime, timedelta, timezone
-from typing import Iterator, Optional, List, Union
-
-
-class DailySchedule(Iterator[int]):
-    """
-    Iterator of UNIX-ms timestamps for market events.
-
-    Modes:
-      - Finite: if start_date is set, yields events between start_date and end_date inclusive.
-      - Live: if start_date is None, yields all future events from today onward, indefinitely.
-
-    Parameters
-    ----------
-    after_open_minutes : Optional[int]
-        Minutes after market open for the first event each session.
-    before_close_minutes : Optional[int]
-        Minutes before market close for the last event each session.
-    calendar_name : str
-        Which pandas_market_calendars exchange to use (e.g. 'NYSE').
-    start_date : Optional[str]
-        'YYYY-MM-DD' to start a finite schedule; if None, runs live.
-    end_date : Optional[str]
-        'YYYY-MM-DD' to end a finite schedule; defaults to start_date.
-    interval_seconds : Optional[int]
-        If set with after_open_minutes, schedule extra events every interval_seconds.
-    inclusive : bool
-        When using both interval_seconds and before_close_minutes, whether
-        to include the exact before-close timestamp if it doesn't fall on
-        an exact interval boundary.
-    """
-
-    def __init__(
-        self,
-        *,
-        after_open_minutes: Optional[int] = None,
-        before_close_minutes: Optional[int] = None,
-        calendar_name: str = "NYSE",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        interval_seconds: Optional[int] = None,
-        inclusive: bool = False,
-    ):
-        # Validate required offsets
-        if after_open_minutes is None and before_close_minutes is None:
-            raise ValueError("Must specify after_open_minutes or before_close_minutes")
-        if before_close_minutes is not None and interval_seconds is not None and after_open_minutes is None:
-            raise ValueError("Cannot specify interval_seconds with close-only schedule")
-
-        self.after_open = after_open_minutes
-        self.before_close = before_close_minutes
-        self.interval = interval_seconds
-        self.inclusive = inclusive
-        self.calendar = mcal.get_calendar(calendar_name)
-        self.start_date = start_date
-        self.end_date = end_date or start_date
-        self._gen = None
-
-    def __iter__(self):
-        if self.start_date is not None:
-            self._gen = self._finite_generator()
-        else:
-            self._gen = self._live_generator()
-        return self
-
-    def __next__(self) -> int:
-        return next(self._gen)
-
-    def _to_ms(self, ev: Union[datetime, pd.Timestamp]) -> int:
-        # Normalize naive → UTC, leave tz-aware alone
-        if isinstance(ev, pd.Timestamp):
-            if ev.tzinfo is None:
-                ev = ev.tz_localize("UTC")
-        else:
-            if ev.tzinfo is None:
-                ev = ev.replace(tzinfo=timezone.utc)
-        return int(ev.timestamp() * 1000)
-
-    def _build_events(self, open_dt: Union[datetime, pd.Timestamp], close_dt: Union[datetime, pd.Timestamp]) -> List[datetime]:
-        # Ensure both bounds are tz-aware or marked UTC
-        if isinstance(open_dt, pd.Timestamp):
-            if open_dt.tzinfo is None:
-                open_dt = open_dt.tz_localize("UTC")
-        else:
-            if open_dt.tzinfo is None:
-                open_dt = open_dt.replace(tzinfo=timezone.utc)
-
-        if isinstance(close_dt, pd.Timestamp):
-            if close_dt.tzinfo is None:
-                close_dt = close_dt.tz_localize("UTC")
-        else:
-            if close_dt.tzinfo is None:
-                close_dt = close_dt.replace(tzinfo=timezone.utc)
-
-        # Compute window start/end
-        if self.after_open is None:
-            start_dt = open_dt
-        else:
-            start_dt = open_dt + timedelta(minutes=self.after_open)
-
-        if self.before_close is None:
-            end_dt = close_dt
-        else:
-            end_dt = close_dt - timedelta(minutes=self.before_close)
-
-        # Validate interval fits within the window
-        if self.interval is not None:
-            window_secs = (end_dt - start_dt).total_seconds()
-            if self.interval > window_secs:
-                raise ValueError(f"interval_seconds={self.interval} exceeds session window of {window_secs:.0f}s")
-
-        events: List[datetime] = []
-
-        # Close‐only
-        if self.after_open is None:
-            events.append(end_dt)
-            return events
-
-        # Open‐only or open+interval
-        if self.before_close is None:
-            if self.interval is None:
-                events.append(start_dt)
-            else:
-                t = start_dt
-                while t <= close_dt:
-                    events.append(t)
-                    t += timedelta(seconds=self.interval)
-            return events
-
-        # Both open+close, with optional interval
-        if self.interval is None:
-            events.extend([start_dt, end_dt])
-        else:
-            t = start_dt
-            last = None
-            while t <= end_dt:
-                events.append(t)
-                last = t
-                t += timedelta(seconds=self.interval)
-            if self.inclusive and last and last < end_dt:
-                events.append(end_dt)
-
-        return events
-
-    def _finite_generator(self):
-        sched = self.calendar.schedule(start_date=self.start_date, end_date=self.end_date)
-        for _, row in sched.iterrows():
-            for ev in self._build_events(row["market_open"], row["market_close"]):
-                yield self._to_ms(ev)
-
-    def _live_generator(self):
-        # Determine today's string via datetime.now (so tests that patch datetime work)
-        today_str = datetime.now().date().isoformat()
-        # Use calendar to find tz (if any)
-        today_sched = self.calendar.schedule(start_date=today_str, end_date=today_str)
-        tz = getattr(today_sched.index, "tz", None)
-
-        # For filtering, use pd.Timestamp.now so tests that compute expected via pd.Timestamp.now align
-        now_ts = pd.Timestamp.now(tz) if tz else pd.Timestamp.now()
-        now_ms = int(now_ts.timestamp() * 1000)
-
-        # For advancing days, use datetime.now (to respect tests that patch datetime)
-        current_date = datetime.now(tz).date() if tz else datetime.now().date()
-
-        while True:
-            day_str = current_date.isoformat()
-            day_sched = self.calendar.schedule(start_date=day_str, end_date=day_str)
-            if not day_sched.empty:
-                row = day_sched.iloc[0]
-                for ev in self._build_events(row["market_open"], row["market_close"]):
-                    ms = self._to_ms(ev)
-                    if ms >= now_ms:
-                        yield ms
-                # after first day, include all events unfiltered
-                now_ms = -1
-            current_date += timedelta(days=1)
-
-
-def daily_schedule(
-    after_open_minutes: Optional[int] = None,
-    before_close_minutes: Optional[int] = None,
-    calendar_name: str = "NYSE",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    interval_seconds: Optional[int] = None,
-    inclusive: bool = False,
-) -> Iterator[int]:
-    """
-    Backwards‐compatible function API wrapping the DailySchedule iterator.
-    """
-    return iter(
-        DailySchedule(
-            after_open_minutes=after_open_minutes,
-            before_close_minutes=before_close_minutes,
-            calendar_name=calendar_name,
-            start_date=start_date,
-            end_date=end_date,
-            interval_seconds=interval_seconds,
-            inclusive=inclusive,
-        )
-    )
 
 ```
 
@@ -8314,7 +4775,8 @@ class TrainTestSplitOptimizer(Optimizer):
 ```py
 import pandas as pd
 import pandas_market_calendars as mcal
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import datetime, date, timedelta, timezone
 from typing import Iterator, Optional, List, Union
 
 
@@ -8323,27 +4785,8 @@ class DailySchedule(Iterator[int]):
     Iterator of UNIX-ms timestamps for market events.
 
     Modes:
-      - Finite: if start_date is set, yields events between start_date and end_date inclusive.
-      - Live: if start_date is None, yields all future events from today onward, indefinitely.
-
-    Parameters
-    ----------
-    after_open_minutes : Optional[int]
-        Minutes after market open for the first event each session.
-    before_close_minutes : Optional[int]
-        Minutes before market close for the last event each session.
-    calendar_name : str
-        Which pandas_market_calendars exchange to use (e.g. 'NYSE').
-    start_date : Optional[str]
-        'YYYY-MM-DD' to start a finite schedule; if None, runs live.
-    end_date : Optional[str]
-        'YYYY-MM-DD' to end a finite schedule; defaults to start_date.
-    interval_seconds : Optional[int]
-        If set with after_open_minutes, schedule extra events every interval_seconds.
-    inclusive : bool
-        When using both interval_seconds and before_close_minutes, whether
-        to include the exact before-close timestamp if it doesn't fall on
-        an exact interval boundary.
+      - Finite: if end_date is set, yields events between start_date and end_date inclusive.
+      - Live: if end_date is None, yields all future events from start_date (or today) onward, indefinitely.
     """
 
     def __init__(
@@ -8357,7 +4800,7 @@ class DailySchedule(Iterator[int]):
         interval_seconds: Optional[int] = None,
         inclusive: bool = False,
     ):
-        # Validate required offsets
+        # Validate offsets
         if after_open_minutes is None and before_close_minutes is None:
             raise ValueError("Must specify after_open_minutes or before_close_minutes")
         if before_close_minutes is not None and interval_seconds is not None and after_open_minutes is None:
@@ -8369,14 +4812,14 @@ class DailySchedule(Iterator[int]):
         self.inclusive = inclusive
         self.calendar = mcal.get_calendar(calendar_name)
         self.start_date = start_date
-        self.end_date = end_date or start_date
+        self.end_date = end_date
         self._gen = None
 
     def __iter__(self):
-        if self.start_date is not None:
+        if self.end_date is not None:
             self._gen = self._finite_generator()
         else:
-            self._gen = self._live_generator()
+            self._gen = self._live_generator(self.start_date)
         return self
 
     def __next__(self) -> int:
@@ -8392,8 +4835,12 @@ class DailySchedule(Iterator[int]):
                 ev = ev.replace(tzinfo=timezone.utc)
         return int(ev.timestamp() * 1000)
 
-    def _build_events(self, open_dt: Union[datetime, pd.Timestamp], close_dt: Union[datetime, pd.Timestamp]) -> List[datetime]:
-        # Ensure both bounds are tz-aware or marked UTC
+    def _build_events(
+        self,
+        open_dt: Union[datetime, pd.Timestamp],
+        close_dt: Union[datetime, pd.Timestamp],
+    ) -> List[Union[datetime, pd.Timestamp]]:
+        # Localize bounds
         if isinstance(open_dt, pd.Timestamp):
             if open_dt.tzinfo is None:
                 open_dt = open_dt.tz_localize("UTC")
@@ -8408,54 +4855,44 @@ class DailySchedule(Iterator[int]):
             if close_dt.tzinfo is None:
                 close_dt = close_dt.replace(tzinfo=timezone.utc)
 
-        # Compute window start/end
-        if self.after_open is None:
-            start_dt = open_dt
-        else:
-            start_dt = open_dt + timedelta(minutes=self.after_open)
+        # Compute window
+        start_dt = open_dt if self.after_open is None else open_dt + timedelta(minutes=self.after_open)
+        end_dt = close_dt if self.before_close is None else close_dt - timedelta(minutes=self.before_close)
 
-        if self.before_close is None:
-            end_dt = close_dt
-        else:
-            end_dt = close_dt - timedelta(minutes=self.before_close)
-
-        # Validate interval fits within the window
+        # Interval validation
         if self.interval is not None:
             window_secs = (end_dt - start_dt).total_seconds()
             if self.interval > window_secs:
                 raise ValueError(f"interval_seconds={self.interval} exceeds session window of {window_secs:.0f}s")
 
-        events: List[datetime] = []
-
-        # Close‐only
+        # Build events
         if self.after_open is None:
-            events.append(end_dt)
-            return events
+            # close-only
+            return [end_dt]
 
-        # Open‐only or open+interval
         if self.before_close is None:
+            # open-only or open+interval
             if self.interval is None:
-                events.append(start_dt)
-            else:
-                t = start_dt
-                while t <= close_dt:
-                    events.append(t)
-                    t += timedelta(seconds=self.interval)
+                return [start_dt]
+            events: List[Union[datetime, pd.Timestamp]] = []
+            t = start_dt
+            while t <= close_dt:
+                events.append(t)
+                t += timedelta(seconds=self.interval)
             return events
 
-        # Both open+close, with optional interval
+        # both open+close, with optional interval
         if self.interval is None:
-            events.extend([start_dt, end_dt])
-        else:
-            t = start_dt
-            last = None
-            while t <= end_dt:
-                events.append(t)
-                last = t
-                t += timedelta(seconds=self.interval)
-            if self.inclusive and last and last < end_dt:
-                events.append(end_dt)
-
+            return [start_dt, end_dt]
+        events = []
+        t = start_dt
+        last = None
+        while t <= end_dt:
+            events.append(t)
+            last = t
+            t += timedelta(seconds=self.interval)
+        if self.inclusive and last and last < end_dt:
+            events.append(end_dt)
         return events
 
     def _finite_generator(self):
@@ -8464,30 +4901,36 @@ class DailySchedule(Iterator[int]):
             for ev in self._build_events(row["market_open"], row["market_close"]):
                 yield self._to_ms(ev)
 
-    def _live_generator(self):
-        # Determine today's string via datetime.now (so tests that patch datetime work)
-        today_str = datetime.now().date().isoformat()
-        # Use calendar to find tz (if any)
-        today_sched = self.calendar.schedule(start_date=today_str, end_date=today_str)
+    def _live_generator(self, start_date=None):
+        # If start_date is None, use today
+        if start_date is not None:
+            current_date = pd.Timestamp(start_date).date()
+        else:
+            current_date = date.today()
+        # 2) determine tz from calendar
+        today_str = date.today().isoformat()
+        try:
+            today_sched = self.calendar.schedule(start_date=today_str, end_date=today_str)
+        except StopIteration:
+            return
         tz = getattr(today_sched.index, "tz", None)
-
-        # For filtering, use pd.Timestamp.now so tests that compute expected via pd.Timestamp.now align
-        now_ts = pd.Timestamp.now(tz) if tz else pd.Timestamp.now()
+        # 3) current time from time.time()
+        now_sec = time.time()
+        now_ts = pd.Timestamp(now_sec, unit="s", tz=tz) if tz else pd.Timestamp(now_sec, unit="s")
         now_ms = int(now_ts.timestamp() * 1000)
-
-        # For advancing days, use datetime.now (to respect tests that patch datetime)
-        current_date = datetime.now(tz).date() if tz else datetime.now().date()
-
+        # 4) start looping from current_date
         while True:
             day_str = current_date.isoformat()
-            day_sched = self.calendar.schedule(start_date=day_str, end_date=day_str)
+            try:
+                day_sched = self.calendar.schedule(start_date=day_str, end_date=day_str)
+            except StopIteration:
+                return
             if not day_sched.empty:
                 row = day_sched.iloc[0]
                 for ev in self._build_events(row["market_open"], row["market_close"]):
                     ms = self._to_ms(ev)
                     if ms >= now_ms:
                         yield ms
-                # after first day, include all events unfiltered
                 now_ms = -1
             current_date += timedelta(days=1)
 
@@ -8502,7 +4945,7 @@ def daily_schedule(
     inclusive: bool = False,
 ) -> Iterator[int]:
     """
-    Backwards‐compatible function API wrapping the DailySchedule iterator.
+    Backward‐compatible wrapper around DailySchedule.
     """
     return iter(
         DailySchedule(
@@ -8529,28 +4972,61 @@ from portwine.strategies.simple_moving_average import SimpleMovingAverageStrateg
 # portwine/strategies/base.py
 
 ```py
-class StrategyBase:
+from typing import Union, List, Set
+from portwine.universe import Universe
+from datetime import date
+import abc
+
+class StrategyBase(abc.ABC):
     """
     Base class for a trading strategy. Subclass this to implement a custom strategy.
 
     A 'step' method is called each day with that day's data. The method should return
     a dictionary of signals/weights for each ticker on that day.
 
-    A strategy may also declare a separate set of 'alternative_data_tickers'
-    it depends on (e.g., indices, macro data, etc.). The backtester can then fetch
-    that data for the strategy's use.
+    The strategy always uses a universe object internally. If you pass a list of tickers,
+    it creates a static universe with those tickers from 1970-01-01 onwards.
     """
 
-    def __init__(self, tickers):
+    def __init__(self, tickers: Union[List[str], Universe]):
         """
         Parameters
         ----------
-        tickers : list
-            List of primary ticker symbols that the strategy will manage.
-            Duplicates will be removed, preserving the original order.
+        tickers : Union[List[str], Universe]
+            Either a list of ticker symbols or a Universe object.
+            If a list is provided, it creates a static universe with those tickers.
         """
-        # remove duplicates but keep order
-        self.tickers = list(dict.fromkeys(tickers))
+        if isinstance(tickers, Universe):
+            self.universe = tickers
+            # Store all possible tickers for reference
+            self.tickers = self.universe.all_tickers
+        else:
+            # Convert list to static universe
+            self.universe = self._create_static_universe(tickers)
+            # Store original tickers as set
+            self.tickers = set(tickers)
+
+    def _create_static_universe(self, tickers: List[str]) -> Universe:
+        """
+        Create a static universe from a list of tickers.
+        
+        Parameters
+        ----------
+        tickers : List[str]
+            List of ticker symbols
+            
+        Returns
+        -------
+        Universe
+            Static universe with tickers from 1970-01-01 onwards
+        """
+        # Remove duplicates and convert to set
+        unique_tickers = set(tickers)
+        
+        # Create static universe mapping
+        constituents = {date(1970, 1, 1): unique_tickers}
+        
+        return Universe(constituents)
 
     def step(self, current_date, daily_data):
         """
@@ -8566,9 +5042,8 @@ class StrategyBase:
             }
             or None if no data for that ticker on this date.
 
-            daily_data[ticker] can also return any arbitrary dictionary or value as well.
-
-            This is good for macroeconomic indices, alternative data, etc.
+            The backtester ensures that daily_data only contains tickers
+            that are currently in the universe.
 
         Returns
         -------
@@ -8576,19 +5051,7 @@ class StrategyBase:
             { ticker -> float weight }, where the weights are the fraction
             of capital allocated to each ticker (long/short).
         """
-        # Default: equally weight among all *primary* tickers that have data
-        valid_tickers = [t for t in self.tickers if daily_data.get(t) is not None]
-        n = len(valid_tickers)
-        weight = 1.0 / n if n > 0 else 0.0
-        signals = {tkr: weight for tkr in valid_tickers}
-        return signals
-
-    def rebalance_portfolio(self, current_positions, current_date):
-        """
-        Optional rebalancing logic can be overridden here.
-        By default, returns current_positions unmodified.
-        """
-        return current_positions
+        ...
 
 ```
 
@@ -9013,6 +5476,167 @@ class SimpleMovingAverageStrategy(StrategyBase):
         logger.info("Shutting down SimpleMovingAverageStrategy") 
 ```
 
+# portwine/universe.py
+
+```py
+"""
+Simple universe management for historical constituents.
+"""
+
+from typing import List, Dict, Set
+from datetime import date
+
+
+class Universe:
+    """
+    Base universe class for managing historical constituents.
+    
+    This class provides efficient lookup of constituents at any given date
+    using binary search on pre-sorted dates.
+    """
+
+    def __init__(self, constituents: Dict[date, Set[str]]):
+        """
+        Initialize universe with constituent mapping.
+        
+        Parameters
+        ----------
+        constituents : Dict[date, Set[str]]
+            Dictionary mapping dates to sets of ticker symbols
+        """
+        self.constituents = constituents
+        
+        # Pre-sort dates for binary search
+        self.sorted_dates = sorted(self.constituents.keys())
+        
+        # Pre-compute all tickers
+        self._all_tickers = self._compute_all_tickers()
+    
+    def get_constituents(self, dt) -> Set[str]:
+        """
+        Get the basket for a given date.
+        
+        Parameters
+        ----------
+        dt : datetime-like
+            Date to get constituents for
+            
+        Returns
+        -------
+        Set[str]
+            Set of tickers in the basket at the given date
+        """
+        # Convert to date object
+        if hasattr(dt, 'date'):
+            target_date = dt.date()
+        else:
+            target_date = date.fromisoformat(str(dt).split()[0])
+        
+        # Binary search to find the most recent date <= target_date
+        left, right = 0, len(self.sorted_dates) - 1
+        result = -1
+        
+        while left <= right:
+            mid = (left + right) // 2
+            if self.sorted_dates[mid] <= target_date:
+                result = mid
+                left = mid + 1
+            else:
+                right = mid - 1
+        
+        if result == -1:
+            return set()
+            
+        return self.constituents[self.sorted_dates[result]]
+    
+    def _compute_all_tickers(self) -> set:
+        """
+        Compute all unique tickers that have ever been in the universe.
+        
+        Returns
+        -------
+        set
+            Set of all ticker symbols
+        """
+        all_tickers = set()
+        for tickers in self.constituents.values():
+            all_tickers.update(tickers)
+        return all_tickers
+    
+    @property
+    def all_tickers(self) -> set:
+        """
+        Get all unique tickers that have ever been in the universe.
+        
+        Returns
+        -------
+        set
+            Set of all ticker symbols
+        """
+        return self._all_tickers
+
+
+class CSVUniverse(Universe):
+    """
+    Universe class that loads constituent data from CSV files.
+    
+    Expected CSV format:
+    date,ticker1,ticker2,ticker3,...
+    """
+    
+    def __init__(self, csv_path: str):
+        """
+        Initialize universe from CSV file.
+        
+        Parameters
+        ----------
+        csv_path : str
+            Path to CSV file with format: date,ticker1,ticker2,ticker3,...
+        """
+        constituents = self._load_from_csv(csv_path)
+        super().__init__(constituents)
+    
+    def _load_from_csv(self, csv_path: str) -> Dict[date, Set[str]]:
+        """
+        Load constituent data from CSV file.
+        
+        Parameters
+        ----------
+        csv_path : str
+            Path to CSV file
+            
+        Returns
+        -------
+        Dict[date, Set[str]]
+            Dictionary mapping dates to sets of tickers
+        """
+        constituents = {}
+        
+        with open(csv_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):  # Skip empty lines and comments
+                    continue
+                    
+                parts = line.split(',')
+                if len(parts) < 2:
+                    continue
+                    
+                # Parse date
+                date_str = parts[0].strip()
+                try:
+                    year, month, day = map(int, date_str.split('-'))
+                    current_date = date(year, month, day)
+                except ValueError:
+                    continue  # Skip invalid dates
+                
+                # Parse tickers (skip empty ones) and convert to set
+                tickers = {ticker.strip() for ticker in parts[1:] if ticker.strip()}
+                constituents[current_date] = tickers
+        
+        return constituents
+```
+
 # portwine/vectorized.py
 
 ```py
@@ -9025,6 +5649,29 @@ import pandas as pd
 from tqdm import tqdm
 from portwine.strategies import StrategyBase
 from portwine.backtester import Backtester, STANDARD_BENCHMARKS
+from typing import Dict, List, Optional, Tuple, Set, Union
+import numba as nb
+
+@nb.njit(parallel=True, fastmath=True)
+def calculate_returns(price_array):
+    """Calculate returns with Numba acceleration."""
+    n_rows, n_cols = price_array.shape
+    returns = np.zeros((n_rows-1, n_cols), dtype=np.float32)
+    for i in range(1, n_rows):
+        for j in range(n_cols):
+            returns[i-1, j] = price_array[i, j] / price_array[i-1, j] - 1.0
+    return returns
+
+@nb.njit(parallel=True, fastmath=True)
+def apply_weights(returns, weights):
+    """Calculate weighted returns with Numba acceleration."""
+    n_rows, n_cols = returns.shape
+    result = np.zeros(n_rows)
+    for i in range(n_rows):
+        for j in range(n_cols):
+            result[i] += returns[i, j] * weights[i, j]
+    return result
+
 
 def create_price_dataframe(market_data_loader, tickers, start_date=None, end_date=None):
     """
@@ -9057,12 +5704,29 @@ def create_price_dataframe(market_data_loader, tickers, start_date=None, end_dat
     all_dates = sorted(all_dates)
 
     # 3) apply optional date filters
+    # all_dates_array = np.array(all_dates)
+    all_dates_array = pd.to_datetime(np.array(all_dates))
+
+    mask = np.ones(len(all_dates_array), dtype=bool)  # Start with all True
+    
+
+    # if start_date:
+    #     sd = pd.to_datetime(start_date).to_numpy()
+    #     mask &= (all_dates_array >= sd)
+        
+    # if end_date:
+    #     ed = pd.to_datetime(end_date).to_numpy()
+    #     mask &= (all_dates_array <= ed)
+
     if start_date:
         sd = pd.to_datetime(start_date)
-        all_dates = [d for d in all_dates if d >= sd]
+        mask &= (all_dates_array >= sd)
     if end_date:
         ed = pd.to_datetime(end_date)
-        all_dates = [d for d in all_dates if d <= ed]
+        mask &= (all_dates_array <= ed)
+
+    # Apply the combined mask
+    all_dates = all_dates_array[mask].tolist()
 
     # 4) build empty float DataFrame
     df_prices = pd.DataFrame(index=all_dates, columns=tickers, dtype=float)
@@ -9109,65 +5773,418 @@ class VectorizedBacktester:
     def __init__(self, market_data_loader=None):
         self.market_data_loader = market_data_loader
 
-    def run_backtest(self, strategy, benchmark="equal_weight",
-                     start_date=None, end_date=None,
-                     shift_signals=True, verbose=False):
+
+    def run_backtest(
+        self,
+        strategy: VectorizedStrategyBase,
+        benchmark="equal_weight",
+        start_date=None,
+        end_date=None,
+        shift_signals=True,
+        require_all_history: bool = False,
+        verbose=False
+    ):
+        # 0) type check
         if not isinstance(strategy, VectorizedStrategyBase):
             raise TypeError("Strategy must be a VectorizedStrategyBase")
 
-        # 1) load prices (float dtype)
-        price_df = create_price_dataframe(
+        # 1) load full history of prices (float dtype)
+        full_prices = create_price_dataframe(
             self.market_data_loader,
             tickers=strategy.tickers,
             start_date=start_date,
             end_date=end_date
         )
 
-        # 2) compute weights in one shot
+        # 2) compute all weights in one shot
         if verbose:
             print("Computing strategy weights…")
-        weights_df = strategy.batch(price_df)
+        all_weights = strategy.batch(full_prices)
 
-        # 3) align dates
-        common = price_df.index.intersection(weights_df.index)
-        price_df = price_df.loc[common]
-        weights_df = weights_df.loc[common]
+        # 3) require that all tickers have data from a common start date?
+        if require_all_history:
+            # find first valid (non-NaN) date for each ticker
+            first_dates = [full_prices[t].first_valid_index() for t in strategy.tickers]
+            if any(d is None for d in first_dates):
+                raise ValueError("Not all tickers have any data in the supplied range")
+            common_start = max(first_dates)
+            # truncate both prices and weights
+            full_prices = full_prices.loc[full_prices.index >= common_start]
+            all_weights = all_weights.loc[all_weights.index >= common_start]
 
-        # 4) shift if needed (all float ops → no warning)
+        # 4) align dates between prices and weights
+        common_idx = full_prices.index.intersection(all_weights.index)
+        price_df = full_prices.loc[common_idx]
+        weights_df = all_weights.loc[common_idx]
+
+        # 5) shift signals if requested
         if shift_signals:
-            weights_df = weights_df.shift(1).fillna(0)
+            weights_df = weights_df.shift(1).fillna(0.0)
 
-        # 5) compute returns
-        returns_df = price_df.pct_change(fill_method=None).fillna(0)
+        # 6) compute per‐ticker returns
+        returns_df = price_df.pct_change(fill_method=None).fillna(0.0)
 
-        # 6) portfolio P&L
-        strat_rets = (returns_df * weights_df).sum(axis=1)
+        # 7) strategy P&L
+        strategy_rets = (returns_df * weights_df).sum(axis=1)
 
-        # 7) benchmark
-        bm_rets = None
+        # 8) benchmark
+        benchmark_rets = None
         if benchmark is not None:
             if isinstance(benchmark, str) and benchmark in STANDARD_BENCHMARKS:
-                bm_rets = STANDARD_BENCHMARKS[benchmark](returns_df)
+                benchmark_rets = STANDARD_BENCHMARKS[benchmark](returns_df)
             elif isinstance(benchmark, str) and self.market_data_loader:
                 raw = self.market_data_loader.fetch_data([benchmark])
                 series = raw.get(benchmark)
                 if series is not None:
-                    bm = series['close'].reindex(common).ffill()
-                    bm_rets = bm.pct_change(fill_method=None).fillna(0)
+                    bm = series['close'].reindex(common_idx).ffill()
+                    benchmark_rets = bm.pct_change(fill_method=None).fillna(0)
+                    benchmark_rets.name = None  # Reset the name
             elif callable(benchmark):
-                bm_rets = benchmark(returns_df)
+                benchmark_rets = benchmark(returns_df)
 
         return {
             'signals_df': weights_df,
             'tickers_returns': returns_df,
-            'strategy_returns': strat_rets,
-            'benchmark_returns': bm_rets,
+            'strategy_returns': strategy_rets,
+            'benchmark_returns': benchmark_rets,
         }
 
 
 def benchmark_equal_weight(returns_df: pd.DataFrame) -> pd.Series:
     return returns_df.mean(axis=1)
 
+
+
+def load_price_matrix(loader, tickers, start_date=None, end_date=None):
+    """
+    Optimized price matrix loader that minimizes pandas-numpy conversions.
+    """
+    # 1) Fetch raw data
+    data_dict = loader.fetch_data(tickers)
+
+    # 2) Collect all dates directly as numpy array
+    all_dates_set = set()
+    for df in data_dict.values():
+        if df is not None and not df.empty:
+            all_dates_set.update(df.index.values)
+
+    all_dates_array = np.array(sorted(all_dates_set))
+
+    # 3) Apply date filters in numpy
+    mask = np.ones(len(all_dates_array), dtype=bool)
+    if start_date:
+        sd = pd.to_datetime(start_date)
+        if len(all_dates_array) > 0:
+            mask &= (all_dates_array >= sd)
+    if end_date:
+        ed = pd.to_datetime(end_date)
+        if len(all_dates_array) > 0:
+            mask &= (all_dates_array <= ed)
+
+    all_dates_array = all_dates_array[mask]
+
+    # Create a date-to-index mapping for fast lookups
+    date_to_idx = {d: i for i, d in enumerate(all_dates_array)}
+
+    # 4) Pre-allocate price matrix directly
+    n_dates = len(all_dates_array)
+    n_tickers = len(tickers)
+    price_matrix = np.full((n_dates, n_tickers), np.nan, dtype=np.float32)
+
+    # 5) Fill matrix directly without pandas intermediates
+    for t_idx, ticker in enumerate(tickers):
+        df = data_dict.get(ticker)
+        if df is not None and not df.empty:
+            # Get close prices as numpy array
+            prices = df['close'].values
+
+            # Get dates as numpy array
+            dates = df.index.values
+
+            # For each date in this ticker's data, find its position in our matrix
+            for date_idx, date in enumerate(dates):
+                if date in date_to_idx:
+                    price_matrix[date_to_idx[date], t_idx] = prices[date_idx]
+
+    # 6) Forward fill using numpy operations
+    for col in range(n_tickers):
+        mask = np.isnan(price_matrix[:, col])
+        # Find first valid index
+        valid_indices = np.where(~mask)[0]
+        if len(valid_indices) > 0:
+            # Forward fill
+            for i in range(valid_indices[0], n_dates):
+                if mask[i]:
+                    # Find the last valid value
+                    last_valid = np.where(~mask[:i])[0]
+                    if len(last_valid) > 0:
+                        price_matrix[i, col] = price_matrix[last_valid[-1], col]
+
+    # 7) Compute returns directly in numpy
+    returns_matrix = np.zeros_like(price_matrix[1:])
+    returns_matrix = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
+
+    # 8) Create a minimal pandas DataFrame only for reference
+    # This is just for API compatibility and doesn't get used in computations
+    price_df = pd.DataFrame(price_matrix, index=all_dates_array, columns=tickers)
+
+    return price_matrix, returns_matrix, all_dates_array[1:], price_df
+class NumPyVectorizedStrategyBase(StrategyBase):
+    """
+    Base class for vectorized strategies that process the entire dataset at once
+    using NumPy arrays for optimal performance.
+    """
+    def __init__(self, tickers: List[str]):
+        """
+        Initialize with the tickers this strategy uses.
+        
+        Parameters:
+        -----------
+        tickers : List[str]
+            List of ticker symbols this strategy will use
+        """
+        self.tickers = tickers
+        
+    def batch(self, price_matrix: np.ndarray, dates: List[pd.Timestamp], 
+              column_indices: List[int]) -> np.ndarray:
+        """
+        Compute weights for all dates based on price history.
+        Must be implemented by subclasses.
+        
+        Parameters:
+        -----------
+        price_matrix : np.ndarray
+            Price matrix with shape (n_dates, n_tickers)
+        dates : List[pd.Timestamp]
+            List of dates corresponding to rows in price_matrix
+        column_indices : List[int]
+            List of column indices in price_matrix that correspond to this strategy's tickers
+            
+        Returns:
+        --------
+        np.ndarray
+            Weight matrix with shape (n_dates, n_strategy_tickers)
+        """
+        raise NotImplementedError("Subclasses must implement batch()")
+    
+    def step(self, current_date, daily_data):
+        """
+        Compatibility method for use with traditional backtester.
+        This should generally not be used directly - prefer batch processing.
+        """
+        raise NotImplementedError("NumPyVectorizedStrategyBase is designed for batch processing")
+
+
+class NumpyVectorizedBacktester:
+    """
+    A highly optimized NumPy-based vectorized backtester that supports
+    strategies using subsets of tickers.
+    """
+    def __init__(self, loader, universe_tickers: List[str], start_date: str, end_date: str):
+        """
+        Initialize with minimal pandas-numpy conversions.
+        """
+        price_matrix, returns_matrix, dates_ret, price_df = load_price_matrix(
+            loader, universe_tickers, start_date, end_date
+        )
+        
+        # Store everything as numpy arrays
+        self.price_matrix = price_matrix
+        self.returns_matrix = returns_matrix
+        self.dates_array = dates_ret  # store as numpy array
+        
+        # Create mappings for lookups
+        self.universe_tickers = universe_tickers
+        self.ticker_to_idx = {ticker: i for i, ticker in enumerate(universe_tickers)}
+        
+        # Keep minimal pandas objects
+        self.date_to_i = None  # Don't create this dictionary unless needed
+        self.price_df = None   # Don't store pandas objects
+        
+        # Keep reference to loader for benchmark calculations
+        self.loader = loader
+
+    def get_indices_for_tickers(self, tickers: List[str]) -> List[int]:
+        """
+        Get the column indices in the price/returns matrices for the given tickers.
+        
+        Parameters:
+        -----------
+        tickers : List[str]
+            List of ticker symbols to get indices for
+            
+        Returns:
+        --------
+        List[int]
+            List of column indices
+        """
+        return [self.ticker_to_idx.get(ticker) for ticker in tickers 
+                if ticker in self.ticker_to_idx]
+
+    def run_backtest(self, strategy, benchmark="equal_weight", shift_signals=True, verbose=False, **kwargs):
+        """
+        Run backtest with minimal pandas-numpy conversions.
+        """
+        # Get strategy info
+        strategy_indices = np.array([
+            self.ticker_to_idx.get(t, -1) for t in strategy.tickers
+        ])
+        strategy_indices = strategy_indices[strategy_indices >= 0]
+        
+        if len(strategy_indices) == 0:
+            raise ValueError(f"None of the strategy tickers {strategy.tickers} are in the universe")
+        
+        # Extract price submatrix - avoid pandas operations
+        strategy_price_matrix = self.price_matrix[:, strategy_indices]
+        
+        # Get weights - working entirely in numpy
+        if verbose:
+            print(f"Computing weights for {len(strategy_indices)} tickers...")
+        
+        # Get strategy weights as numpy array
+        weights_matrix = strategy.batch(
+            strategy_price_matrix, 
+            self.dates_array, 
+            strategy_indices
+        )
+        
+        # Prepare benchmark weights - all in numpy
+        benchmark_weights = None
+        if isinstance(benchmark, str) and benchmark == "equal_weight":
+            benchmark_weights = np.ones(len(strategy_indices), dtype=np.float32) / len(strategy_indices)
+        elif isinstance(benchmark, list):
+            # Convert benchmark tickers to indices
+            benchmark_indices = np.array([
+                self.ticker_to_idx.get(t, -1) for t in benchmark
+            ])
+            benchmark_indices = benchmark_indices[benchmark_indices >= 0]
+            
+            if len(benchmark_indices) == 0:
+                raise ValueError(f"None of the benchmark tickers {benchmark} are in the universe")
+            
+            # Create benchmark weights array
+            benchmark_weights = np.zeros(len(strategy_indices), dtype=np.float32)
+            
+            # Map universe indices to strategy indices
+            for b_idx in benchmark_indices:
+                if b_idx in strategy_indices:
+                    s_idx = np.where(strategy_indices == b_idx)[0][0]
+                    benchmark_weights[s_idx] = 1.0
+            
+            # Normalize
+            if np.sum(benchmark_weights) > 0:
+                benchmark_weights /= np.sum(benchmark_weights)
+        elif isinstance(benchmark, np.ndarray):
+            if len(benchmark) != len(strategy_indices):
+                raise ValueError(
+                    f"Benchmark weights has {len(benchmark)} elements, "
+                    f"but strategy has {len(strategy_indices)} tickers"
+                )
+            benchmark_weights = benchmark.astype(np.float32)
+        
+        # Extract returns submatrix - avoid pandas operations
+        strategy_returns_matrix = self.returns_matrix[:, strategy_indices]
+        
+        # Calculate returns using numpy operations
+        result_dict = self.run_backtest_npy(
+            returns_matrix=strategy_returns_matrix,
+            weights_matrix=weights_matrix,
+            benchmark_weights=benchmark_weights,
+            shift_signals=shift_signals
+        )
+        
+        # Only convert to pandas at the very end
+        strategy_ticker_list = [self.universe_tickers[i] for i in strategy_indices]
+        
+        # Create minimal pandas output - only at the end
+        return {
+            'signals_df': pd.DataFrame(
+                weights_matrix, 
+                index=pd.DatetimeIndex(self.dates_array), 
+                columns=strategy_ticker_list
+            ),
+            'tickers_returns': pd.DataFrame(
+                strategy_returns_matrix,
+                index=pd.DatetimeIndex(self.dates_array),
+                columns=strategy_ticker_list
+            ),
+            'strategy_returns': pd.Series(
+                result_dict["strategy_returns"],
+                index=pd.DatetimeIndex(self.dates_array)
+            ),
+            'benchmark_returns': pd.Series(
+                result_dict["benchmark_returns"],
+                index=pd.DatetimeIndex(self.dates_array)
+            ) if result_dict["benchmark_returns"] is not None else None,
+        }
+    
+    def run_backtest_npy(self, returns_matrix, weights_matrix, benchmark_weights=None, shift_signals=True):
+        """
+        Pure numpy implementation of backtest calculations.
+        """
+        # Shift signals if needed - all numpy operations
+        if shift_signals:
+            W = np.zeros_like(weights_matrix)
+            if weights_matrix.shape[0] > 1:
+                W[1:] = weights_matrix[:-1]
+        else:
+            W = weights_matrix
+            
+        # Calculate strategy returns - use optimized dot product
+        if W.shape[1] > 0:
+            # Fast multiplication along rows
+            strat_rets = np.sum(returns_matrix * W, axis=1)
+        else:
+            strat_rets = np.zeros(returns_matrix.shape[0], dtype=np.float32)
+        
+        # Calculate benchmark returns if needed
+        if benchmark_weights is not None:
+            # Use matrix multiplication for benchmark
+            bench_rets = returns_matrix @ benchmark_weights
+        else:
+            bench_rets = np.zeros_like(strat_rets)
+            
+        return {
+            "strategy_returns": strat_rets,
+            "benchmark_returns": bench_rets
+        }
+
+class SubsetStrategy(NumPyVectorizedStrategyBase):
+    """Strategy that only uses a subset of tickers."""
+    def __init__(self, tickers: List[str], weight_type='equal'):
+        super().__init__(tickers)
+        self.weight_type = weight_type
+    
+    def batch(self, price_matrix: np.ndarray, dates: List[pd.Timestamp], 
+              column_indices: List[int]) -> np.ndarray:
+        """Returns equal weights for all tickers in the subset."""
+        n_dates, n_tickers = price_matrix.shape
+        
+        if self.weight_type == 'equal':
+            # Equal weight for all tickers
+            weights = np.ones((n_dates, n_tickers)) / n_tickers
+            # Return weights for dates[1:] to match returns dimension
+            return weights[1:]
+        elif self.weight_type == 'momentum':
+            # Simple momentum strategy
+            returns = np.zeros((n_dates, n_tickers))
+            lookback = 20  # 20-day momentum
+            
+            # Calculate returns over lookback period
+            for i in range(lookback, n_dates):
+                returns[i] = price_matrix[i] / price_matrix[i-lookback] - 1
+            
+            # Set weights based on positive momentum
+            weights = np.zeros((n_dates, n_tickers))
+            weights[returns > 0] = 1
+            
+            # Normalize weights
+            row_sums = np.sum(weights, axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1  # Avoid division by zero
+            weights = weights / row_sums
+            
+            # Return weights for dates[1:] to match returns dimension
+            return weights[1:]
 ```
 
 # pyproject.toml
@@ -9175,13 +6192,13 @@ def benchmark_equal_weight(returns_df: pd.DataFrame) -> pd.Series:
 ```toml
 [tool.poetry]
 name = "portwine"
-version = "0.1.1"
-description = ""
+version = "0.1.3"
+description = "A clean, elegant portfolio backtester that simplifies strategy development with online processing and comprehensive analysis tools"
 authors = ["Stuart Farmer <stuart@lamden.io>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "3.10.15"
+python = "^3.10"
 pandas = "^2.2.3"
 matplotlib = "^3.10.1"
 scipy = "^1.15.2"
@@ -9195,10 +6212,17 @@ pytz = "^2024.1"
 django-scheduler = "^0.10.1"
 flask = "^3.1.0"
 rich = "^14.0.0"
-
+fastparquet = "^2024.2.0"
+freezegun = "^1.5.1"
+numba = "^0.61.2"
+httpx = "^0.28.1"
 
 [tool.poetry.group.dev.dependencies]
+mkdocs = "^1.6.1"
+mkdocstrings = "^0.29.1"
+mkdocstrings-python = "^1.16.12"
 coverage = "^7.8.0"
+pytest-cov = "^6.1.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -9214,6 +6238,8 @@ build-backend = "poetry.core.masonry.api"
 \`\`\`commandline
 pip install portwine
 \`\`\`
+https://stuartfarmer.github.io/portwine/
+
 Portfolio construction, optimization, and backtesting can be a complicated web of data wrangling, signal generation, lookahead bias reduction, and parameter tuning.
 
 But with `portwine`, strategies are clear and written in an 'online' fashion that removes most of the complexity that comes with backtesting, analyzing, and deploying your trading strategies.
@@ -9362,7 +6388,8 @@ EquityDrawdownAnalyzer().plot(results)
 With more on the way!
 
 ---
-*Docs and tutorials coming soon.*
+### Docs
+https://stuartfarmer.github.io/portwine/
 
 ```
 

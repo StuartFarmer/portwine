@@ -4,6 +4,7 @@ Simple universe management for historical constituents.
 
 from typing import List, Dict, Set
 from datetime import date
+import numpy as np
 
 
 class Universe:
@@ -14,14 +15,14 @@ class Universe:
     using binary search on pre-sorted dates.
     """
 
-    def __init__(self, constituents: Dict[date, Set[str]]):
+    def __init__(self, constituents: Dict[np.datetime64, Set[str]]):
         """
         Initialize universe with constituent mapping.
         
         Parameters
         ----------
-        constituents : Dict[date, Set[str]]
-            Dictionary mapping dates to sets of ticker symbols
+        constituents : Dict[np.datetime64, Set[str]]
+            Dictionary mapping numpy datetime64 dates to sets of ticker symbols
         """
         self.constituents = constituents
         
@@ -33,33 +34,27 @@ class Universe:
         # Add attribute to track current date for dynamic tickers
         self._current_date = None
     
-    def get_constituents(self, dt) -> Set[str]:
+    def get_constituents(self, dt: np.datetime64) -> Set[str]:
         """
         Get the basket for a given date.
         
         Parameters
         ----------
-        dt : datetime-like
-            Date to get constituents for
+        dt : np.datetime64
+            Numpy datetime64 object representing the date to get constituents for
             
         Returns
         -------
         Set[str]
             Set of tickers in the basket at the given date
         """
-        # Convert to date object
-        if hasattr(dt, 'date'):
-            target_date = dt.date()
-        else:
-            target_date = date.fromisoformat(str(dt).split()[0])
-        
         # Binary search to find the most recent date <= target_date
         left, right = 0, len(self.sorted_dates) - 1
         result = -1
         
         while left <= right:
             mid = (left + right) // 2
-            if self.sorted_dates[mid] <= target_date:
+            if self.sorted_dates[mid] <= dt:
                 result = mid
                 left = mid + 1
             else:
@@ -96,12 +91,15 @@ class Universe:
         """
         return self._all_tickers
 
-    def set_datetime(self, dt):
-        """Set the current datetime for dynamic constituents lookup."""
-        if hasattr(dt, 'date'):
-            self._current_date = dt.date()
-        else:
-            self._current_date = date.fromisoformat(str(dt).split()[0])
+    def set_datetime(self, dt: np.datetime64):
+        """Set the current datetime for dynamic constituents lookup.
+        
+        Parameters
+        ----------
+        dt : np.datetime64
+            Numpy datetime64 object representing the current date
+        """
+        self._current_date = dt
 
     @property
     def tickers(self) -> List[str]:
@@ -139,7 +137,7 @@ class CSVUniverse(Universe):
         constituents = self._load_from_csv(csv_path)
         super().__init__(constituents)
     
-    def _load_from_csv(self, csv_path: str) -> Dict[date, Set[str]]:
+    def _load_from_csv(self, csv_path: str) -> Dict[np.datetime64, Set[str]]:
         """
         Load constituent data from CSV file.
         
@@ -150,8 +148,8 @@ class CSVUniverse(Universe):
             
         Returns
         -------
-        Dict[date, Set[str]]
-            Dictionary mapping dates to sets of tickers
+        Dict[np.datetime64, Set[str]]
+            Dictionary mapping numpy datetime64 dates to sets of tickers
         """
         constituents = {}
         
@@ -169,7 +167,7 @@ class CSVUniverse(Universe):
                 date_str = parts[0].strip()
                 try:
                     year, month, day = map(int, date_str.split('-'))
-                    current_date = date(year, month, day)
+                    current_date = np.datetime64(f'{year:04d}-{month:02d}-{day:02d}')
                 except ValueError:
                     continue  # Skip invalid dates
                 

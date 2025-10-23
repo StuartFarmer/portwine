@@ -2,6 +2,7 @@ from typing import Union, List, Set
 from portwine.universe import Universe
 from datetime import date
 import abc
+import numpy as np
 
 class StrategyBase(abc.ABC):
     """
@@ -53,8 +54,8 @@ class StrategyBase(abc.ABC):
         # Remove duplicates and convert to set
         unique_tickers = set(tickers)
         
-        # Create static universe mapping
-        constituents = {date(1970, 1, 1): unique_tickers}
+        # Create static universe mapping with numpy datetime64
+        constituents = {np.datetime64("1970-01-01"): unique_tickers}
         
         return Universe(constituents)
 

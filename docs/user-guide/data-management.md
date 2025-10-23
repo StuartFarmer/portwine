@@ -164,7 +164,7 @@ bar = loader.next(['AAPL'], pd.Timestamp('1900-01-01'))
 To create a custom data loader, inherit from `MarketDataLoader` and implement `load_ticker`:
 
 ```python
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 import pandas as pd
 
 class MyCustomLoader(MarketDataLoader):
@@ -201,7 +201,7 @@ Portwine comes with several out of the box loaders for loading saved data from d
 The EODHD loader reads historical market data from CSV files downloaded from EODHD (End of Day Historical Data). It automatically handles price adjustments for splits and dividends.
 
 ```python
-from portwine.loaders import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 
 # Initialize with your data directory
 data_loader = EODHDMarketDataLoader(
@@ -262,7 +262,7 @@ date,open,high,low,close,adjusted_close,volume
 For Polygon.io data:
 
 ```python
-from portwine.loaders import PolygonMarketDataLoader
+from portwine.data.providers.loader_adapters import PolygonMarketDataLoader
 
 data_loader = PolygonMarketDataLoader(data_path='path/to/polygon/data/')
 ```
@@ -318,7 +318,7 @@ alt_tickers = ['sentiment:AAPL', 'news:GOOGL', 'fred:GDP', 'custom:my_data']
 Load economic indicators from the Federal Reserve Economic Data (FRED):
 
 ```python
-from portwine.loaders import FREDDataLoader
+from portwine.data.providers.loader_adapters import FREDDataLoader
 
 # Initialize FRED loader
 fred_loader = FREDDataLoader(api_key='your_fred_api_key')
@@ -339,7 +339,7 @@ data = fred_loader.fetch_data(['fred:GDP', 'fred:UNRATE', 'fred:CPIAUCSL'])
 Create your own alternative data loader:
 
 ```python
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class SentimentDataLoader(MarketDataLoader):
     def __init__(self, data_path):
@@ -368,7 +368,7 @@ The backtester can handle both market data and alternative data simultaneously:
 
 ```python
 from portwine.backtester import Backtester
-from portwine.loaders import EODHDMarketDataLoader
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
 
 # Set up market data loader
 market_loader = EODHDMarketDataLoader('path/to/market/data/')
@@ -477,7 +477,7 @@ market_tickers, alt_tickers = backtester._split_tickers(strategy.tickers)
 You can combine multiple alternative data sources:
 
 ```python
-from portwine.loaders import FREDDataLoader, SentimentDataLoader, NewsDataLoader, AlternativeDataLoader
+from portwine.data.providers.loader_adapters import FREDDataLoader, SentimentDataLoader, NewsDataLoader, AlternativeDataLoader
 
 # Multiple alternative data loaders
 fred_loader = FREDDataLoader(api_key='your_fred_key')
@@ -588,7 +588,7 @@ def step(self, current_date, daily_data):
 To create a custom alternative data loader:
 
 ```python
-from portwine.loaders.base import MarketDataLoader
+from portwine.data.providers.loader_adapters import MarketDataLoader
 
 class CustomAltDataLoader(MarketDataLoader):
     def __init__(self, data_path, source_name):

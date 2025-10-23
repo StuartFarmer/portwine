@@ -5,8 +5,9 @@ Vectorized strategy base class and updated backtester implementation.
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from portwine.backtester.benchmarks import STANDARD_BENCHMARKS
 from portwine.strategies import StrategyBase
-from portwine.backtester import Backtester, STANDARD_BENCHMARKS
+from portwine.backtester import Backtester
 from typing import Dict, List, Optional, Tuple, Set, Union
 import numba as nb
 
@@ -504,10 +505,10 @@ class NumpyVectorizedBacktester:
         else:
             W = weights_matrix
             
-        # Calculate strategy returns - use optimized dot product
+        # Calculate strategy returns - treat NaNs in returns as 0 to match Backtester semantics
         if W.shape[1] > 0:
-            # Fast multiplication along rows
-            strat_rets = np.sum(returns_matrix * W, axis=1)
+            returns_no_nan = np.where(np.isnan(returns_matrix), 0.0, returns_matrix)
+            strat_rets = np.sum(returns_no_nan * W, axis=1)
         else:
             strat_rets = np.zeros(returns_matrix.shape[0], dtype=np.float32)
         

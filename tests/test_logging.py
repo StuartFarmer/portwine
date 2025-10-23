@@ -2,7 +2,7 @@ import unittest
 import logging
 import tempfile
 from pathlib import Path
-from portwine.logging import Logger
+from portwine.logger import Logger
 from logging.handlers import RotatingFileHandler
 from logging import FileHandler
 

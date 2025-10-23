@@ -14,7 +14,7 @@ from portwine.brokers.base import (
 
 
 class MockBroker(BrokerBase):
-    """In‑memory mock broker conforming to the new BrokerBase API."""
+    """In-memory mock broker conforming to the new BrokerBase API."""
 
     def __init__(self, initial_equity: float = 100000.0, fill_price: float = 100.0):
         self._equity = initial_equity

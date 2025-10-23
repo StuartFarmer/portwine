@@ -4,12 +4,56 @@ Integration tests for Universe class with Backtester and Strategy.
 
 import pytest
 import pandas as pd
+import numpy as np
 import os
 from datetime import date, datetime
 from portwine.universe import Universe, CSVUniverse
 from portwine.strategies.base import StrategyBase
-from portwine.backtester import Backtester
-from portwine.loaders.eodhd import EODHDMarketDataLoader
+from portwine.backtester.core import Backtester
+from portwine.data.providers.loader_adapters import EODHDMarketDataLoader
+from portwine.data.interface import DataInterface
+from tests.helpers import MockDataStore
+from unittest.mock import Mock
+
+class MockDailyMarketCalendar:
+    """Mock calendar for testing"""
+    def __init__(self, calendar_name):
+        self.calendar_name = calendar_name
+        
+    def schedule(self, start_date, end_date):
+        # Return a simple schedule for testing
+        dates = pd.date_range(start_date, end_date, freq='D')
+        return pd.DataFrame({
+            'market_open': dates,
+            'market_close': dates
+        }, index=dates)
+        
+    def get_datetime_index(self, start_date, end_date):
+        # Return a simple datetime index for testing
+        if start_date is None:
+            start_date = '2024-01-01'
+        if end_date is None:
+            end_date = '2024-12-31'
+        return pd.date_range(start_date, end_date, freq='D')
+
+
+class MockDataInterface(DataInterface):
+    """DataInterface backed by MockDataStore for testing"""
+    def __init__(self, mock_data=None):
+        store = MockDataStore()
+        if mock_data:
+            store.load_bulk(mock_data)
+        super().__init__(store)
+        self.current_timestamp = None
+
+    def set_current_timestamp(self, dt):
+        self.current_timestamp = dt
+
+    def __getitem__(self, ticker):
+        return super().__getitem__(ticker)
+
+    def exists(self, ticker, start_date, end_date):
+        return self.data_loader.exists(ticker, start_date, end_date)
 
 
 class TestUniverseIntegration:
@@ -59,9 +103,9 @@ class TestUniverseIntegration:
         assert set(strategy.tickers) == {"AAPL", "GOOGL", "MSFT"}
         
         # Verify static universe behavior
-        assert strategy.universe.get_constituents("2024-01-01") == {"AAPL", "GOOGL", "MSFT"}
-        assert strategy.universe.get_constituents("1970-01-01") == {"AAPL", "GOOGL", "MSFT"}
-        assert strategy.universe.get_constituents("2030-01-01") == {"AAPL", "GOOGL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-01-01")) == {"AAPL", "GOOGL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("1970-01-01")) == {"AAPL", "GOOGL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2030-01-01")) == {"AAPL", "GOOGL", "MSFT"}
         
         # Verify all_tickers
         assert strategy.universe.all_tickers == {"AAPL", "GOOGL", "MSFT"}
@@ -92,9 +136,9 @@ class TestUniverseIntegration:
         assert set(strategy.tickers) == {"AAPL", "MSFT"}
         
         # Verify dynamic universe behavior
-        assert strategy.universe.get_constituents("2024-01-15") == {"AAPL"}
-        assert strategy.universe.get_constituents("2024-02-15") == {"AAPL", "MSFT"}
-        assert strategy.universe.get_constituents("2024-03-15") == {"MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-01-15")) == {"AAPL"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-02-15")) == {"AAPL", "MSFT"}
+        assert strategy.universe.get_constituents(np.datetime64("2024-03-15")) == {"MSFT"}
     
     def test_universe_strategy_integration(self):
         """Test that a strategy can use a universe object."""
@@ -167,18 +211,51 @@ class TestUniverseIntegration:
         # Create strategy with universe
         strategy = TrackingUniverseStrategy(universe)
         
-        # Set up data loader using existing test data
-        data_loader = EODHDMarketDataLoader(data_path=self.test_data_dir)
+        # Create mock data for testing
+        mock_data = {
+            'AAPL': pd.DataFrame({
+                'open': [100.0] * 10,
+                'high': [105.0] * 10,
+                'low': [95.0] * 10,
+                'close': [102.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10)),
+            'MSFT': pd.DataFrame({
+                'open': [200.0] * 10,
+                'high': [210.0] * 10,
+                'low': [190.0] * 10,
+                'close': [205.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10)),
+            'NFLX': pd.DataFrame({
+                'open': [300.0] * 10,
+                'high': [315.0] * 10,
+                'low': [285.0] * 10,
+                'close': [307.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10)),
+            'V': pd.DataFrame({
+                'open': [400.0] * 10,
+                'high': [420.0] * 10,
+                'low': [380.0] * 10,
+                'close': [410.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10))
+        }
         
         # Create backtester
-        backtester = Backtester(market_data_loader=data_loader)
+        data_interface = MockDataInterface(mock_data)
+        calendar = MockDailyMarketCalendar("NYSE")
+        backtester = Backtester(
+            data=data_interface,
+            calendar=calendar
+        )
         
         # Run backtest
         results = backtester.run_backtest(
             strategy=strategy,
             start_date="2024-01-01",
-            end_date="2024-05-31",
-            verbose=False
+            end_date="2024-05-31"
         )
         
         # Verify results exist
@@ -237,22 +314,41 @@ class TestUniverseIntegration:
         dynamic_strategy = DynamicStrategy(dynamic_universe)
         
         # Set up backtester
-        data_loader = EODHDMarketDataLoader(data_path=self.test_data_dir)
-        backtester = Backtester(market_data_loader=data_loader)
+        # Create mock data for testing
+        mock_data = {
+            'AAPL': pd.DataFrame({
+                'open': [100.0] * 10,
+                'high': [105.0] * 10,
+                'low': [95.0] * 10,
+                'close': [102.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10)),
+            'MSFT': pd.DataFrame({
+                'open': [200.0] * 10,
+                'high': [210.0] * 10,
+                'low': [190.0] * 10,
+                'close': [205.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10))
+        }
+        data_interface = MockDataInterface(mock_data)
+        calendar = MockDailyMarketCalendar("NYSE")
+        backtester = Backtester(
+            data=data_interface,
+            calendar=calendar
+        )
         
         # Both strategies should work with the same backtester interface
         static_results = backtester.run_backtest(
             strategy=static_strategy,
             start_date="2024-01-01",
-            end_date="2024-02-28",
-            verbose=False
+            end_date="2024-02-28"
         )
         
         dynamic_results = backtester.run_backtest(
             strategy=dynamic_strategy,
             start_date="2024-01-01",
-            end_date="2024-02-28",
-            verbose=False
+            end_date="2024-02-28"
         )
         
         # Both should produce results
@@ -290,8 +386,29 @@ class TestUniverseIntegration:
         strategy = InvalidStrategy(universe)
         
         # Set up backtester
-        data_loader = EODHDMarketDataLoader(data_path=self.test_data_dir)
-        backtester = Backtester(market_data_loader=data_loader)
+        # Create mock data for testing
+        mock_data = {
+            'AAPL': pd.DataFrame({
+                'open': [100.0] * 10,
+                'high': [105.0] * 10,
+                'low': [95.0] * 10,
+                'close': [102.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10)),
+            'MSFT': pd.DataFrame({
+                'open': [200.0] * 10,
+                'high': [210.0] * 10,
+                'low': [190.0] * 10,
+                'close': [205.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10))
+        }
+        data_interface = MockDataInterface(mock_data)
+        calendar = MockDailyMarketCalendar("NYSE")
+        backtester = Backtester(
+            data=data_interface,
+            calendar=calendar
+        )
         
         # This should fail because the strategy is trying to assign weights to MSFT
         # when it's not in the current universe
@@ -299,8 +416,7 @@ class TestUniverseIntegration:
             backtester.run_backtest(
                 strategy=strategy,
                 start_date="2024-01-01",
-                end_date="2024-01-31",
-                verbose=False
+                end_date="2024-01-31"
             )
     
     def test_strategy_can_assign_weights_to_tickers_in_universe(self):
@@ -326,15 +442,35 @@ class TestUniverseIntegration:
         strategy = ValidStrategy(universe)
         
         # Set up backtester
-        data_loader = EODHDMarketDataLoader(data_path=self.test_data_dir)
-        backtester = Backtester(market_data_loader=data_loader)
+        # Create mock data for testing
+        mock_data = {
+            'AAPL': pd.DataFrame({
+                'open': [100.0] * 10,
+                'high': [105.0] * 10,
+                'low': [95.0] * 10,
+                'close': [102.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10)),
+            'MSFT': pd.DataFrame({
+                'open': [200.0] * 10,
+                'high': [210.0] * 10,
+                'low': [190.0] * 10,
+                'close': [205.0] * 10,
+                'volume': [1000000] * 10
+            }, index=pd.date_range('2024-01-01', periods=10))
+        }
+        data_interface = MockDataInterface(mock_data)
+        calendar = MockDailyMarketCalendar("NYSE")
+        backtester = Backtester(
+            data=data_interface,
+            calendar=calendar
+        )
         
         # This should work because the strategy only assigns weights to tickers in the universe
         results = backtester.run_backtest(
             strategy=strategy,
             start_date="2024-01-01",
-            end_date="2024-02-28",
-            verbose=False
+            end_date="2024-02-28"
         )
         
         assert results is not None
