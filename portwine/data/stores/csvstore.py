@@ -229,6 +229,12 @@ class CSVDataStore(DataStore):
             return None
         return df.index.max()
 
+    def earliest(self, identifier: str) -> Union[datetime, None]:
+        df = self._load_dataframe(identifier)
+        if df.empty:
+            return None
+        return df.index.min()
+
     def exists(self, identifier: str, start_date: Union[datetime, None] = None, end_date: Union[datetime, None] = None) -> bool:
         df = self._load_dataframe(identifier)
         if df.empty:

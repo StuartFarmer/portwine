@@ -100,6 +100,13 @@ class DataStore(abc.ABC):
         ...
 
     '''
+    Gets the earliest date for a given identifier from the store.
+    If the data is not found, it returns None.
+    '''
+    def earliest(self, identifier: str) -> Union[datetime, None]:
+        ...
+
+    '''
     Checks if data exists for a given identifier, start_date, and end_date.
 
     If start_date is None, it assumes the earliest date for that piece of data.

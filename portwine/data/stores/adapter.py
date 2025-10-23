@@ -85,9 +85,17 @@ class MarketDataLoaderAdapter(DataStore):
         ticker_data = self.loader.fetch_data([identifier])
         if identifier not in ticker_data or ticker_data[identifier].empty:
             return None
-        
+
         return ticker_data[identifier].index[-1]
-    
+
+    def earliest(self, identifier: str) -> Union[datetime, None]:
+        """Get the earliest date for a ticker"""
+        ticker_data = self.loader.fetch_data([identifier])
+        if identifier not in ticker_data or ticker_data[identifier].empty:
+            return None
+
+        return ticker_data[identifier].index[0]
+
     def exists(self, identifier: str, start_date: Union[datetime, None] = None, end_date: Union[datetime, None] = None) -> bool:
         """Check if data exists for a ticker in a date range"""
         ticker_data = self.loader.fetch_data([identifier])

@@ -209,9 +209,20 @@ class ParquetDataStore(DataStore):
         df = self._load_dataframe(identifier)
         if df.empty:
             return None
-        
+
         return df.index.max()
-    
+
+    def earliest(self, identifier: str) -> Union[datetime, None]:
+        """
+        Gets the earliest date for a given identifier from the store.
+        If the data is not found, it returns None.
+        """
+        df = self._load_dataframe(identifier)
+        if df.empty:
+            return None
+
+        return df.index.min()
+
     def exists(self, identifier: str, start_date: Union[datetime, None] = None, end_date: Union[datetime, None] = None) -> bool:
         """
         Checks if data exists for a given identifier, start_date, and end_date.

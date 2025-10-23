@@ -146,10 +146,21 @@ class TestParquetDataStore(unittest.TestCase):
     def test_latest_date(self):
         """Test retrieving the latest date."""
         self.store.add("TEST", self.test_data)
-        
+
         result = self.store.latest("TEST")
         self.assertEqual(result, datetime(2023, 1, 3))
-    
+
+    def test_earliest_date(self):
+        """Test retrieving the earliest date."""
+        self.store.add("TEST", self.test_data)
+
+        result = self.store.earliest("TEST")
+        self.assertEqual(result, datetime(2023, 1, 1))
+
+        # Test with non-existent identifier
+        result = self.store.earliest("NONEXISTENT")
+        self.assertIsNone(result)
+
     def test_exists(self):
         """Test checking if data exists."""
         self.store.add("TEST", self.test_data)
@@ -308,15 +319,19 @@ class TestNoisyDataStore(unittest.TestCase):
     def test_delegation_methods(self):
         """Test that delegation methods work correctly."""
         self.base_store.add("TEST", self.test_data)
-        
+
         # Test exists
         self.assertTrue(self.noisy_store.exists("TEST", datetime(2023, 1, 1)))
         self.assertFalse(self.noisy_store.exists("NONEXISTENT"))
-        
+
         # Test latest date
         latest_date = self.noisy_store.latest("TEST")
         self.assertEqual(latest_date, datetime(2023, 1, 7))
-        
+
+        # Test earliest date
+        earliest_date = self.noisy_store.earliest("TEST")
+        self.assertEqual(earliest_date, datetime(2023, 1, 1))
+
         # Test identifiers
         identifiers = self.noisy_store.identifiers()
         self.assertIn("TEST", identifiers)

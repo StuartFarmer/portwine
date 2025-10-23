@@ -212,7 +212,11 @@ class NoisyDataStore(DataStore):
     def latest(self, identifier: str) -> Union[datetime, None]:
         """Get the latest date from the base store."""
         return self.base_store.latest(identifier)
-    
+
+    def earliest(self, identifier: str) -> Union[datetime, None]:
+        """Get the earliest date from the base store."""
+        return self.base_store.earliest(identifier)
+
     def exists(self, identifier: str, start_date: Union[datetime, None] = None, end_date: Union[datetime, None] = None) -> bool:
         """Check if data exists in the base store."""
         return self.base_store.exists(identifier, start_date, end_date)
