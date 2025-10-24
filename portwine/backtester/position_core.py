@@ -78,12 +78,22 @@ class PositionBacktestResult:
 
     def update_positions(self):
         """
-        Calculate cumulative positions from actions.
+        Calculate cumulative positions from actions with signal shifting.
 
-        positions[t] = positions[t-1] + actions[t]
+        Signal shifting prevents lookahead bias:
+        - Action generated on day t (seeing day t data) executes on day t+1
+        - positions[t] = cumsum(actions[t-1])
+
+        This matches the weights backtester behavior where signals are shifted
+        forward by 1 day before calculating returns.
         """
+        # Shift actions forward by 1 day (action on day t executes on day t+1)
+        shifted_actions = np.roll(self.actions_array, 1, axis=0)
+        if shifted_actions.shape[0] > 0:
+            shifted_actions[0, :] = 0.0  # First day has no previous actions
+
         # Cumulative sum along time axis
-        self.positions_array = np.cumsum(self.actions_array, axis=0)
+        self.positions_array = np.cumsum(shifted_actions, axis=0)
 
     def calculate_portfolio_value(self):
         """
@@ -165,7 +175,8 @@ class PositionBacktester:
         end_date: Union[str, None] = None,
         benchmark: Union[str, Callable, None] = None,
         verbose: bool = False,
-        require_all_history: bool = False
+        require_all_history: bool = False,
+        execution_price: str = 'close'
     ):
         """
         Run position-based backtest.
@@ -177,10 +188,16 @@ class PositionBacktester:
             benchmark: Benchmark (ticker, function, or None)
             verbose: Show progress bar
             require_all_history: Ensure all tickers have data from start
+            execution_price: Which price to use for execution ('close' or 'open')
+                - 'close': Execute at next day's close (default, current behavior)
+                - 'open': Execute at next day's open (more realistic)
 
         Returns:
             dict: Position-based results
         """
+        # Validate execution_price parameter
+        if execution_price not in ('close', 'open'):
+            raise ValueError(f"execution_price must be 'close' or 'open', got: {execution_price}")
         # 1. Validate strategy has tickers (same as Backtester)
         if not strategy.universe.all_tickers:
             raise ValueError("Strategy has no tickers. Cannot run backtest with empty universe.")
@@ -244,13 +261,13 @@ class PositionBacktester:
             for ticker, quantity in actions.items():
                 result.add_action(i, ticker, quantity)
 
-            # Record prices (use close price)
+            # Record prices (use specified execution price)
             for ticker in regular_tickers_current:
                 try:
                     price_data = self.restricted_data[ticker]
-                    close_price = price_data.get('close')
-                    if close_price is not None:
-                        result.add_price(i, ticker, close_price)
+                    price = price_data.get(execution_price)
+                    if price is not None:
+                        result.add_price(i, ticker, price)
                 except (KeyError, ValueError):
                     # Ticker has no data on this day
                     pass
@@ -285,7 +302,11 @@ class PositionBacktester:
         if not latest_dates:
             raise ValueError("No data found for any ticker")
 
-        return max(latest_dates)
+        max_date = max(latest_dates)
+        # Convert to string format if it's a Timestamp
+        if isinstance(max_date, pd.Timestamp):
+            return max_date.strftime('%Y-%m-%d')
+        return str(max_date) if hasattr(max_date, 'strftime') else max_date
 
     def validate_actions(self, actions: Dict[str, float], current_universe_tickers: List[str]):
         """
