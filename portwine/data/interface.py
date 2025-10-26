@@ -116,6 +116,22 @@ class DataInterface:
         # Common means all tickers have data from this date forward → choose latest of their earliest
         return max(dates).strftime('%Y-%m-%d')
 
+    def exists(self, ticker: str, start_date: str, end_date: str) -> bool:
+        """
+        Check if data exists for a ticker in the given date range.
+
+        Args:
+            ticker: The ticker symbol
+            start_date: Start date string (YYYY-MM-DD format)
+            end_date: End date string (YYYY-MM-DD format)
+
+        Returns:
+            True if data exists, False otherwise
+        """
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+        return self.data_loader.exists(ticker, start_dt, end_dt)
+
 class MultiDataInterface:
     """
     A data interface that supports multiple data stores with prefixes.
